@@ -19,14 +19,17 @@ jobs:
           ref: db-backups
           fetch-depth: 0
 
-      - name: Install PostgreSQL client (pg_dump)
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
-
       - name: Dump the Neon database
+        # Neon runs a newer Postgres server version than the apt-get
+        # postgresql-client package on ubuntu-latest, and pg_dump refuses to
+        # talk to a server newer than itself. Run pg_dump from the official
+        # postgres:18 image instead so the client version always matches.
         run: |
           mkdir -p backups
           STAMP=$(date -u +'%Y%m%d-%H%M%S')
-          pg_dump "${NEON_DATABASE_URL}" --no-owner --no-privileges -f "backups/backup-${STAMP}.sql"
+          docker run --rm postgres:18-alpine \
+            pg_dump "${NEON_DATABASE_URL}" --no-owner --no-privileges \
+            > "backups/backup-${STAMP}.sql"
           echo "BACKUP_FILE=backups/backup-${STAMP}.sql" >> "$GITHUB_ENV"
         env:
           NEON_DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
