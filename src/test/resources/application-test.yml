@@ -6,11 +6,11 @@ spring:
     driver-class-name: org.h2.Driver
   jpa:
     hibernate:
-      ddl-auto: validate
+      # Tests run against a throwaway in-memory H2 instance, so it's fine
+      # (and simplest) to let Hibernate generate the schema from the
+      # entities directly — production schema is managed by hand on Neon.
+      ddl-auto: create-drop
     database-platform: org.hibernate.dialect.H2Dialect
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
 
 app:
   jwt:

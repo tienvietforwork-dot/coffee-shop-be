@@ -10,6 +10,7 @@ class CoffeeShopApplicationTests {
 
     @Test
     void contextLoads() {
-        // Verifies the Spring context (incl. Flyway migrations against H2) starts cleanly.
+        // Verifies the Spring context starts cleanly (Hibernate creates the
+        // schema on the in-memory H2 test database from the entities).
     }
 }
