@@ -21,10 +21,12 @@ public class UserService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
+    @Transactional(readOnly = true)
     public List<UserResponse> findAll() {
         return userRepository.findAll().stream().map(UserResponse::from).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public UserResponse findById(Long id) {
         return UserResponse.from(getEntity(id));
     }

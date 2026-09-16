@@ -18,10 +18,12 @@ public class CategoryService {
 
     private final CategoryRepository categoryRepository;
 
+    @Transactional(readOnly = true)
     public List<CategoryResponse> findAll() {
         return categoryRepository.findAll().stream().map(CategoryResponse::from).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public CategoryResponse findById(Long id) {
         return CategoryResponse.from(getEntity(id));
     }

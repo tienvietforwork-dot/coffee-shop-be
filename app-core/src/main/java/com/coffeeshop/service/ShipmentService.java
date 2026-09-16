@@ -28,10 +28,12 @@ public class ShipmentService {
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
 
+    @Transactional(readOnly = true)
     public List<ShipmentResponse> findAll() {
         return shipmentRepository.findAll().stream().map(ShipmentResponse::from).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public ShipmentResponse findById(Long id) {
         return ShipmentResponse.from(getEntity(id));
     }

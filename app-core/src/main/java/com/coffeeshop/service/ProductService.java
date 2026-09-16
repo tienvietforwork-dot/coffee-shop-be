@@ -28,10 +28,12 @@ public class ProductService {
     private final MaterialRepository materialRepository;
     private final ProductMaterialRepository productMaterialRepository;
 
+    @Transactional(readOnly = true)
     public List<ProductResponse> findAll() {
         return productRepository.findAll().stream().map(ProductResponse::from).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public ProductResponse findById(Long id) {
         return ProductResponse.from(getEntity(id));
     }

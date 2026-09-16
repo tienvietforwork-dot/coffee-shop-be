@@ -32,14 +32,17 @@ public class MaterialService {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
 
+    @Transactional(readOnly = true)
     public List<MaterialResponse> findAll() {
         return materialRepository.findAll().stream().map(MaterialResponse::from).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public MaterialResponse findById(Long id) {
         return MaterialResponse.from(getEntity(id));
     }
 
+    @Transactional(readOnly = true)
     public List<MaterialResponse> findLowStock() {
         return materialRepository.findLowStock().stream().map(MaterialResponse::from).collect(Collectors.toList());
     }

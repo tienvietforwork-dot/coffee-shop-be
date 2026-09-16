@@ -46,10 +46,12 @@ public class OrderService {
     private final MaterialService materialService;
     private final NotificationService notificationService;
 
+    @Transactional(readOnly = true)
     public List<OrderResponse> findAll() {
         return orderRepository.findAll().stream().map(OrderResponse::from).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public OrderResponse findById(Long id) {
         return OrderResponse.from(getEntity(id));
     }
