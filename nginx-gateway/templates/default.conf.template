@@ -11,9 +11,13 @@
 #                                           /api/materials, /api/orders, ... paths
 #                                           are passed through unchanged)
 #
-# Values come from environment variables set on the Render service (see
-# nginx-gateway/README.md) and are substituted into this file at container
-# startup by the official nginx image's envsubst-on-templates mechanism.
+# CORE_UPSTREAM / CRM_UPSTREAM / STATS_UPSTREAM / PROMOTIONS_UPSTREAM must be
+# BARE HOSTNAMES (no "https://", no trailing slash), e.g.
+#   CORE_UPSTREAM=coffee-shop-be-gn7a.onrender.com
+# Render's edge is shared across many customers' apps behind the same IPs,
+# so it relies on both the TLS SNI and the HTTP Host header to route to the
+# right one — proxy_ssl_server_name + proxy_set_header Host below make sure
+# both carry the real upstream hostname instead of the gateway's own.
 
 resolver 8.8.8.8 ipv6=off;
 
@@ -21,10 +25,12 @@ server {
     listen ${PORT};
 
     location /api/crm/ {
-        set $upstream ${CRM_UPSTREAM};
+        set $upstream_host ${CRM_UPSTREAM};
         rewrite ^/api/crm/(.*)$ /api/$1 break;
-        proxy_pass $upstream;
-        proxy_set_header Host $host;
+        proxy_pass https://$upstream_host;
+        proxy_ssl_server_name on;
+        proxy_ssl_name $upstream_host;
+        proxy_set_header Host $upstream_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -32,10 +38,12 @@ server {
     }
 
     location /api/stats/ {
-        set $upstream ${STATS_UPSTREAM};
+        set $upstream_host ${STATS_UPSTREAM};
         rewrite ^/api/stats/(.*)$ /api/$1 break;
-        proxy_pass $upstream;
-        proxy_set_header Host $host;
+        proxy_pass https://$upstream_host;
+        proxy_ssl_server_name on;
+        proxy_ssl_name $upstream_host;
+        proxy_set_header Host $upstream_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -43,10 +51,12 @@ server {
     }
 
     location /api/promotions/ {
-        set $upstream ${PROMOTIONS_UPSTREAM};
+        set $upstream_host ${PROMOTIONS_UPSTREAM};
         rewrite ^/api/promotions/(.*)$ /api/$1 break;
-        proxy_pass $upstream;
-        proxy_set_header Host $host;
+        proxy_pass https://$upstream_host;
+        proxy_ssl_server_name on;
+        proxy_ssl_name $upstream_host;
+        proxy_set_header Host $upstream_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -54,20 +64,24 @@ server {
     }
 
     location /ws {
-        set $upstream ${CORE_UPSTREAM};
-        proxy_pass $upstream;
+        set $upstream_host ${CORE_UPSTREAM};
+        proxy_pass https://$upstream_host;
+        proxy_ssl_server_name on;
+        proxy_ssl_name $upstream_host;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
+        proxy_set_header Host $upstream_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_read_timeout 3600s;
     }
 
     location / {
-        set $upstream ${CORE_UPSTREAM};
-        proxy_pass $upstream;
-        proxy_set_header Host $host;
+        set $upstream_host ${CORE_UPSTREAM};
+        proxy_pass https://$upstream_host;
+        proxy_ssl_server_name on;
+        proxy_ssl_name $upstream_host;
+        proxy_set_header Host $upstream_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;

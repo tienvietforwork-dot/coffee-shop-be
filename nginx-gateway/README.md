@@ -16,11 +16,13 @@ Cổng vào duy nhất cho frontend — gộp 4 backend độc lập (`app-core`
 
 Khi tạo Web Service cho `nginx-gateway` (Root Directory = `nginx-gateway`, Runtime = Docker), thêm các Environment Variables sau — điền đúng URL thật của từng service **sau khi đã deploy xong cả 4 app kia** (không có dấu `/` ở cuối):
 
+⚠️ Chỉ điền **tên miền trần** (không có `https://`, không có dấu `/` ở cuối):
+
 ```
-CORE_UPSTREAM=https://coffee-shop-be-gn7a.onrender.com
-CRM_UPSTREAM=https://<url-app-crm>.onrender.com
-STATS_UPSTREAM=https://<url-app-stats>.onrender.com
-PROMOTIONS_UPSTREAM=https://<url-app-promotions>.onrender.com
+CORE_UPSTREAM=coffee-shop-be-gn7a.onrender.com
+CRM_UPSTREAM=<url-app-crm>.onrender.com
+STATS_UPSTREAM=<url-app-stats>.onrender.com
+PROMOTIONS_UPSTREAM=<url-app-promotions>.onrender.com
 ```
 
 `PORT` không cần tự set — Render tự cấp, template đã đọc `${PORT}`.
