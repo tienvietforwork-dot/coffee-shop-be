@@ -1,0 +1,17 @@
+# Example profile for local development against a Postgres instance running on localhost
+# (e.g. started via `docker compose up db`).
+# Activate with: --spring.profiles.active=local  or  SPRING_PROFILES_ACTIVE=local
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/coffeeshop
+    username: postgres
+    password: postgres
+
+app:
+  cors:
+    allowed-origin: http://localhost:5173
+
+logging:
+  level:
+    com.coffeeshop: DEBUG
+    org.hibernate.SQL: DEBUG

@@ -1,0 +1,24 @@
+name: Deploy to Render
+
+# Triggers a Render deploy hook after a push to main. Render can also
+# auto-deploy from GitHub directly, but this explicit step gives a visible
+# CI/CD stage for the DATN report and lets deploy be gated behind CI success.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Trigger Render deploy hook
+        run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL secret is not set. Skipping deploy trigger." >&2
+            exit 1
+          fi
+          curl -fsS -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
