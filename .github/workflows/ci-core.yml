@@ -1,14 +1,23 @@
-name: CI
+name: CI - app-core
 
 on:
   push:
     branches: [main]
+    paths:
+      - 'app-core/**'
+      - '.github/workflows/ci-core.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'app-core/**'
+      - '.github/workflows/ci-core.yml'
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app-core
 
     steps:
       - name: Checkout
@@ -20,6 +29,7 @@ jobs:
           distribution: temurin
           java-version: "17"
           cache: maven
+          cache-dependency-path: app-core/pom.xml
 
       - name: Run tests
         run: mvn -B test
