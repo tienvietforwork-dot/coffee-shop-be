@@ -1,0 +1,76 @@
+# API Gateway — single public entrypoint fanning out to the 4 independent
+# backend apps in this monorepo. The frontend only ever talks to THIS
+# gateway; it never needs to know the other 4 apps' real URLs.
+#
+# Routing rules:
+#   /api/crm/*         -> app-crm        (rewritten to /api/* for that app)
+#   /api/stats/*        -> app-stats      (rewritten to /api/* for that app)
+#   /api/promotions/*  -> app-promotions (rewritten to /api/* for that app)
+#   /ws                -> app-core        (WebSocket, unchanged)
+#   everything else    -> app-core        (its existing /api/auth, /api/products,
+#                                           /api/materials, /api/orders, ... paths
+#                                           are passed through unchanged)
+#
+# Values come from environment variables set on the Render service (see
+# nginx-gateway/README.md) and are substituted into this file at container
+# startup by the official nginx image's envsubst-on-templates mechanism.
+
+resolver 8.8.8.8 ipv6=off;
+
+server {
+    listen ${PORT};
+
+    location /api/crm/ {
+        set $upstream ${CRM_UPSTREAM};
+        rewrite ^/api/crm/(.*)$ /api/$1 break;
+        proxy_pass $upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+    }
+
+    location /api/stats/ {
+        set $upstream ${STATS_UPSTREAM};
+        rewrite ^/api/stats/(.*)$ /api/$1 break;
+        proxy_pass $upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+    }
+
+    location /api/promotions/ {
+        set $upstream ${PROMOTIONS_UPSTREAM};
+        rewrite ^/api/promotions/(.*)$ /api/$1 break;
+        proxy_pass $upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+    }
+
+    location /ws {
+        set $upstream ${CORE_UPSTREAM};
+        proxy_pass $upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_read_timeout 3600s;
+    }
+
+    location / {
+        set $upstream ${CORE_UPSTREAM};
+        proxy_pass $upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+    }
+}

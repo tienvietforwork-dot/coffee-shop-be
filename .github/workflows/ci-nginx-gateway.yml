@@ -1,0 +1,23 @@
+name: CI - nginx-gateway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'nginx-gateway/**'
+      - '.github/workflows/ci-nginx-gateway.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'nginx-gateway/**'
+      - '.github/workflows/ci-nginx-gateway.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build the gateway image (catches broken Dockerfile/nginx.conf early)
+        run: docker build -t nginx-gateway-ci ./nginx-gateway
