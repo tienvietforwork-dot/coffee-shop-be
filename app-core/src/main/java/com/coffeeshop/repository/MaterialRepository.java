@@ -7,7 +7,10 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.List;
 
 public interface MaterialRepository extends JpaRepository<Material, Long> {
+    List<Material> findAllByOrderByNameAsc();
 
-    @Query("SELECT m FROM Material m WHERE m.quantityInStock < m.minThreshold")
+    boolean existsByNameIgnoreCase(String name);
+
+    @Query("select m from Material m where m.status = com.coffeeshop.entity.enums.MaterialStatus.ACTIVE and m.stockQuantity < m.minStock order by m.name")
     List<Material> findLowStock();
 }

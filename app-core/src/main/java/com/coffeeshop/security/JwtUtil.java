@@ -12,6 +12,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.function.Function;
 
+/**
+ * JWT shared by all 4 apps (same JWT_SECRET). Claims:
+ * sub = username, userId, role = highest role (what app-crm/promotions/stats check),
+ * roles = all role codes, perms = permission codes (for the other apps to authorise per screen).
+ */
 @Component
 public class JwtUtil {
 
@@ -19,7 +24,7 @@ public class JwtUtil {
     private final long expirationMs;
 
     public JwtUtil(@Value("${app.jwt.secret}") String secret,
-                    @Value("${app.jwt.expiration-ms}") long expirationMs) {
+                   @Value("${app.jwt.expiration-ms}") long expirationMs) {
         // Ensure the key material is long enough for HS256 (>= 256 bits).
         byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
         if (bytes.length < 32) {
@@ -31,25 +36,22 @@ public class JwtUtil {
         this.expirationMs = expirationMs;
     }
 
-    public String generateToken(String username, String role, Long userId) {
+    public String generateToken(UserPrincipal principal) {
         Date now = new Date();
-        Date expiry = new Date(now.getTime() + expirationMs);
         return Jwts.builder()
-                .subject(username)
-                .claim("role", role)
-                .claim("userId", userId)
+                .subject(principal.getUsername())
+                .claim("userId", principal.getId())
+                .claim("role", principal.getPrimaryRole())
+                .claim("roles", principal.getRoles())
+                .claim("perms", principal.getPermissions().stream().sorted().toList())
                 .issuedAt(now)
-                .expiration(expiry)
+                .expiration(new Date(now.getTime() + expirationMs))
                 .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
-    }
-
-    public String extractRole(String token) {
-        return extractAllClaims(token).get("role", String.class);
     }
 
     public boolean isTokenValid(String token, String username) {

@@ -1,13 +1,10 @@
 package com.coffeeshop.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
-import lombok.Getter;
-import lombok.Setter;
+import jakarta.validation.constraints.Size;
 
-@Getter
-@Setter
-public class CategoryRequest {
-
-    @NotBlank
-    private String name;
+public record CategoryRequest(
+        @NotBlank @Size(max = 100) String name,
+        String description,
+        Integer displayOrder) {
 }

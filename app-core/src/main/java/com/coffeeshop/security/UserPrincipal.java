@@ -1,44 +1,52 @@
 package com.coffeeshop.security;
 
-import com.coffeeshop.entity.User;
 import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 
+/** Authenticated account: authorities = "ROLE_" + role codes + permission codes. */
 @Getter
 public class UserPrincipal implements UserDetails {
 
     private final Long id;
     private final String username;
     private final String password;
-    private final String role;
     private final boolean active;
+    private final List<String> roles;
+    private final Set<String> permissions;
+    private final Long staffId;
+    private final Long customerId;
 
-    public UserPrincipal(User user) {
-        this.id = user.getId();
-        this.username = user.getUsername();
-        this.password = user.getPasswordHash();
-        this.role = user.getRole().name();
-        this.active = user.isActive();
+    public UserPrincipal(Long id, String username, String password, boolean active, List<String> roles,
+                         Set<String> permissions, Long staffId, Long customerId) {
+        this.id = id;
+        this.username = username;
+        this.password = password;
+        this.active = active;
+        this.roles = roles;
+        this.permissions = permissions;
+        this.staffId = staffId;
+        this.customerId = customerId;
+    }
+
+    /** Highest role, kept as the JWT "role" claim that app-crm/app-promotions/app-stats check. */
+    public String getPrimaryRole() {
+        for (String r : List.of("ADMIN", "STAFF", "CUSTOMER")) if (roles.contains(r)) return r;
+        return null;
     }
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + role));
-    }
-
-    @Override
-    public String getPassword() {
-        return password;
-    }
-
-    @Override
-    public String getUsername() {
-        return username;
+        List<GrantedAuthority> list = new ArrayList<>();
+        roles.forEach(r -> list.add(new SimpleGrantedAuthority("ROLE_" + r)));
+        permissions.forEach(p -> list.add(new SimpleGrantedAuthority(p)));
+        return list;
     }
 
     @Override

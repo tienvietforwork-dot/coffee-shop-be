@@ -1,5 +1,5 @@
 package com.coffeeshop.entity.enums;
 
 public enum PaymentMethod {
-    CASH, BANK_TRANSFER, CARD
+    CASH, BANK_TRANSFER, E_WALLET, CARD
 }

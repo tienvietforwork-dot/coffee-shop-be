@@ -34,6 +34,12 @@ app:
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
   cors:
     allowed-origin: ${CORS_ALLOWED_ORIGIN:http://localhost:5173}
+  shipping:
+    fee: ${SHIPPING_FEE:15000}
+  loyalty:
+    vnd-per-point: 10000
+  inventory:
+    expiry-warning-days: 7
 
 management:
   endpoints:

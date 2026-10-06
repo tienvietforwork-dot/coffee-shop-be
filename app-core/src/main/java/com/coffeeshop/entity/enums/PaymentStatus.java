@@ -1,5 +1,5 @@
 package com.coffeeshop.entity.enums;
 
 public enum PaymentStatus {
-    PAID, UNPAID
+    PENDING, PAID, FAILED, REFUNDED
 }

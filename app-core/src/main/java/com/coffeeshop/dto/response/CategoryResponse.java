@@ -1,18 +1,9 @@
 package com.coffeeshop.dto.response;
 
 import com.coffeeshop.entity.Category;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
 
-@Getter
-@Builder
-@AllArgsConstructor
-public class CategoryResponse {
-    private Long id;
-    private String name;
-
+public record CategoryResponse(Long id, String name, String description, Integer displayOrder) {
     public static CategoryResponse from(Category c) {
-        return CategoryResponse.builder().id(c.getId()).name(c.getName()).build();
+        return new CategoryResponse(c.getId(), c.getName(), c.getDescription(), c.getDisplayOrder());
     }
 }

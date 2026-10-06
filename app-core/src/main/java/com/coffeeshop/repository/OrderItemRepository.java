@@ -1,33 +1,20 @@
 package com.coffeeshop.repository;
 
 import com.coffeeshop.entity.OrderItem;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
-
-    List<OrderItem> findByOrderId(Long orderId);
-
+    /** [coffeeId, coffeeName, totalQuantity] for completed orders in a period, best sellers first. */
     @Query("""
-            SELECT oi.product.id AS productId, oi.product.name AS productName,
-                   SUM(oi.quantity) AS totalQuantity, SUM(oi.subtotal) AS totalRevenue
-            FROM OrderItem oi
-            WHERE oi.order.status = com.coffeeshop.entity.enums.OrderStatus.COMPLETED
-              AND oi.order.createdAt >= :from AND oi.order.createdAt < :to
-            GROUP BY oi.product.id, oi.product.name
-            ORDER BY SUM(oi.quantity) DESC
+            select i.coffee.id, i.coffee.name, sum(i.quantity) from OrderItem i
+            where i.order.status = com.coffeeshop.entity.enums.OrderStatus.COMPLETED
+              and i.order.orderedAt >= :from and i.order.orderedAt < :to
+            group by i.coffee.id, i.coffee.name
+            order by sum(i.quantity) desc
             """)
-    List<TopProductRow> findTopProducts(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to, Pageable pageable);
-
-    interface TopProductRow {
-        Long getProductId();
-        String getProductName();
-        Long getTotalQuantity();
-        java.math.BigDecimal getTotalRevenue();
-    }
+    List<Object[]> topCoffees(LocalDateTime from, LocalDateTime to);
 }

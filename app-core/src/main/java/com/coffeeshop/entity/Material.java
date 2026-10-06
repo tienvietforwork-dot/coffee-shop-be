@@ -1,40 +1,47 @@
 package com.coffeeshop.entity;
 
+import com.coffeeshop.entity.enums.*;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.SQLRestriction;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
-@Entity
-@Table(name = "materials")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Material {
-
+@Entity
+@Table(name = "materials")
+@SQLRestriction("del_flag = false")
+@SQLDelete(sql = "UPDATE materials SET del_flag = true WHERE id = ?")
+public class Material extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(nullable = false, length = 150)
+    @Column(nullable = false, length = 100)
     private String name;
-
     @Column(nullable = false, length = 20)
     private String unit;
+    /** Denormalised sum of remaining_quantity over this material's batches. */
+    @Builder.Default
+    @Column(name = "stock_quantity", nullable = false, precision = 12, scale = 2)
+    private BigDecimal stockQuantity = BigDecimal.ZERO;
+    @Builder.Default
+    @Column(name = "min_stock", nullable = false, precision = 12, scale = 2)
+    private BigDecimal minStock = BigDecimal.ZERO;
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private MaterialStatus status = MaterialStatus.ACTIVE;
 
-    @Column(name = "quantity_in_stock", nullable = false, precision = 14, scale = 3)
-    private BigDecimal quantityInStock;
-
-    @Column(name = "min_threshold", nullable = false, precision = 14, scale = 3)
-    private BigDecimal minThreshold;
-
-    @Column(name = "unit_price", nullable = false, precision = 14, scale = 2)
-    private BigDecimal unitPrice;
-
-    public boolean isBelowThreshold() {
-        return quantityInStock != null && minThreshold != null
-                && quantityInStock.compareTo(minThreshold) < 0;
+    public boolean isLowStock() {
+        return stockQuantity.compareTo(minStock) < 0;
     }
 }

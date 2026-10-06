@@ -1,5 +1,5 @@
 package com.coffeeshop.entity.enums;
 
 public enum ShipmentStatus {
-    PENDING, ASSIGNED, DELIVERING, DELIVERED, FAILED
+    PENDING, BOOKED, DRIVER_ACCEPTED, DELIVERING, DELIVERED, FAILED
 }

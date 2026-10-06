@@ -1,13 +1,7 @@
 package com.coffeeshop.dto.response;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
+import java.util.List;
 
-@Getter
-@Builder
-@AllArgsConstructor
-public class LoginResponse {
-    private String token;
-    private UserResponse user;
+/** Login / sign-up result: token + account + the screens it may open (for the menu). */
+public record LoginResponse(String token, UserResponse user, List<PermissionResponse> permissions) {
 }

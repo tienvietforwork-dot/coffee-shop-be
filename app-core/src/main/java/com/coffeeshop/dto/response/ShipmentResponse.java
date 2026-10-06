@@ -1,37 +1,19 @@
 package com.coffeeshop.dto.response;
 
 import com.coffeeshop.entity.Shipment;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
+import com.coffeeshop.entity.enums.ShipmentStatus;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-@Getter
-@Builder
-@AllArgsConstructor
-public class ShipmentResponse {
-    private Long id;
-    private Long orderId;
-    private String orderCode;
-    private Long shipperId;
-    private String shipperName;
-    private String address;
-    private String status;
-    private String note;
-    private LocalDateTime deliveredAt;
-
+public record ShipmentResponse(Long id, Long orderId, String orderCode, String recipientName, String recipientPhone,
+                               String address, String carrier, String trackingCode, BigDecimal shippingFee,
+                               ShipmentStatus status, LocalDateTime bookedAt, LocalDateTime driverAcceptedAt,
+                               LocalDateTime deliveredAt, String note) {
     public static ShipmentResponse from(Shipment s) {
-        return ShipmentResponse.builder()
-                .id(s.getId())
-                .orderId(s.getOrder().getId())
-                .orderCode(s.getOrder().getOrderCode())
-                .shipperId(s.getShipper() != null ? s.getShipper().getId() : null)
-                .shipperName(s.getShipper() != null ? s.getShipper().getFullName() : null)
-                .address(s.getAddress())
-                .status(s.getStatus().name())
-                .note(s.getNote())
-                .deliveredAt(s.getDeliveredAt())
-                .build();
+        return new ShipmentResponse(s.getId(), s.getOrder().getId(), s.getOrder().getOrderCode(),
+                s.getAddress().getRecipientName(), s.getAddress().getRecipientPhone(), s.getAddress().getAddress(),
+                s.getCarrier(), s.getTrackingCode(), s.getShippingFee(), s.getStatus(), s.getBookedAt(),
+                s.getDriverAcceptedAt(), s.getDeliveredAt(), s.getNote());
     }
 }

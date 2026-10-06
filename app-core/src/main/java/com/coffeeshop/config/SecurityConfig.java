@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -24,6 +25,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
 
@@ -48,9 +50,11 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // Per-screen permissions are checked with @PreAuthorize(Perm.CAN_...) on each endpoint
+                // (user – role – permission, see com.coffeeshop.security.Perm); here only public vs logged-in.
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login", "/api/auth/register").permitAll()
                         .requestMatchers(
-                                "/api/auth/**",
                                 "/ws/**",
                                 "/actuator/health",
                                 "/actuator/health/**",
@@ -58,19 +62,8 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/swagger-ui.html"
                         ).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/categories/**").permitAll()
-                        .requestMatchers("/api/users/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/categories/**", "/api/products/**", "/api/materials/**")
-                        .hasAnyRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/categories/**", "/api/products/**", "/api/materials/**")
-                        .hasAnyRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/api/categories/**", "/api/products/**", "/api/materials/**")
-                        .hasAnyRole("ADMIN")
-                        .requestMatchers("/api/materials/transactions/**").hasAnyRole("ADMIN", "STAFF")
-                        .requestMatchers("/api/orders/**").hasAnyRole("ADMIN", "STAFF")
-                        .requestMatchers(HttpMethod.PATCH, "/api/shipments/**").hasAnyRole("ADMIN", "SHIPPER")
-                        .requestMatchers("/api/shipments/**").hasAnyRole("ADMIN", "STAFF", "SHIPPER")
-                        .requestMatchers("/api/reports/**").hasAnyRole("ADMIN", "STAFF")
+                        // guests (and logged-in customers): menu, QR table, cart, checkout, order tracking
+                        .requestMatchers("/api/public/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

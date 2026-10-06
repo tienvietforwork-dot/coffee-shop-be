@@ -1,31 +1,22 @@
 package com.coffeeshop.dto.request;
 
-import com.coffeeshop.entity.enums.Role;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import lombok.Getter;
-import lombok.Setter;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
 
-@Getter
-@Setter
-public class UserRequest {
+import java.util.List;
 
-    @NotBlank
-    private String username;
-
-    // Optional on update (leave blank to keep current password)
-    private String password;
-
-    private String fullName;
-
-    @Email
-    private String email;
-
-    private String phone;
-
-    @NotNull
-    private Role role;
-
-    private Boolean active;
+/** Admin creates / edits an account. password: required on create, blank on edit = keep. */
+public record UserRequest(
+        @NotBlank @Size(max = 50) String username,
+        @Size(max = 100) String password,
+        @Size(max = 150) String fullName,
+        @Email @Size(max = 150) String email,
+        @Size(max = 30) String phone,
+        Boolean active,
+        /** Role codes: ADMIN / STAFF / CUSTOMER. */
+        @NotEmpty List<String> roles,
+        Long staffId,
+        Long customerId) {
 }
