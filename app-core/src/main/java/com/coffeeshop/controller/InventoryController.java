@@ -1,6 +1,8 @@
 package com.coffeeshop.controller;
 
+import com.coffeeshop.dto.request.FinishBatchRequest;
 import com.coffeeshop.dto.request.MaterialRequest;
+import com.coffeeshop.dto.request.ProduceRequest;
 import com.coffeeshop.dto.request.StockAdjustRequest;
 import com.coffeeshop.dto.request.StockExportRequest;
 import com.coffeeshop.dto.request.StockImportRequest;
@@ -10,6 +12,7 @@ import com.coffeeshop.dto.response.MaterialResponse;
 import com.coffeeshop.dto.response.MaterialTransactionResponse;
 import com.coffeeshop.security.Perm;
 import com.coffeeshop.service.InventoryService;
+import com.coffeeshop.service.ProductionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -23,6 +26,7 @@ import java.util.List;
 public class InventoryController {
 
     private final InventoryService inventoryService;
+    private final ProductionService productionService;
 
     @GetMapping("/api/materials")
     @PreAuthorize(Perm.CAN_READ_MATERIALS)
@@ -85,5 +89,25 @@ public class InventoryController {
     @PreAuthorize(Perm.CAN_MATERIALS_EDIT)
     public MaterialTransactionResponse adjust(@Valid @RequestBody StockAdjustRequest request) {
         return inventoryService.adjust(request);
+    }
+
+    /** Start batches of a prepared material (e.g. cold brew): inputs leave stock now, the batch is PREPARING. */
+    @PostMapping("/api/inventory/produce")
+    @PreAuthorize(Perm.CAN_STOCK)
+    @ResponseStatus(HttpStatus.CREATED)
+    public BatchResponse produce(@Valid @RequestBody ProduceRequest request) {
+        return productionService.start(request);
+    }
+
+    @PostMapping("/api/inventory/batches/{id}/finish")
+    @PreAuthorize(Perm.CAN_STOCK)
+    public BatchResponse finishBatch(@PathVariable Long id, @Valid @RequestBody FinishBatchRequest request) {
+        return productionService.finish(id, request);
+    }
+
+    @PostMapping("/api/inventory/batches/{id}/discard")
+    @PreAuthorize(Perm.CAN_STOCK)
+    public BatchResponse discardBatch(@PathVariable Long id, @Valid @RequestBody(required = false) FinishBatchRequest request) {
+        return productionService.discard(id, request);
     }
 }

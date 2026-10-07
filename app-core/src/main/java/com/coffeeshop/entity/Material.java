@@ -40,6 +40,25 @@ public class Material extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private MaterialStatus status = MaterialStatus.ACTIVE;
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private MaterialKind kind = MaterialKind.RAW;
+    /** PREPARED: output of one batch made by the formula in {@link #components} */
+    @Column(name = "yield_quantity", precision = 12, scale = 2)
+    private BigDecimal yieldQuantity;
+    /** PREPARED: how long making a batch takes */
+    @Column(name = "prep_minutes")
+    private Integer prepMinutes;
+    /** PREPARED: a finished batch expires this many minutes later */
+    @Column(name = "shelf_life_minutes")
+    private Integer shelfLifeMinutes;
+    /** PREPARED: how to make one standard batch */
+    @Column(columnDefinition = "TEXT")
+    private String instructions;
+    @Builder.Default
+    @OneToMany(mappedBy = "material", cascade = CascadeType.ALL)
+    private List<MaterialComponent> components = new ArrayList<>();
 
     public boolean isLowStock() {
         return stockQuantity.compareTo(minStock) < 0;

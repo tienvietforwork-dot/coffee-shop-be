@@ -126,7 +126,7 @@ public class CartService {
 
     private CartResponse toResponse(Cart cart) {
         var items = cart.getItems().stream().map(i -> new CartResponse.Item(i.getId(), i.getCoffee().getId(),
-                i.getCoffee().getName(), i.getCoffee().getImageUrl(), i.getQuantity(),
+                i.getCoffee().getName(), i.getCoffee().imageSrc(), i.getQuantity(),
                 i.getSubtotal().divide(BigDecimal.valueOf(i.getQuantity()), 2, java.math.RoundingMode.HALF_UP),
                 i.getNote(), i.getSubtotal(), i.getCoffee().getStatus() == CoffeeStatus.AVAILABLE)).toList();
         BigDecimal subtotal = cart.getItems().stream().map(CartItem::getSubtotal).reduce(BigDecimal.ZERO, BigDecimal::add);

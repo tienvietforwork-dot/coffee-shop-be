@@ -56,6 +56,7 @@ public class OrderService {
     private final StaffService staffService;
     private final PricingService pricingService;
     private final InventoryService inventoryService;
+    private final StockService stockService;
     private final NotificationService notificationService;
 
     /** Loyalty: 1 point per this many VND paid. */
@@ -150,6 +151,7 @@ public class OrderService {
         if (!quote.unavailable().isEmpty()) {
             throw new BadRequestException("Món đã hết: " + String.join(", ", quote.unavailable()));
         }
+        stockService.requireStock(d.lines());
         if (quote.voucherMessage() != null) throw new BadRequestException(quote.voucherMessage());
 
         // a logged-in customer orders as themselves; guests are identified by the phone they type

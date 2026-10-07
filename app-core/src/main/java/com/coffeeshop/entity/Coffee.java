@@ -30,6 +30,9 @@ public class Coffee extends BaseEntity {
     private Category category;
     @Column(nullable = false, length = 150)
     private String name;
+    /** Uploaded photo (images.id); takes precedence over {@link #imageUrl}, which is only for external links. */
+    @Column(name = "image_id")
+    private Long imageId;
     @Column(name = "image_url", length = 500)
     private String imageUrl;
     @Column(nullable = false, precision = 12, scale = 2)
@@ -40,4 +43,13 @@ public class Coffee extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private CoffeeStatus status = CoffeeStatus.AVAILABLE;
+    /** true when SOLD_OUT was set by stock (StockService.syncCoffeeStatus), so it may reopen by itself; manual SOLD_OUT stays. */
+    @Builder.Default
+    @Column(name = "auto_sold_out", nullable = false)
+    private boolean autoSoldOut = false;
+
+    /** Image source for clients: the uploaded photo when there is one, else the external link. */
+    public String imageSrc() {
+        return imageId != null ? Image.URL_PREFIX + imageId : imageUrl;
+    }
 }

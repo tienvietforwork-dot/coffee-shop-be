@@ -113,64 +113,194 @@ SELECT c.id, v.name, v.img, v.price, v.descr, v.status FROM (VALUES
  ('Cà phê đặc biệt', 'Cà phê dừa', 'https://images.unsplash.com/photo-1525803377221-4f6ccdaa5133?w=800&q=80', 52000, 'Cốt dừa đá xay và cà phê phin', 'SOLD_OUT')
 ) AS v(cat, name, img, price, descr, status) JOIN categories c ON c.name = v.cat;
 
-INSERT INTO materials (name, unit, min_stock) VALUES
- ('Cà phê Robusta rang xay', 'g', 2000), ('Hạt Arabica', 'g', 1500), ('Sữa đặc', 'ml', 2000),
- ('Sữa tươi', 'ml', 3000), ('Đường', 'g', 1000), ('Kem muối', 'ml', 500), ('Trứng gà', 'quả', 20),
- ('Cốt dừa', 'ml', 1000), ('Cam vàng', 'quả', 10), ('Đá viên', 'g', 5000);
+-- Nguyên liệu thô (RAW, nhập mua) và bán thành phẩm (PREPARED, tự chế biến theo định lượng chuẩn)
+INSERT INTO materials (name, unit, min_stock, kind, yield_quantity, prep_minutes, shelf_life_minutes, instructions) VALUES
+ ('Kem muối', 'ml', 500, 'PREPARED', 900, 15, 2880, '1. Để whipping cream, âu và cây đánh trứng trong ngăn mát ít nhất 15 phút (càng lạnh càng dễ bông).
+2. Cho 500 ml whipping cream, 120 ml sữa đặc, 60 ml sữa tươi và 5 g muối vào âu.
+3. Đánh tốc độ vừa 3–5 phút đến khi kem sánh, chảy thành dải mềm (bông mềm) — không đánh cứng, sẽ không nổi đều trên ly.
+4. Nếm thử: vị béo, mặn nhẹ cuối lưỡi; thiếu mặn thêm 1 nhúm muối.
+5. Cho vào hộp kín, dán nhãn lô + hạn dùng, bảo quản ngăn mát 2–4 °C, dùng trong 2 ngày.
+6. Trước khi dùng khuấy nhẹ lại vài vòng nếu kem bị tách.'),
+ ('Cốt cold brew', 'ml', 1000, 'PREPARED', 1000, 1080, 10080, '1. Cân 250 g hạt Arabica, xay cỡ thô (hạt như muối hột) ngay trước khi ủ.
+2. Cho bột vào túi lọc vải, đặt trong bình ủ sạch có nắp.
+3. Rót 1.500 ml nước lọc ở nhiệt độ phòng, khuấy nhẹ 10–15 giây để bột ngấm đều, không khuấy mạnh.
+4. Đậy kín, ủ ngăn mát 2–4 °C trong 16–18 giờ.
+5. Nhấc túi lọc ra, để ráo tự nhiên 5 phút, không vắt (vắt sẽ làm cốt đắng và đục).
+6. Lọc lại qua giấy lọc, đóng chai sạch.
+7. Dán nhãn số lô + hạn dùng, bảo quản ngăn mát 2–4 °C, dùng trong 7 ngày.
+Tỉ lệ cốt đậm 1:6 — bã giữ lại khoảng 2 ml nước/g nên thu khoảng 1.000 ml.'),
+ ('Nước đường', 'ml', 500, 'PREPARED', 1300, 60, 20160, '1. Cho 1.000 g đường cát trắng và 700 ml nước lọc vào nồi inox.
+2. Đun lửa vừa, khuấy đều đến khi đường tan hết và nước trong (khoảng 5–7 phút), không để sôi lâu kẻo bị keo.
+3. Tắt bếp, để nguội hoàn toàn ở nhiệt độ phòng (khoảng 1 giờ).
+4. Rót vào chai sạch có nắp, dán nhãn số lô + hạn dùng.
+5. Bảo quản ngăn mát, dùng trong 14 ngày; bỏ đi nếu đục hoặc có mùi chua.
+Tỉ lệ 1 đường : 0,7 nước thu khoảng 1.300 ml.'),
+ ('Cốt cà phê phin', 'ml', 500, 'PREPARED', 500, 30, 1440, '1. Tráng phin lớn / bình pha bằng nước sôi cho nóng đều.
+2. Cho 250 g bột Robusta, lắc phẳng mặt, nén nhẹ.
+3. Rót khoảng 100 ml nước 92–96 °C, ủ 30–45 giây cho bột nở.
+4. Rót tiếp 700 ml nước, đậy nắp, để nhỏ giọt hết (khoảng 20–25 phút).
+5. Để nguội bớt, rót vào bình thủy tinh sạch có nắp, dán nhãn lô + giờ pha.
+6. Bảo quản ngăn mát, dùng trong 24 giờ; lắc nhẹ trước khi rót.
+Tỉ lệ khoảng 1:3,2 — bã giữ khoảng 1,2 ml nước/g nên thu khoảng 500 ml cốt.'),
+ ('Siro sả', 'ml', 300, 'PREPARED', 800, 60, 10080, '1. Rửa 200 g sả (khoảng 6–8 cây), bỏ lá già ngoài, cắt khúc 3 cm, đập dập.
+2. Cho sả, 500 g đường và 500 ml nước vào nồi, đun sôi.
+3. Hạ lửa nhỏ, đun liu riu 10 phút, khuấy thỉnh thoảng.
+4. Tắt bếp, ngâm sả trong siro đến khi nguội hẳn (khoảng 40 phút) để ra mùi.
+5. Lọc bỏ bã, rót vào chai sạch có nắp, dán nhãn lô + hạn dùng.
+6. Bảo quản ngăn mát, dùng trong 7 ngày; bỏ đi nếu siro đục.'),
+ ('Cà phê Robusta rang xay', 'g', 2000, 'RAW', NULL, NULL, NULL, NULL),
+ ('Hạt Arabica', 'g', 1500, 'RAW', NULL, NULL, NULL, NULL),
+ ('Sữa đặc', 'ml', 2000, 'RAW', NULL, NULL, NULL, NULL),
+ ('Sữa tươi', 'ml', 3000, 'RAW', NULL, NULL, NULL, NULL),
+ ('Đường', 'g', 1000, 'RAW', NULL, NULL, NULL, NULL),
+ ('Trứng gà', 'quả', 20, 'RAW', NULL, NULL, NULL, NULL),
+ ('Cốt dừa', 'ml', 1000, 'RAW', NULL, NULL, NULL, NULL),
+ ('Cam vàng', 'quả', 10, 'RAW', NULL, NULL, NULL, NULL),
+ ('Đá viên', 'g', 5000, 'RAW', NULL, NULL, NULL, NULL),
+ ('Sả cây', 'g', 500, 'RAW', NULL, NULL, NULL, NULL),
+ ('Whipping cream', 'ml', 1000, 'RAW', NULL, NULL, NULL, NULL),
+ ('Muối', 'g', 200, 'RAW', NULL, NULL, NULL, NULL);
 
+-- Định lượng chuẩn của bán thành phẩm
+INSERT INTO material_components (material_id, component_id, quantity)
+SELECT m.id, k.id, v.q FROM (VALUES
+ ('Cốt cold brew', 'Hạt Arabica', 250),
+ ('Cốt cà phê phin', 'Cà phê Robusta rang xay', 250),
+ ('Kem muối', 'Muối', 5),
+ ('Kem muối', 'Sữa tươi', 60),
+ ('Kem muối', 'Sữa đặc', 120),
+ ('Kem muối', 'Whipping cream', 500),
+ ('Nước đường', 'Đường', 1000),
+ ('Siro sả', 'Sả cây', 200),
+ ('Siro sả', 'Đường', 500)
+) AS v(mat, comp, q)
+JOIN materials m ON m.name = v.mat JOIN materials k ON k.name = v.comp;
+
+-- Lô đầu kỳ: nguyên liệu thô nhập mua; bán thành phẩm là tồn đầu kỳ đã chế biến sẵn (hạn dùng theo shelf_life_minutes)
 INSERT INTO material_batches (material_id, import_quantity, remaining_quantity, unit_cost, expiry_date)
 SELECT m.id, v.q, v.q, v.c, CURRENT_DATE + v.d FROM (VALUES
  ('Cà phê Robusta rang xay', 8000, 0.25, 60), ('Hạt Arabica', 5000, 0.45, 90), ('Sữa đặc', 6000, 0.06, 120),
- ('Sữa tươi', 8000, 0.035, 5), ('Đường', 5000, 0.025, 365), ('Kem muối', 1500, 0.12, 4), ('Trứng gà', 60, 3500, 10),
- ('Cốt dừa', 800, 0.09, 30), ('Cam vàng', 30, 9000, 7), ('Đá viên', 30000, 0.002, 2)
+ ('Sữa tươi', 8000, 0.035, 5), ('Đường', 5000, 0.025, 365), ('Trứng gà', 60, 3500, 10),
+ ('Cốt dừa', 800, 0.09, 30), ('Cam vàng', 30, 9000, 7), ('Đá viên', 30000, 0.002, 2),
+ ('Sả cây', 3000, 0.04, 7), ('Whipping cream', 4000, 0.12, 30), ('Muối', 1000, 0.01, 365)
 ) AS v(name, q, c, d) JOIN materials m ON m.name = v.name;
+
+INSERT INTO material_batches (material_id, import_quantity, remaining_quantity, expiry_date, expires_at, ready_at)
+SELECT m.id, v.q, v.q, (now() + m.shelf_life_minutes * interval '1 minute')::date,
+       now() + m.shelf_life_minutes * interval '1 minute', now()
+FROM (VALUES
+ ('Cốt cold brew', 2000), ('Cốt cà phê phin', 1000), ('Kem muối', 900), ('Nước đường', 1300), ('Siro sả', 800)
+) AS v(name, q) JOIN materials m ON m.name = v.name;
 
 UPDATE materials m SET stock_quantity = b.total
 FROM (SELECT material_id, SUM(remaining_quantity) total FROM material_batches GROUP BY material_id) b
 WHERE b.material_id = m.id;
 
 INSERT INTO material_transactions (batch_id, staff_id, type, quantity, note)
-SELECT b.id, (SELECT id FROM staff WHERE phone = '0901000001'), 'IMPORT', b.import_quantity, 'Nhập kho ban đầu'
-FROM material_batches b;
+SELECT b.id, (SELECT id FROM staff WHERE phone = '0901000001'),
+       CASE m.kind WHEN 'PREPARED' THEN 'PRODUCE' ELSE 'IMPORT' END, b.import_quantity,
+       CASE m.kind WHEN 'PREPARED' THEN 'Tồn đầu kỳ (đã chế biến sẵn)' ELSE 'Nhập kho ban đầu' END
+FROM material_batches b JOIN materials m ON m.id = b.material_id;
 
-INSERT INTO recipes (coffee_id, brew_method, version, brew_time_min, is_active)
-SELECT c.id, v.bm, 1, v.t, TRUE FROM (VALUES
- ('Cà phê đen đá','PHIN',5), ('Cà phê sữa đá','PHIN',5), ('Bạc xỉu','PHIN',5),
- ('Espresso','MACHINE',2), ('Americano','MACHINE',3), ('Cappuccino','MACHINE',4), ('Latte','MACHINE',4),
- ('Cold Brew truyền thống','COLD_BREW',2), ('Cold Brew cam sả','COLD_BREW',3),
- ('Cà phê muối','PHIN',6), ('Cà phê trứng','PHIN',8), ('Cà phê dừa','PHIN',6)
-) AS v(name, bm, t) JOIN coffees c ON c.name = v.name;
+INSERT INTO recipes (coffee_id, brew_method, version, brew_time_min, description, is_active)
+SELECT c.id, v.bm, 1, v.t, v.d, TRUE FROM (VALUES
+ ('Bạc xỉu', 'PHIN', 2, NULL),
+ ('Cà phê sữa đá', 'PHIN', 1, NULL),
+ ('Cà phê đen đá', 'PHIN', 1, NULL),
+ ('Latte', 'MACHINE', 4, NULL),
+ ('Cappuccino', 'MACHINE', 4, NULL),
+ ('Americano', 'MACHINE', 3, 'cơ bản'),
+ ('Espresso', 'MACHINE', 2, NULL),
+ ('Cold Brew cam sả', 'COLD_BREW', 2, NULL),
+ ('Cold Brew truyền thống', 'COLD_BREW', 2, NULL),
+ ('Cà phê dừa', 'PHIN', 3, NULL),
+ ('Cà phê trứng', 'PHIN', 5, NULL),
+ ('Cà phê muối', 'PHIN', 2, NULL)
+) AS v(name, bm, t, d) JOIN coffees c ON c.name = v.name;
 
-INSERT INTO recipe_materials (recipe_id, material_id, quantity)
-SELECT r.id, m.id, v.q FROM (VALUES
- ('Cà phê đen đá','Cà phê Robusta rang xay',25), ('Cà phê đen đá','Đường',10), ('Cà phê đen đá','Đá viên',150),
- ('Cà phê sữa đá','Cà phê Robusta rang xay',25), ('Cà phê sữa đá','Sữa đặc',30), ('Cà phê sữa đá','Đá viên',150),
- ('Bạc xỉu','Cà phê Robusta rang xay',12), ('Bạc xỉu','Sữa đặc',30), ('Bạc xỉu','Sữa tươi',60), ('Bạc xỉu','Đá viên',150),
- ('Espresso','Hạt Arabica',18),
- ('Americano','Hạt Arabica',18), ('Americano','Đá viên',100),
- ('Cappuccino','Hạt Arabica',18), ('Cappuccino','Sữa tươi',120),
- ('Latte','Hạt Arabica',18), ('Latte','Sữa tươi',180),
- ('Cold Brew truyền thống','Hạt Arabica',30), ('Cold Brew truyền thống','Đá viên',150),
- ('Cold Brew cam sả','Hạt Arabica',30), ('Cold Brew cam sả','Cam vàng',0.5), ('Cold Brew cam sả','Đá viên',150),
- ('Cà phê muối','Cà phê Robusta rang xay',25), ('Cà phê muối','Kem muối',40), ('Cà phê muối','Sữa đặc',20),
- ('Cà phê trứng','Cà phê Robusta rang xay',20), ('Cà phê trứng','Trứng gà',1), ('Cà phê trứng','Sữa đặc',25),
- ('Cà phê dừa','Cà phê Robusta rang xay',20), ('Cà phê dừa','Cốt dừa',60), ('Cà phê dừa','Đá viên',200)
-) AS v(coffee, material, q)
+INSERT INTO recipe_materials (recipe_id, material_id, quantity, note)
+SELECT r.id, m.id, v.q, v.note FROM (VALUES
+ ('Bạc xỉu', 'Cốt cà phê phin', 25, NULL),
+ ('Bạc xỉu', 'Sữa đặc', 30, NULL),
+ ('Bạc xỉu', 'Sữa tươi', 60, NULL),
+ ('Bạc xỉu', 'Đá viên', 150, NULL),
+ ('Cà phê sữa đá', 'Cốt cà phê phin', 50, NULL),
+ ('Cà phê sữa đá', 'Sữa đặc', 30, NULL),
+ ('Cà phê sữa đá', 'Đá viên', 150, NULL),
+ ('Cà phê đen đá', 'Cốt cà phê phin', 50, NULL),
+ ('Cà phê đen đá', 'Nước đường', 15, NULL),
+ ('Cà phê đen đá', 'Đá viên', 150, NULL),
+ ('Latte', 'Hạt Arabica', 18, NULL),
+ ('Latte', 'Sữa tươi', 180, NULL),
+ ('Cappuccino', 'Hạt Arabica', 18, NULL),
+ ('Cappuccino', 'Sữa tươi', 120, NULL),
+ ('Americano', 'Hạt Arabica', 18, NULL),
+ ('Americano', 'Đá viên', 100, NULL),
+ ('Espresso', 'Hạt Arabica', 18, NULL),
+ ('Cold Brew cam sả', 'Cốt cold brew', 70, NULL),
+ ('Cold Brew cam sả', 'Siro sả', 15, NULL),
+ ('Cold Brew cam sả', 'Cam vàng', 0.5, NULL),
+ ('Cold Brew cam sả', 'Đá viên', 150, NULL),
+ ('Cold Brew truyền thống', 'Cốt cold brew', 80, NULL),
+ ('Cold Brew truyền thống', 'Đá viên', 150, NULL),
+ ('Cà phê dừa', 'Cốt cà phê phin', 40, NULL),
+ ('Cà phê dừa', 'Cốt dừa', 60, NULL),
+ ('Cà phê dừa', 'Sữa đặc', 20, NULL),
+ ('Cà phê dừa', 'Đá viên', 200, NULL),
+ ('Cà phê trứng', 'Cốt cà phê phin', 40, NULL),
+ ('Cà phê trứng', 'Trứng gà', 1, 'trứng tiệt trùng'),
+ ('Cà phê trứng', 'Sữa đặc', 25, NULL),
+ ('Cà phê muối', 'Cốt cà phê phin', 50, NULL),
+ ('Cà phê muối', 'Sữa đặc', 20, NULL),
+ ('Cà phê muối', 'Kem muối', 40, NULL),
+ ('Cà phê muối', 'Đá viên', 120, NULL)
+) AS v(coffee, material, q, note)
 JOIN coffees c ON c.name = v.coffee
 JOIN recipes r ON r.coffee_id = c.id AND r.is_active
 JOIN materials m ON m.name = v.material;
 
 INSERT INTO recipe_steps (recipe_id, step_no, instruction)
 SELECT r.id, v.n, v.s FROM (VALUES
- ('Cà phê sữa đá',1,'Tráng phin bằng nước sôi, cho 25g cà phê, nén nhẹ'),
- ('Cà phê sữa đá',2,'Rót 20ml nước sôi ủ 30 giây, sau đó rót thêm 60ml'),
- ('Cà phê sữa đá',3,'Cho 30ml sữa đặc vào ly, đổ cà phê, khuấy đều và thêm đá'),
- ('Latte',1,'Chiết xuất 1 shot espresso 18g / 36ml trong 28 giây'),
- ('Latte',2,'Đánh nóng 180ml sữa tươi tới 60°C'),
- ('Latte',3,'Rót sữa vào espresso, tạo latte art'),
- ('Cà phê muối',1,'Pha phin 25g cà phê với 60ml nước'),
- ('Cà phê muối',2,'Cho sữa đặc và đá vào ly, rót cà phê'),
- ('Cà phê muối',3,'Phủ 40ml kem muối lên trên, không khuấy')
+ ('Bạc xỉu', 1, 'Rót 30 ml sữa đặc và 60 ml sữa tươi vào ly, khuấy đều'),
+ ('Bạc xỉu', 2, 'Cho 150 g đá'),
+ ('Bạc xỉu', 3, 'Rót từ từ 25 ml cốt phin lên mặt đá để tạo lớp nâu trên nền trắng'),
+ ('Bạc xỉu', 4, 'Phục vụ kèm muỗng, dặn khách khuấy trước khi uống'),
+ ('Cà phê sữa đá', 1, 'Lắc nhẹ bình cốt phin, kiểm tra giờ pha trên nhãn'),
+ ('Cà phê sữa đá', 2, 'Rót 30 ml sữa đặc vào ly'),
+ ('Cà phê sữa đá', 3, 'Thêm 50 ml cốt phin, khuấy đến khi sữa tan đều, màu nâu sữa'),
+ ('Cà phê sữa đá', 4, 'Cho 150 g đá, khuấy nhẹ rồi phục vụ'),
+ ('Cà phê đen đá', 1, 'Lắc nhẹ bình cốt phin, kiểm tra giờ pha trên nhãn (dùng trong 24 giờ)'),
+ ('Cà phê đen đá', 2, 'Rót 15 ml nước đường vào ly (khách dặn ít ngọt thì giảm còn 8 ml)'),
+ ('Cà phê đen đá', 3, 'Thêm 50 ml cốt phin, khuấy đều'),
+ ('Cà phê đen đá', 4, 'Cho 150 g đá, khuấy nhẹ 2–3 vòng rồi phục vụ'),
+ ('Latte', 1, 'Chiết xuất 1 shot espresso 18g / 36ml trong 28 giây'),
+ ('Latte', 2, 'Đánh nóng 180ml sữa tươi tới 60°C'),
+ ('Latte', 3, 'Rót sữa vào espresso, tạo latte art'),
+ ('Americano', 1, 'Xay pha mịn 18g hạt arabica, sau đó chiết xuất từ máy trong 30s'),
+ ('Americano', 2, 'Chuẩn bị ly vừa với 100g đá'),
+ ('Americano', 3, 'Rót trực tiếp vào đá rồi thêm 100ml nước lạnh'),
+ ('Cold Brew cam sả', 1, 'Rót 15 ml siro sả vào ly 400 ml'),
+ ('Cold Brew cam sả', 2, 'Vắt ½ quả cam vàng, lọc hạt, rót nước cam vào ly'),
+ ('Cold Brew cam sả', 3, 'Cho 150 g đá'),
+ ('Cold Brew cam sả', 4, 'Rót chậm 70 ml cốt cold brew lên trên để tạo 2 lớp màu'),
+ ('Cold Brew cam sả', 5, 'Trang trí 1 lát cam, dặn khách khuấy đều trước khi uống'),
+ ('Cold Brew truyền thống', 1, 'Lắc nhẹ chai cốt cold brew, kiểm tra hạn dùng trên nhãn lô'),
+ ('Cold Brew truyền thống', 2, 'Cho 150 g đá vào ly 400 ml'),
+ ('Cold Brew truyền thống', 3, 'Rót 80 ml cốt cold brew lên đá'),
+ ('Cold Brew truyền thống', 4, 'Thêm 80 ml nước lọc lạnh, khuấy nhẹ 3–4 vòng'),
+ ('Cold Brew truyền thống', 5, 'Hỏi khách có cần thêm nước đường / sữa không, phục vụ ngay'),
+ ('Cà phê dừa', 1, 'Cho 60 ml cốt dừa, 20 ml sữa đặc và 200 g đá vào máy xay'),
+ ('Cà phê dừa', 2, 'Xay 20–30 giây đến khi sánh mịn như tuyết'),
+ ('Cà phê dừa', 3, 'Đổ hỗn hợp dừa vào ly'),
+ ('Cà phê dừa', 4, 'Rót 40 ml cốt phin lên trên, phục vụ kèm muỗng'),
+ ('Cà phê trứng', 1, 'Hâm nóng 40 ml cốt phin tới khoảng 70 °C, rót vào tách; đặt tách trong bát nước nóng để giữ nhiệt'),
+ ('Cà phê trứng', 2, 'Tách lấy lòng đỏ 1 quả trứng tiệt trùng, thêm 25 ml sữa đặc'),
+ ('Cà phê trứng', 3, 'Đánh bằng máy đánh trứng 3–4 phút đến khi kem bông mịn, màu vàng nhạt, nhấc lên chảy thành dải'),
+ ('Cà phê trứng', 4, 'Rót kem trứng phủ lên mặt cà phê, phục vụ ngay kèm muỗng'),
+ ('Cà phê muối', 1, 'Rót 20 ml sữa đặc vào ly, cho 120 g đá'),
+ ('Cà phê muối', 2, 'Thêm 50 ml cốt phin'),
+ ('Cà phê muối', 3, 'Khuấy nhẹ hộp kem muối cho đều (kem để ngăn mát, dùng trong 2 ngày)'),
+ ('Cà phê muối', 4, 'Rót 40 ml kem muối phủ kín mặt ly, không khuấy; phục vụ ngay để giữ lớp kem')
 ) AS v(coffee, n, s)
 JOIN coffees c ON c.name = v.coffee JOIN recipes r ON r.coffee_id = c.id AND r.is_active;
 

@@ -143,6 +143,20 @@ CREATE INDEX idx_role_permissions_permission ON role_permissions (permission_id)
 -- ---------------------------------------------------------------------
 -- Cà phê & công thức
 -- ---------------------------------------------------------------------
+-- Ảnh tải lên (ảnh món…), lưu thẳng trong DB để không mất khi deploy lại; phục vụ qua /api/public/images/{id}
+CREATE TABLE images (
+    id           BIGSERIAL PRIMARY KEY,
+    content_type VARCHAR(50) NOT NULL,
+    size_bytes   INT         NOT NULL CHECK (size_bytes > 0),
+    data         BYTEA       NOT NULL,
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+
 CREATE TABLE categories (
     id            BIGSERIAL PRIMARY KEY,
     name          VARCHAR(100) NOT NULL,
@@ -161,11 +175,13 @@ CREATE TABLE coffees (
     id          BIGSERIAL PRIMARY KEY,
     category_id BIGINT        NOT NULL REFERENCES categories (id),
     name        VARCHAR(150)  NOT NULL,
+    image_id    BIGINT        REFERENCES images (id),  -- ảnh tải lên; image_url chỉ dùng cho link ngoài
     image_url   VARCHAR(500),
     price       NUMERIC(12,2) NOT NULL CHECK (price >= 0),
     description TEXT,
     status      VARCHAR(20)   NOT NULL DEFAULT 'AVAILABLE'
                 CHECK (status IN ('AVAILABLE', 'SOLD_OUT', 'HIDDEN', 'DISCONTINUED')),
+    auto_sold_out BOOLEAN     NOT NULL DEFAULT FALSE,  -- SOLD_OUT do hết nguyên liệu (tự mở bán lại khi đủ kho)
     created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
     created_at TIMESTAMP    NOT NULL DEFAULT now(),
     updated_by VARCHAR(50),
@@ -174,6 +190,7 @@ CREATE TABLE coffees (
     del_user   VARCHAR(50)
 );
 CREATE INDEX idx_coffees_category ON coffees (category_id);
+CREATE INDEX idx_coffees_image ON coffees (image_id);
 
 -- Kho nguyên liệu (materials cần có trước recipe_materials)
 CREATE TABLE materials (
@@ -183,6 +200,12 @@ CREATE TABLE materials (
     stock_quantity NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
     min_stock      NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (min_stock >= 0),
     status         VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
+    -- RAW = nguyên liệu nhập mua; PREPARED = bán thành phẩm tự chế biến (vd cốt cold brew)
+    kind            VARCHAR(20)   NOT NULL DEFAULT 'RAW' CHECK (kind IN ('RAW', 'PREPARED')),
+    yield_quantity  NUMERIC(12,2) CHECK (yield_quantity > 0),   -- PREPARED: định lượng chuẩn (sản lượng 1 lần chế biến)
+    prep_minutes       INT        CHECK (prep_minutes >= 0),       -- PREPARED: thời gian chế biến (phút)
+    shelf_life_minutes INT        CHECK (shelf_life_minutes > 0),  -- PREPARED: hạn dùng tính từ lúc chế biến xong (phút)
+    instructions       TEXT,                                       -- PREPARED: hướng dẫn chế biến định lượng chuẩn
     created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
     created_at TIMESTAMP    NOT NULL DEFAULT now(),
     updated_by VARCHAR(50),
@@ -191,6 +214,23 @@ CREATE TABLE materials (
     del_user   VARCHAR(50)
 );
 CREATE UNIQUE INDEX uq_materials_name ON materials (lower(name)) WHERE NOT del_flag;
+
+-- Định lượng chuẩn của bán thành phẩm: material_id cần component_id với số lượng quantity
+CREATE TABLE material_components (
+    id           BIGSERIAL PRIMARY KEY,
+    material_id  BIGINT        NOT NULL REFERENCES materials (id),
+    component_id BIGINT        NOT NULL REFERENCES materials (id),
+    quantity     NUMERIC(12,2) NOT NULL CHECK (quantity > 0),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50),
+    CHECK (material_id <> component_id)
+);
+CREATE UNIQUE INDEX uq_material_components ON material_components (material_id, component_id) WHERE NOT del_flag;
+CREATE INDEX idx_material_components_component ON material_components (component_id);
 
 CREATE TABLE recipes (
     id            BIGSERIAL PRIMARY KEY,
@@ -248,7 +288,10 @@ CREATE TABLE material_batches (
     remaining_quantity NUMERIC(12,2) NOT NULL CHECK (remaining_quantity >= 0),
     unit_cost          NUMERIC(12,2) CHECK (unit_cost >= 0),
     expiry_date        DATE,
-    status             VARCHAR(20)   NOT NULL DEFAULT 'AVAILABLE' CHECK (status IN ('AVAILABLE', 'DEPLETED', 'EXPIRED')),
+    -- PREPARING = lô bán thành phẩm đang chế biến, chưa dùng được
+    status             VARCHAR(20)   NOT NULL DEFAULT 'AVAILABLE' CHECK (status IN ('PREPARING', 'AVAILABLE', 'DEPLETED', 'EXPIRED')),
+    ready_at           TIMESTAMP,                                   -- đang chế biến: dự kiến xong; xong: lúc hoàn tất
+    expires_at         TIMESTAMP,                                   -- bán thành phẩm: hết hạn chính xác tới phút
     created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
     created_at TIMESTAMP    NOT NULL DEFAULT now(),
     updated_by VARCHAR(50),
@@ -609,7 +652,9 @@ CREATE TABLE material_transactions (
     batch_id      BIGINT        NOT NULL REFERENCES material_batches (id),
     staff_id      BIGINT        REFERENCES staff (id),         -- nhân viên đã thao tác
     order_item_id BIGINT        REFERENCES order_items (id),
-    type          VARCHAR(20)   NOT NULL CHECK (type IN ('IMPORT', 'EXPORT', 'SALE', 'ADJUSTMENT')),
+    -- PRODUCTION_USE = nguyên liệu xuất để chế biến bán thành phẩm; PRODUCE = lô chế biến xong nhập kho
+    type          VARCHAR(20)   NOT NULL CHECK (type IN ('IMPORT', 'EXPORT', 'SALE', 'ADJUSTMENT', 'PRODUCTION_USE', 'PRODUCE')),
+    produced_batch_id BIGINT    REFERENCES material_batches (id), -- PRODUCTION_USE: dùng để chế biến lô bán thành phẩm nào
     quantity      NUMERIC(12,2) NOT NULL,                       -- dương = nhập, âm = xuất
     note          VARCHAR(255),
     created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
@@ -622,6 +667,27 @@ CREATE TABLE material_transactions (
 CREATE INDEX idx_material_tx_batch ON material_transactions (batch_id);
 CREATE INDEX idx_material_tx_staff ON material_transactions (staff_id);
 CREATE INDEX idx_material_tx_order_item ON material_transactions (order_item_id);
+CREATE INDEX idx_material_tx_produced_batch ON material_transactions (produced_batch_id);
 CREATE INDEX idx_material_tx_created ON material_transactions (created_at);
+
+-- ---------------------------------------------------------------------
+-- Background service: mỗi lượt chạy 1 dòng (giống A_BACKGROUND_SERVICE bên MES)
+-- created_by = 'Service' khi chạy theo chu kỳ, hoặc username của người làm thao tác kích hoạt
+-- ---------------------------------------------------------------------
+CREATE TABLE background_service_logs (
+    id            BIGSERIAL PRIMARY KEY,
+    service       VARCHAR(100) NOT NULL,
+    check_time    TIMESTAMP    NOT NULL,
+    duration_ms   INT,
+    msg           TEXT,
+    next_run_time TIMESTAMP,
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE INDEX idx_background_service_logs ON background_service_logs (service, check_time DESC);
 
 COMMIT;

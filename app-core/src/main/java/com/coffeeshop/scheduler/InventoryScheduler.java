@@ -14,7 +14,7 @@ import java.util.Set;
 
 /**
  * - every 5 minutes: push a websocket alert for materials newly below min_stock;
- * - every night: write off expired batches (FEFO keeps this rare).
+ * - every 5 minutes: write off expired lots (by day, or by the exact expiry of prepared lots).
  */
 @Component
 @Slf4j
@@ -40,7 +40,7 @@ public class InventoryScheduler {
         lastAlerted.addAll(current);
     }
 
-    @Scheduled(cron = "0 5 0 * * *")
+    @Scheduled(fixedRate = 5 * 60 * 1000L, initialDelay = 90 * 1000L)
     public void expireBatches() {
         int expired = inventoryService.expireBatches();
         if (expired > 0) log.info("Wrote off {} expired material batches", expired);

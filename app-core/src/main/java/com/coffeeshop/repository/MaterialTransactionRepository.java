@@ -7,6 +7,10 @@ import org.springframework.data.jpa.repository.Query;
 import java.util.List;
 
 public interface MaterialTransactionRepository extends JpaRepository<MaterialTransaction, Long> {
+    /** what went into a prepared-material batch */
+    @Query("select t from MaterialTransaction t join fetch t.batch b join fetch b.material where t.producedBatch.id = :batchId order by t.id")
+    List<MaterialTransaction> findInputsOf(Long batchId);
+
     @Query("""
             select t from MaterialTransaction t
             join fetch t.batch b join fetch b.material m

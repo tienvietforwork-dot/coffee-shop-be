@@ -24,6 +24,9 @@ resolver 8.8.8.8 ipv6=off;
 server {
     listen ${PORT};
 
+    # coffee photo uploads (app-core caps them at 3MB)
+    client_max_body_size 5m;
+
     location /api/crm/ {
         set $upstream_host ${CRM_UPSTREAM};
         rewrite ^/api/crm/(.*)$ /api/$1 break;

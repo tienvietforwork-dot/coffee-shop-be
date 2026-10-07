@@ -16,6 +16,7 @@ public class NotificationService {
 
     private static final String ORDERS_TOPIC = "/topic/orders";
     private static final String INVENTORY_ALERTS_TOPIC = "/topic/inventory-alerts";
+    private static final String MENU_TOPIC = "/topic/menu";
 
     private final SimpMessagingTemplate messagingTemplate;
 
@@ -25,5 +26,10 @@ public class NotificationService {
 
     public void notifyInventoryAlert(Object payload) {
         messagingTemplate.convertAndSend(INVENTORY_ALERTS_TOPIC, payload);
+    }
+
+    /** Coffees whose status was switched by stock (StockService.syncCoffeeStatus). */
+    public void notifyMenuChanged(Object payload) {
+        messagingTemplate.convertAndSend(MENU_TOPIC, payload);
     }
 }

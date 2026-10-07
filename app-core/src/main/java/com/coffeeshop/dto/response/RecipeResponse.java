@@ -3,11 +3,14 @@ package com.coffeeshop.dto.response;
 import com.coffeeshop.entity.Recipe;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public record RecipeResponse(Long id, Long coffeeId, String coffeeName, String brewMethod, Integer version,
                              String description, Integer brewTimeMin, boolean active,
-                             List<MaterialLine> materials, List<Step> steps) {
+                             List<MaterialLine> materials, List<Step> steps,
+                             /** last change (falls back to creation) and who made it. */
+                             LocalDateTime updatedAt, String updatedBy) {
 
     public record MaterialLine(Long materialId, String materialName, String unit, BigDecimal quantity, String note) {
     }
@@ -20,6 +23,8 @@ public record RecipeResponse(Long id, Long coffeeId, String coffeeName, String b
                 r.getVersion(), r.getDescription(), r.getBrewTimeMin(), r.isActive(),
                 r.getMaterials().stream().map(m -> new MaterialLine(m.getMaterial().getId(), m.getMaterial().getName(),
                         m.getMaterial().getUnit(), m.getQuantity(), m.getNote())).toList(),
-                r.getSteps().stream().map(s -> new Step(s.getStepNo(), s.getInstruction())).toList());
+                r.getSteps().stream().map(s -> new Step(s.getStepNo(), s.getInstruction())).toList(),
+                r.getUpdatedAt() != null ? r.getUpdatedAt() : r.getCreatedAt(),
+                r.getUpdatedBy() != null ? r.getUpdatedBy() : r.getCreatedBy());
     }
 }

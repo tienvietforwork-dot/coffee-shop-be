@@ -21,6 +21,11 @@ spring:
         jdbc:
           time_zone: UTC
 
+  servlet:
+    multipart:
+      max-file-size: 3MB
+      max-request-size: 4MB
+
   jackson:
     time-zone: UTC
     default-property-inclusion: non_null
@@ -40,6 +45,8 @@ app:
     vnd-per-point: 10000
   inventory:
     expiry-warning-days: 7
+    # CoffeeStatusBackgroundService cycle: sets coffees SOLD_OUT / AVAILABLE from stock (5 minutes)
+    status-scan-ms: ${STATUS_SCAN_MS:300000}
 
 management:
   endpoints:

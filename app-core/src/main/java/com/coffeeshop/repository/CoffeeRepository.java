@@ -10,6 +10,8 @@ import java.util.List;
 
 public interface CoffeeRepository extends JpaRepository<Coffee, Long> {
     @EntityGraph(attributePaths = "category")
+    boolean existsByImageIdAndIdNot(Long imageId, Long id);
+
     List<Coffee> findAllByOrderByNameAsc();
 
     @EntityGraph(attributePaths = "category")

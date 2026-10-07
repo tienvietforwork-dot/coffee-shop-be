@@ -10,12 +10,14 @@ import com.coffeeshop.dto.response.MaterialResponse;
 import com.coffeeshop.dto.response.MaterialTransactionResponse;
 import com.coffeeshop.entity.*;
 import com.coffeeshop.entity.enums.BatchStatus;
+import com.coffeeshop.entity.enums.MaterialKind;
 import com.coffeeshop.entity.enums.MaterialStatus;
 import com.coffeeshop.entity.enums.MaterialTransactionType;
 import com.coffeeshop.exception.BadRequestException;
 import com.coffeeshop.exception.ResourceNotFoundException;
 import com.coffeeshop.repository.*;
 import com.coffeeshop.websocket.NotificationService;
+import org.hibernate.Hibernate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -23,9 +25,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Materials, batches (lô) and stock movements. Stock always leaves FEFO: nearest expiry first. */
 @Service
@@ -36,8 +42,10 @@ public class InventoryService {
     private final MaterialBatchRepository batchRepository;
     private final MaterialTransactionRepository transactionRepository;
     private final RecipeRepository recipeRepository;
+    private final MaterialComponentRepository componentRepository;
     private final StaffService staffService;
     private final NotificationService notificationService;
+    private final CoffeeStatusBackgroundService coffeeStatusBackgroundService;
 
     @Value("${app.inventory.expiry-warning-days:7}")
     private int expiryWarningDays;
@@ -46,7 +54,22 @@ public class InventoryService {
 
     @Transactional(readOnly = true)
     public List<MaterialResponse> findAll() {
-        return materialRepository.findAllByOrderByNameAsc().stream().map(MaterialResponse::from).toList();
+        // where each material is used: coffees through their active recipe, prepared materials through their formula
+        Map<Long, List<MaterialResponse.Usage>> usedIn = new HashMap<>();
+        for (var recipe : recipeRepository.findAllActiveWithMaterials()) {
+            for (var line : recipe.getMaterials()) {
+                usedIn.computeIfAbsent(line.getMaterial().getId(), k -> new ArrayList<>()).add(new MaterialResponse.Usage(
+                        "COFFEE", recipe.getCoffee().getId(), recipe.getCoffee().getName(), line.getQuantity()));
+            }
+        }
+        for (var c : componentRepository.findAllWithMaterials()) {
+            usedIn.computeIfAbsent(c.getComponent().getId(), k -> new ArrayList<>()).add(new MaterialResponse.Usage(
+                    "PREPARED", c.getMaterial().getId(), c.getMaterial().getName(), c.getQuantity()));
+        }
+        return materialRepository.findAllByOrderByNameAsc().stream().map(m -> {
+            Hibernate.initialize(m.getComponents());
+            return MaterialResponse.from(m, usedIn.getOrDefault(m.getId(), List.of()));
+        }).toList();
     }
 
     @Transactional
@@ -56,7 +79,7 @@ public class InventoryService {
         }
         Material material = Material.builder().build();
         apply(material, request);
-        return MaterialResponse.from(materialRepository.save(material));
+        return withFormula(materialRepository.save(material));
     }
 
     @Transactional
@@ -66,7 +89,7 @@ public class InventoryService {
             throw new BadRequestException("Nguyên liệu đã tồn tại: " + request.name());
         }
         apply(material, request);
-        return MaterialResponse.from(material);
+        return withFormula(material);
     }
 
     /** Materials with history are kept; deactivate instead of deleting. */
@@ -79,7 +102,11 @@ public class InventoryService {
 
     @Transactional(readOnly = true)
     public List<BatchResponse> batches(Long materialId) {
-        return batchRepository.findByMaterialIdOrderByIdDesc(materialId).stream().map(BatchResponse::from).toList();
+        return batchRepository.findByMaterialIdOrderByIdDesc(materialId).stream()
+                .map(b -> b.getMaterial().getKind() == MaterialKind.PREPARED
+                        ? BatchResponse.from(b, transactionRepository.findInputsOf(b.getId()))
+                        : BatchResponse.from(b))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -99,6 +126,9 @@ public class InventoryService {
     @Transactional
     public BatchResponse importStock(StockImportRequest request) {
         Material material = get(request.materialId());
+        if (material.getKind() == MaterialKind.PREPARED) {
+            throw new BadRequestException("'" + material.getName() + "' là bán thành phẩm — tạo bằng chức năng Chế biến, không nhập mua");
+        }
         if (request.expiryDate() != null && request.expiryDate().isBefore(LocalDate.now())) {
             throw new BadRequestException("Hạn sử dụng đã qua");
         }
@@ -113,6 +143,7 @@ public class InventoryService {
         if (material.getStatus() == MaterialStatus.INACTIVE) material.setStatus(MaterialStatus.ACTIVE);
         record(batch, MaterialTransactionType.IMPORT, request.quantity(), staffService.current(), null,
                 request.note());
+        coffeeStatusBackgroundService.requestRun();
         return BatchResponse.from(batch);
     }
 
@@ -120,9 +151,11 @@ public class InventoryService {
     @Transactional
     public List<MaterialTransactionResponse> exportStock(StockExportRequest request) {
         Material material = get(request.materialId());
-        return consume(material, request.quantity(), MaterialTransactionType.EXPORT,
+        var result = consume(material, request.quantity(), MaterialTransactionType.EXPORT,
                 staffService.current(), null, request.note()).stream()
                 .map(MaterialTransactionResponse::from).toList();
+        coffeeStatusBackgroundService.requestRun();
+        return result;
     }
 
     /** Kiểm kê: set the counted quantity of one batch. */
@@ -140,8 +173,10 @@ public class InventoryService {
         Material material = batch.getMaterial();
         material.setStockQuantity(material.getStockQuantity().add(delta));
         checkLowStock(material);
-        return MaterialTransactionResponse.from(record(batch, MaterialTransactionType.ADJUSTMENT, delta,
+        var tx = MaterialTransactionResponse.from(record(batch, MaterialTransactionType.ADJUSTMENT, delta,
                 staffService.current(), null, request.note() == null ? "Kiểm kê" : request.note()));
+        coffeeStatusBackgroundService.requestRun();
+        return tx;
     }
 
     /** Deducts materials for every item of an order according to the coffee's active recipe. */
@@ -164,12 +199,15 @@ public class InventoryService {
         recipes.forEach((item, recipe) -> recipe.getMaterials().forEach(rm -> consume(rm.getMaterial(),
                 rm.getQuantity().multiply(BigDecimal.valueOf(item.getQuantity())), MaterialTransactionType.SALE,
                 staff, item, "Đơn " + order.getOrderCode())));
+        coffeeStatusBackgroundService.requestRun();
     }
 
     /** Marks batches past their expiry date as EXPIRED and writes them off. Returns how many were expired. */
     @Transactional
     public int expireBatches() {
-        List<MaterialBatch> expired = batchRepository.findExpiringBefore(LocalDate.now().minusDays(1));
+        // by day (expiry_date passed) and, for prepared lots, by the exact expires_at
+        Set<MaterialBatch> expired = new java.util.LinkedHashSet<>(batchRepository.findExpiringBefore(LocalDate.now().minusDays(1)));
+        expired.addAll(batchRepository.findExpiredAt(java.time.LocalDateTime.now()));
         for (MaterialBatch batch : expired) {
             BigDecimal remaining = batch.getRemainingQuantity();
             batch.setRemainingQuantity(BigDecimal.ZERO);
@@ -179,11 +217,18 @@ public class InventoryService {
             record(batch, MaterialTransactionType.ADJUSTMENT, remaining.negate(), null, null, "Hủy lô hết hạn");
             checkLowStock(material);
         }
+        if (!expired.isEmpty()) coffeeStatusBackgroundService.requestRun();
         return expired.size();
     }
 
     private List<MaterialTransaction> consume(Material material, BigDecimal quantity, MaterialTransactionType type,
                                               Staff staff, OrderItem orderItem, String note) {
+        return consume(material, quantity, type, staff, orderItem, note, null);
+    }
+
+    /** FEFO stock-out; {@code producedBatch}: the prepared-material batch this stock goes into (PRODUCTION_USE). */
+    List<MaterialTransaction> consume(Material material, BigDecimal quantity, MaterialTransactionType type,
+                                      Staff staff, OrderItem orderItem, String note, MaterialBatch producedBatch) {
         if (material.getStockQuantity().compareTo(quantity) < 0) {
             throw new BadRequestException("Không đủ tồn kho '" + material.getName() + "': còn "
                     + material.getStockQuantity().stripTrailingZeros().toPlainString() + " " + material.getUnit());
@@ -195,7 +240,7 @@ public class InventoryService {
             BigDecimal take = left.min(batch.getRemainingQuantity());
             batch.setRemainingQuantity(batch.getRemainingQuantity().subtract(take));
             if (batch.getRemainingQuantity().signum() == 0) batch.setStatus(BatchStatus.DEPLETED);
-            result.add(record(batch, type, take.negate(), staff, orderItem, note));
+            result.add(record(batch, type, take.negate(), staff, orderItem, note, producedBatch));
             left = left.subtract(take);
         }
         if (left.signum() > 0) {
@@ -208,18 +253,29 @@ public class InventoryService {
 
     private MaterialTransaction record(MaterialBatch batch, MaterialTransactionType type, BigDecimal quantity,
                                        Staff staff, OrderItem orderItem, String note) {
-        return transactionRepository.save(MaterialTransaction.builder()
-                .batch(batch).type(type).quantity(quantity).staff(staff).orderItem(orderItem).note(note)
-                .build());
+        return record(batch, type, quantity, staff, orderItem, note, null);
     }
 
-    private void checkLowStock(Material material) {
+    MaterialTransaction record(MaterialBatch batch, MaterialTransactionType type, BigDecimal quantity,
+                               Staff staff, OrderItem orderItem, String note, MaterialBatch producedBatch) {
+        return transactionRepository.save(MaterialTransaction.builder()
+                .batch(batch).type(type).quantity(quantity).staff(staff).orderItem(orderItem).note(note)
+                .producedBatch(producedBatch).build());
+    }
+
+    /** Response including the prepared-material formula (loaded here, inside the transaction). */
+    private MaterialResponse withFormula(Material material) {
+        Hibernate.initialize(material.getComponents());
+        return MaterialResponse.from(material);
+    }
+
+    void checkLowStock(Material material) {
         if (material.isLowStock()) {
             notificationService.notifyInventoryAlert(MaterialResponse.from(material));
         }
     }
 
-    private Material get(Long id) {
+    Material get(Long id) {
         return materialRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy nguyên liệu: " + id));
     }
@@ -229,5 +285,36 @@ public class InventoryService {
         material.setUnit(request.unit().trim());
         material.setMinStock(request.minStock() == null ? BigDecimal.ZERO : request.minStock());
         if (request.status() != null) material.setStatus(request.status());
+        material.setKind(request.kind() == null ? MaterialKind.RAW : request.kind());
+        // replace the formula (soft delete keeps history; flush before re-adding because of the unique index)
+        material.getComponents().forEach(MaterialComponent::softDelete);
+        material.getComponents().clear();
+        materialRepository.flush();
+        if (material.getKind() == MaterialKind.RAW) {
+            material.setYieldQuantity(null);
+            material.setPrepMinutes(null);
+            material.setShelfLifeMinutes(null);
+            material.setInstructions(null);
+            return;
+        }
+        if (request.yieldQuantity() == null) throw new BadRequestException("Bán thành phẩm cần định lượng chuẩn");
+        if (request.components() == null || request.components().isEmpty()) {
+            throw new BadRequestException("Bán thành phẩm cần định mức nguyên liệu");
+        }
+        material.setYieldQuantity(request.yieldQuantity());
+        material.setPrepMinutes(request.prepMinutes());
+        material.setShelfLifeMinutes(request.shelfLifeMinutes());
+        material.setInstructions(request.instructions() == null || request.instructions().isBlank() ? null : request.instructions().trim());
+        Set<Long> seen = new HashSet<>();
+        for (MaterialRequest.Component line : request.components()) {
+            Material component = get(line.componentId());
+            if (!seen.add(component.getId())) throw new BadRequestException("Nguyên liệu bị lặp trong định mức: " + component.getName());
+            // only raw inputs: keeps formulas one level deep, so no material can end up made from itself
+            if (component.getKind() != MaterialKind.RAW) {
+                throw new BadRequestException("Định mức chỉ dùng nguyên liệu thô: " + component.getName());
+            }
+            material.getComponents().add(MaterialComponent.builder()
+                    .material(material).component(component).quantity(line.quantity()).build());
+        }
     }
 }

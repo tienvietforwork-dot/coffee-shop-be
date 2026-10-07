@@ -40,4 +40,10 @@ public class MaterialBatch extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private BatchStatus status = BatchStatus.AVAILABLE;
+    /** PREPARING batch: when it is expected to be ready */
+    @Column(name = "ready_at")
+    private LocalDateTime readyAt;
+    /** prepared-material lot: exact expiry (expiry_date keeps the day, for FEFO and alerts) */
+    @Column(name = "expires_at")
+    private LocalDateTime expiresAt;
 }

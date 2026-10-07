@@ -68,6 +68,12 @@ public class CoffeeController {
         return recipeService.findByCoffee(id);
     }
 
+    @GetMapping("/api/recipes")
+    @PreAuthorize(Perm.CAN_READ_CATALOG)
+    public List<RecipeResponse> activeRecipes() {
+        return recipeService.findAllActive();
+    }
+
     @PostMapping("/api/coffees/{id}/recipes")
     @PreAuthorize(Perm.CAN_MENU_EDIT)
     @ResponseStatus(HttpStatus.CREATED)

@@ -43,7 +43,7 @@ public record OrderResponse(Long id, String orderCode, OrderStatus status, Order
                 shipment == null ? BigDecimal.ZERO : shipment.getShippingFee(),
                 o.getTotalAmount(), o.getNote(), o.getCancelReason(), o.getPickupTime(), o.getOrderedAt(), paid,
                 o.getItems().stream().map(i -> new Item(i.getId(), i.getCoffee().getId(), i.getCoffee().getName(),
-                        i.getCoffee().getImageUrl(), i.getQuantity(), i.getUnitPrice(), i.getLineTotal(),
+                        i.getCoffee().imageSrc(), i.getQuantity(), i.getUnitPrice(), i.getLineTotal(),
                         i.getNote())).toList(),
                 o.getPayments().stream().map(PaymentResponse::from).toList(),
                 shipment == null ? null : ShipmentResponse.from(shipment));

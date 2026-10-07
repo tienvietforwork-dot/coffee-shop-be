@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface MaterialBatchRepository extends JpaRepository<MaterialBatch, Long> {
@@ -28,4 +29,13 @@ public interface MaterialBatchRepository extends JpaRepository<MaterialBatch, Lo
             order by b.expiryDate
             """)
     List<MaterialBatch> findExpiringBefore(LocalDate until);
+
+    /** lots with an exact expiry (prepared materials) that has passed */
+    @Query("""
+            select b from MaterialBatch b join fetch b.material
+            where b.status = com.coffeeshop.entity.enums.BatchStatus.AVAILABLE
+              and b.remainingQuantity > 0
+              and b.expiresAt is not null and b.expiresAt <= :now
+            """)
+    List<MaterialBatch> findExpiredAt(LocalDateTime now);
 }

@@ -35,6 +35,10 @@ public class MaterialTransaction extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "order_item_id")
     private OrderItem orderItem;
+    /** PRODUCTION_USE: the prepared-material batch this stock went into */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "produced_batch_id")
+    private MaterialBatch producedBatch;
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private MaterialTransactionType type;
