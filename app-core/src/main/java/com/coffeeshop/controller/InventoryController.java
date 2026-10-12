@@ -3,7 +3,7 @@ package com.coffeeshop.controller;
 import com.coffeeshop.dto.request.MaterialRequest;
 import com.coffeeshop.dto.request.ProduceRequest;
 import com.coffeeshop.dto.request.StockAdjustRequest;
-import com.coffeeshop.dto.request.StockExportRequest;
+import com.coffeeshop.dto.request.StockOutRequest;
 import com.coffeeshop.dto.request.StockImportRequest;
 import com.coffeeshop.dto.response.BatchResponse;
 import com.coffeeshop.dto.response.InventoryAlertsResponse;
@@ -78,10 +78,18 @@ public class InventoryController {
         return inventoryService.importStock(request);
     }
 
+    /** Phiếu hủy: one lot, with a disposal reason. */
+    @PostMapping("/api/inventory/dispose")
+    @PreAuthorize(Perm.CAN_STOCK)
+    public MaterialTransactionResponse dispose(@Valid @RequestBody StockOutRequest request) {
+        return inventoryService.dispose(request);
+    }
+
+    /** Xuất khác: one lot, returned to the supplier or used in-house. */
     @PostMapping("/api/inventory/export")
     @PreAuthorize(Perm.CAN_STOCK)
-    public List<MaterialTransactionResponse> exportStock(@Valid @RequestBody StockExportRequest request) {
-        return inventoryService.exportStock(request);
+    public MaterialTransactionResponse exportOther(@Valid @RequestBody StockOutRequest request) {
+        return inventoryService.exportOther(request);
     }
 
     @PostMapping("/api/inventory/adjust")

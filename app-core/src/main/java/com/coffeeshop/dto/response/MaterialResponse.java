@@ -13,7 +13,10 @@ public record MaterialResponse(Long id, String name, String unit, BigDecimal sto
                                MaterialStatus status, boolean lowStock, MaterialKind kind, BigDecimal yieldQuantity,
                                Integer shelfLifeMinutes, List<Component> components,
                                String instructions, List<Usage> usedIn, Integer expiryWarningDays,
-                               LocalDate nextExpiryDate, boolean expiringSoon) {
+                               List<Package> packages, LocalDate nextExpiryDate, boolean expiringSoon) {
+
+    public record Package(Long id, String name, BigDecimal size) {
+    }
 
     /** where a material goes: a coffee (per cup, kind COFFEE) or a prepared material (per standard batch, kind PREPARED) */
     public record Usage(String kind, Long id, String name, BigDecimal quantity) {
@@ -38,6 +41,9 @@ public record MaterialResponse(Long id, String name, String unit, BigDecimal sto
                 : null;
         return new MaterialResponse(m.getId(), m.getName(), m.getUnit(), m.getStockQuantity(), m.getMinStock(),
                 m.getStatus(), m.isLowStock(), m.getKind(), m.getYieldQuantity(), m.getShelfLifeMinutes(),
-                components, m.getInstructions(), usedIn, m.getExpiryWarningDays(), nextExpiryDate, expiringSoon);
+                components, m.getInstructions(), usedIn, m.getExpiryWarningDays(),
+                Hibernate.isInitialized(m.getPackages())
+                        ? m.getPackages().stream().map(p -> new Package(p.getId(), p.getName(), p.getSize())).toList() : null,
+                nextExpiryDate, expiringSoon);
     }
 }

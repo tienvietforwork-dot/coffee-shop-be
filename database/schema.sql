@@ -231,6 +231,22 @@ CREATE TABLE material_components (
     CHECK (material_id <> component_id)
 );
 CREATE UNIQUE INDEX uq_material_components ON material_components (material_id, component_id) WHERE NOT del_flag;
+
+-- Quy cách đóng gói của nguyên liệu thô: "Hộp 1 L" = 1000 (đơn vị gốc của nguyên liệu)
+CREATE TABLE material_packages (
+    id          BIGSERIAL PRIMARY KEY,
+    material_id BIGINT        NOT NULL REFERENCES materials (id),
+    name        VARCHAR(50)   NOT NULL,
+    size        NUMERIC(12,2) NOT NULL CHECK (size > 0),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE INDEX idx_material_packages_material ON material_packages (material_id);
+CREATE UNIQUE INDEX uq_material_packages ON material_packages (material_id, lower(name)) WHERE NOT del_flag;
 CREATE INDEX idx_material_components_component ON material_components (component_id);
 
 CREATE TABLE recipes (
@@ -292,7 +308,10 @@ CREATE TABLE material_batches (
     -- PREPARING = lô bán thành phẩm đang chế biến, chưa dùng được
     status             VARCHAR(20)   NOT NULL DEFAULT 'AVAILABLE' CHECK (status IN ('PREPARING', 'AVAILABLE', 'DEPLETED', 'EXPIRED')),
     ready_at           TIMESTAMP,                                   -- đang chế biến: dự kiến xong; xong: lúc hoàn tất
-    expires_at         TIMESTAMP,                                   -- bán thành phẩm: hết hạn chính xác tới phút
+    expires_at         TIMESTAMP,                                   -- nguyên liệu chế biến: hết hạn chính xác tới phút
+    package_name       VARCHAR(50),                                 -- quy cách lúc nhập (chụp lại): 10 × "Hộp 500 ml"
+    package_size       NUMERIC(12,2) CHECK (package_size > 0),
+    package_count      NUMERIC(12,2) CHECK (package_count > 0),
     created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
     created_at TIMESTAMP    NOT NULL DEFAULT now(),
     updated_by VARCHAR(50),
@@ -671,7 +690,9 @@ CREATE TABLE material_transactions (
     staff_id      BIGINT        REFERENCES staff (id),         -- nhân viên đã thao tác
     order_item_id BIGINT        REFERENCES order_items (id),
     -- PRODUCTION_USE = nguyên liệu xuất để chế biến bán thành phẩm; PRODUCE = lô chế biến xong nhập kho
-    type          VARCHAR(20)   NOT NULL CHECK (type IN ('IMPORT', 'EXPORT', 'SALE', 'ADJUSTMENT', 'PRODUCTION_USE', 'PRODUCE')),
+    -- DISPOSAL = phiếu hủy (kể cả tự hủy lô hết hạn); EXPORT = xuất khác (trả nhà cung cấp, dùng nội bộ)
+    type          VARCHAR(20)   NOT NULL CHECK (type IN ('IMPORT', 'EXPORT', 'SALE', 'ADJUSTMENT', 'PRODUCTION_USE', 'PRODUCE', 'DISPOSAL')),
+    reason        VARCHAR(30),                                  -- DISPOSAL / EXPORT: EXPIRED, SPOILED, SPILLED, BREW_FAILED, OTHER_DISPOSAL, RETURN_SUPPLIER, INTERNAL_USE
     produced_batch_id BIGINT    REFERENCES material_batches (id), -- PRODUCTION_USE: dùng để chế biến lô bán thành phẩm nào
     quantity      NUMERIC(12,2) NOT NULL,                       -- dương = nhập, âm = xuất
     note          VARCHAR(255),

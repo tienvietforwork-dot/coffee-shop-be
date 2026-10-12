@@ -46,4 +46,11 @@ public class MaterialBatch extends BaseEntity {
     /** prepared-material lot: exact expiry (expiry_date keeps the day, for FEFO and alerts) */
     @Column(name = "expires_at")
     private LocalDateTime expiresAt;
+    /** packaging at import, copied from material_packages: package_count × package_size (e.g. 10 × "Hộp 500 ml") */
+    @Column(name = "package_name", length = 50)
+    private String packageName;
+    @Column(name = "package_size", precision = 12, scale = 2)
+    private BigDecimal packageSize;
+    @Column(name = "package_count", precision = 12, scale = 2)
+    private BigDecimal packageCount;
 }

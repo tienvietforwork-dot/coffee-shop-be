@@ -13,7 +13,7 @@ import java.util.List;
 public record BatchResponse(Long id, Long materialId, String materialName, String unit, BigDecimal importQuantity,
                             BigDecimal remainingQuantity, BigDecimal unitCost, LocalDate expiryDate,
                             BatchStatus status, LocalDateTime createdAt, LocalDateTime readyAt, LocalDateTime expiresAt,
-                            List<Input> inputs) {
+                            String packageName, BigDecimal packageSize, BigDecimal packageCount, List<Input> inputs) {
 
     public record Input(Long batchId, String materialName, String unit, BigDecimal quantity) {
     }
@@ -26,6 +26,7 @@ public record BatchResponse(Long id, Long materialId, String materialName, Strin
         return new BatchResponse(b.getId(), b.getMaterial().getId(), b.getMaterial().getName(),
                 b.getMaterial().getUnit(), b.getImportQuantity(), b.getRemainingQuantity(), b.getUnitCost(),
                 b.getExpiryDate(), b.getStatus(), b.getCreatedAt(), b.getReadyAt(), b.getExpiresAt(),
+                b.getPackageName(), b.getPackageSize(), b.getPackageCount(),
                 uses == null ? null : uses.stream().map(t -> new Input(t.getBatch().getId(),
                         t.getBatch().getMaterial().getName(), t.getBatch().getMaterial().getUnit(), t.getQuantity().negate())).toList());
     }
