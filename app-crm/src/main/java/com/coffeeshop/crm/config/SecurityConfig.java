@@ -33,8 +33,14 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/actuator/health", "/actuator/health/**",
-                                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"
+                                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
+                                "/api/v1/feedbacks/public"
                         ).permitAll()
+                        .requestMatchers("/api/v1/customers/**").hasAnyAuthority("crm.customers", "ROLE_ADMIN")
+                        .requestMatchers("/api/v1/interactions/**").hasAnyAuthority("crm.interactions", "ROLE_ADMIN")
+                        .requestMatchers("/api/v1/feedbacks/**").hasAnyAuthority("crm.feedbacks", "ROLE_ADMIN")
+                        .requestMatchers("/api/v1/customer-groups/**").hasAnyAuthority("crm.groups", "ROLE_ADMIN")
+                        .requestMatchers("/api/v1/insights/**").hasAnyAuthority("crm.insights", "ROLE_ADMIN")
                         .anyRequest().hasRole("ADMIN"))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

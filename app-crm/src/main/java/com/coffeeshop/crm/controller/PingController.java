@@ -4,18 +4,15 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map;
+import com.coffeeshop.crm.dto.response.PingResponse;
 
 @RestController
 @RequestMapping("/api/ping")
 public class PingController {
 
     @GetMapping
-    public Map<String, Object> ping(Authentication authentication) {
-        return Map.of(
-                "module", "app-crm",
-                "authenticatedAs", authentication.getName(),
-                "authorities", authentication.getAuthorities());
+    public PingResponse ping(Authentication authentication) {
+        return new PingResponse("app-crm", authentication.getName(), authentication.getAuthorities().stream()
+                .map(authority -> authority.getAuthority()).toList());
     }
 }
