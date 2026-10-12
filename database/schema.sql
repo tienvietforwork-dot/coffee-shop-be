@@ -624,6 +624,23 @@ CREATE TABLE loyalty_point_history (
 CREATE INDEX idx_lph_customer ON loyalty_point_history (customer_id);
 CREATE INDEX idx_lph_order ON loyalty_point_history (order_id);
 
+-- Lịch sử chuyển trạng thái đơn hàng: mỗi lần đổi trạng thái 1 dòng (from_status NULL = lúc đặt đơn).
+CREATE TABLE order_status_history (
+    id          BIGSERIAL PRIMARY KEY,
+    order_id    BIGINT      NOT NULL REFERENCES orders (id),
+    from_status VARCHAR(20),
+    to_status   VARCHAR(20) NOT NULL,
+    staff_id    BIGINT      REFERENCES staff (id),
+    note        VARCHAR(255),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE INDEX idx_order_status_history_order ON order_status_history (order_id);
+
 CREATE TABLE vouchers (
     id              BIGSERIAL PRIMARY KEY,
     code            VARCHAR(30)   NOT NULL,
