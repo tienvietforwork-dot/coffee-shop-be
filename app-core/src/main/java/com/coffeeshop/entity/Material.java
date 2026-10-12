@@ -44,6 +44,9 @@ public class Material extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private MaterialKind kind = MaterialKind.RAW;
+    /** warn this many days before a lot expires; null = the shop default (app.inventory.expiry-warning-days), 0 = never */
+    @Column(name = "expiry_warning_days")
+    private Integer expiryWarningDays;
     /** PREPARED: output of one batch made by the formula in {@link #components} */
     @Column(name = "yield_quantity", precision = 12, scale = 2)
     private BigDecimal yieldQuantity;

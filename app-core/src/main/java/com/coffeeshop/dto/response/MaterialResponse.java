@@ -12,7 +12,8 @@ import java.util.List;
 public record MaterialResponse(Long id, String name, String unit, BigDecimal stockQuantity, BigDecimal minStock,
                                MaterialStatus status, boolean lowStock, MaterialKind kind, BigDecimal yieldQuantity,
                                Integer shelfLifeMinutes, List<Component> components,
-                               String instructions, List<Usage> usedIn, LocalDate nextExpiryDate) {
+                               String instructions, List<Usage> usedIn, Integer expiryWarningDays,
+                               LocalDate nextExpiryDate, boolean expiringSoon) {
 
     /** where a material goes: a coffee (per cup, kind COFFEE) or a prepared material (per standard batch, kind PREPARED) */
     public record Usage(String kind, Long id, String name, BigDecimal quantity) {
@@ -22,11 +23,14 @@ public record MaterialResponse(Long id, String name, String unit, BigDecimal sto
     }
 
     public static MaterialResponse from(Material m) {
-        return from(m, null, null);
+        return from(m, null, null, false);
     }
 
-    /** {@code nextExpiryDate}: earliest expiry among the lots still in stock (the one FEFO uses next) */
-    public static MaterialResponse from(Material m, List<Usage> usedIn, LocalDate nextExpiryDate) {
+    /**
+     * {@code nextExpiryDate}: earliest expiry among the lots still in stock (the one FEFO uses next);
+     * {@code expiringSoon}: that lot is inside the material's warning window.
+     */
+    public static MaterialResponse from(Material m, List<Usage> usedIn, LocalDate nextExpiryDate, boolean expiringSoon) {
         // the formula is only sent where it was loaded (alerts built outside a transaction skip it)
         List<Component> components = Hibernate.isInitialized(m.getComponents())
                 ? m.getComponents().stream().map(c -> new Component(c.getComponent().getId(), c.getComponent().getName(),
@@ -34,6 +38,6 @@ public record MaterialResponse(Long id, String name, String unit, BigDecimal sto
                 : null;
         return new MaterialResponse(m.getId(), m.getName(), m.getUnit(), m.getStockQuantity(), m.getMinStock(),
                 m.getStatus(), m.isLowStock(), m.getKind(), m.getYieldQuantity(), m.getShelfLifeMinutes(),
-                components, m.getInstructions(), usedIn, nextExpiryDate);
+                components, m.getInstructions(), usedIn, m.getExpiryWarningDays(), nextExpiryDate, expiringSoon);
     }
 }

@@ -70,8 +70,25 @@ public class InventoryService {
         for (Object[] row : batchRepository.findNextExpiryDates()) nextExpiry.put((Long) row[0], (LocalDate) row[1]);
         return materialRepository.findAllByOrderByNameAsc().stream().map(m -> {
             Hibernate.initialize(m.getComponents());
-            return MaterialResponse.from(m, usedIn.getOrDefault(m.getId(), List.of()), nextExpiry.get(m.getId()));
+            LocalDate next = nextExpiry.get(m.getId());
+            return MaterialResponse.from(m, usedIn.getOrDefault(m.getId(), List.of()), next, next != null && inWarningWindow(m, next));
         }).toList();
+    }
+
+    /** Lots still in stock whose expiry is inside their material's warning window (per material, or the shop default). */
+    @Transactional(readOnly = true)
+    public List<MaterialBatch> expiringLots() {
+        Integer longest = materialRepository.maxExpiryWarningDays();
+        int window = Math.max(expiryWarningDays, longest == null ? 0 : longest);
+        return batchRepository.findExpiringBefore(LocalDate.now().plusDays(window)).stream()
+                .filter(b -> inWarningWindow(b.getMaterial(), b.getExpiryDate())).toList();
+    }
+
+    /** unset: raw materials use the shop default; prepared ones (shelf life of hours) are not warned about */
+    private boolean inWarningWindow(Material m, LocalDate expiry) {
+        int days = m.getExpiryWarningDays() != null ? m.getExpiryWarningDays()
+                : m.getKind() == MaterialKind.PREPARED ? 0 : expiryWarningDays;
+        return days > 0 && !expiry.isAfter(LocalDate.now().plusDays(days));
     }
 
     @Transactional
@@ -120,8 +137,7 @@ public class InventoryService {
     public InventoryAlertsResponse alerts() {
         return new InventoryAlertsResponse(
                 materialRepository.findLowStock().stream().map(MaterialResponse::from).toList(),
-                batchRepository.findExpiringBefore(LocalDate.now().plusDays(expiryWarningDays)).stream()
-                        .map(BatchResponse::from).toList());
+                expiringLots().stream().map(BatchResponse::from).toList());
     }
 
     /** Phiếu nhập: creates a new batch. */
@@ -286,6 +302,7 @@ public class InventoryService {
         material.setName(request.name().trim());
         material.setUnit(request.unit().trim());
         material.setMinStock(request.minStock() == null ? BigDecimal.ZERO : request.minStock());
+        material.setExpiryWarningDays(request.expiryWarningDays());
         if (request.status() != null) material.setStatus(request.status());
         material.setKind(request.kind() == null ? MaterialKind.RAW : request.kind());
         // replace the formula (soft delete keeps history; flush before re-adding because of the unique index)

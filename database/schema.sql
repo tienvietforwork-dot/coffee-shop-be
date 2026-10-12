@@ -199,6 +199,7 @@ CREATE TABLE materials (
     unit           VARCHAR(20)   NOT NULL,
     stock_quantity NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
     min_stock      NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (min_stock >= 0),
+    expiry_warning_days INT CHECK (expiry_warning_days >= 0), -- cảnh báo trước khi lô hết hạn (ngày); NULL = mặc định (thô 7 ngày, bán thành phẩm không), 0 = không cảnh báo
     status         VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
     -- RAW = nguyên liệu nhập mua; PREPARED = bán thành phẩm tự chế biến (vd cốt cold brew)
     kind            VARCHAR(20)   NOT NULL DEFAULT 'RAW' CHECK (kind IN ('RAW', 'PREPARED')),

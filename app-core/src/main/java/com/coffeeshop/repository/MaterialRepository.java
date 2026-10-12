@@ -13,4 +13,7 @@ public interface MaterialRepository extends JpaRepository<Material, Long> {
 
     @Query("select m from Material m where m.status = com.coffeeshop.entity.enums.MaterialStatus.ACTIVE and m.stockQuantity < m.minStock order by m.name")
     List<Material> findLowStock();
+
+    @Query("select max(m.expiryWarningDays) from Material m")
+    Integer maxExpiryWarningDays();
 }
