@@ -145,7 +145,7 @@ public class InventoryService {
     public BatchResponse importStock(StockImportRequest request) {
         Material material = get(request.materialId());
         if (material.getKind() == MaterialKind.PREPARED) {
-            throw new BadRequestException("'" + material.getName() + "' là bán thành phẩm — tạo bằng chức năng Chế biến, không nhập mua");
+            throw new BadRequestException("'" + material.getName() + "' là nguyên liệu chế biến / đang sử dụng — tạo bằng chức năng Chế biến, không nhập mua");
         }
         if (request.expiryDate() != null && request.expiryDate().isBefore(LocalDate.now())) {
             throw new BadRequestException("Hạn sử dụng đã qua");
@@ -247,13 +247,27 @@ public class InventoryService {
     /** FEFO stock-out; {@code producedBatch}: the prepared-material batch this stock goes into (PRODUCTION_USE). */
     List<MaterialTransaction> consume(Material material, BigDecimal quantity, MaterialTransactionType type,
                                       Staff staff, OrderItem orderItem, String note, MaterialBatch producedBatch) {
+        return consume(material, quantity, type, staff, orderItem, note, producedBatch, null);
+    }
+
+    /** {@code firstBatchId}: take from this lot first (staff picked it), the rest FEFO as usual. */
+    List<MaterialTransaction> consume(Material material, BigDecimal quantity, MaterialTransactionType type,
+                                      Staff staff, OrderItem orderItem, String note, MaterialBatch producedBatch,
+                                      Long firstBatchId) {
         if (material.getStockQuantity().compareTo(quantity) < 0) {
             throw new BadRequestException("Không đủ tồn kho '" + material.getName() + "': còn "
                     + material.getStockQuantity().stripTrailingZeros().toPlainString() + " " + material.getUnit());
         }
         BigDecimal left = quantity;
         List<MaterialTransaction> result = new java.util.ArrayList<>();
-        for (MaterialBatch batch : batchRepository.findAvailableFefo(material.getId())) {
+        List<MaterialBatch> lots = new java.util.ArrayList<>(batchRepository.findAvailableFefo(material.getId()));
+        if (firstBatchId != null) {
+            MaterialBatch first = lots.stream().filter(b -> b.getId().equals(firstBatchId)).findFirst()
+                    .orElseThrow(() -> new BadRequestException("Lô #" + firstBatchId + " không còn hàng của '" + material.getName() + "'"));
+            lots.remove(first);
+            lots.add(0, first);
+        }
+        for (MaterialBatch batch : lots) {
             if (left.signum() <= 0) break;
             BigDecimal take = left.min(batch.getRemainingQuantity());
             batch.setRemainingQuantity(batch.getRemainingQuantity().subtract(take));
@@ -315,9 +329,9 @@ public class InventoryService {
             material.setInstructions(null);
             return;
         }
-        if (request.yieldQuantity() == null) throw new BadRequestException("Bán thành phẩm cần định lượng chuẩn");
+        if (request.yieldQuantity() == null) throw new BadRequestException("Nguyên liệu chế biến cần định lượng chuẩn");
         if (request.components() == null || request.components().isEmpty()) {
-            throw new BadRequestException("Bán thành phẩm cần định mức nguyên liệu");
+            throw new BadRequestException("Nguyên liệu chế biến cần định mức nguyên liệu thô");
         }
         material.setYieldQuantity(request.yieldQuantity());
         material.setShelfLifeMinutes(request.shelfLifeMinutes());

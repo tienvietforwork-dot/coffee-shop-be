@@ -41,7 +41,7 @@ public class ProductionService {
     public BatchResponse produce(ProduceRequest request) {
         Material material = inventoryService.get(request.materialId());
         if (material.getKind() != MaterialKind.PREPARED || material.getComponents().isEmpty()) {
-            throw new BadRequestException("'" + material.getName() + "' không phải bán thành phẩm có định mức");
+            throw new BadRequestException("'" + material.getName() + "' không phải nguyên liệu chế biến có định mức");
         }
         if (material.getStatus() != MaterialStatus.ACTIVE) throw new BadRequestException("Nguyên liệu đã ngưng dùng");
         BigDecimal batches = request.batches();
@@ -75,7 +75,8 @@ public class ProductionService {
         var staff = staffService.current();
         for (MaterialComponent c : material.getComponents()) {
             inventoryService.consume(c.getComponent(), scaled(c.getQuantity(), batches),
-                    MaterialTransactionType.PRODUCTION_USE, staff, null, note, batch);
+                    MaterialTransactionType.PRODUCTION_USE, staff, null, note, batch,
+                    request.lots() == null ? null : request.lots().get(c.getComponent().getId()));
         }
         List<MaterialTransaction> inputs = transactionRepository.findInputsOf(batch.getId());
         batch.setUnitCost(unitCost(inputs, quantity));

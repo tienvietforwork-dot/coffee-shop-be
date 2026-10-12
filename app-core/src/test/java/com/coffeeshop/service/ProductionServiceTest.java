@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -59,10 +60,10 @@ class ProductionServiceTest {
         when(transactionRepository.findInputsOf(7L)).thenReturn(List.of(
                 MaterialTransaction.builder().batch(beanLot).quantity(new BigDecimal("-500")).build()));
 
-        var res = productionService.produce(new ProduceRequest(20L, new BigDecimal("2"), null, null));
+        var res = productionService.produce(new ProduceRequest(20L, new BigDecimal("2"), null, null, null));
 
         verify(inventoryService).consume(eq(beans), argThat(q -> q.compareTo(new BigDecimal("500")) == 0), eq(MaterialTransactionType.PRODUCTION_USE),
-                any(), eq(null), any(), any(MaterialBatch.class));
+                any(), eq(null), any(), any(MaterialBatch.class), isNull());
         assertThat(res.status()).isEqualTo(BatchStatus.AVAILABLE);
         assertThat(res.importQuantity()).isEqualByComparingTo("2000");
         assertThat(res.remainingQuantity()).isEqualByComparingTo("2000");
@@ -78,15 +79,24 @@ class ProductionServiceTest {
         when(inventoryService.get(20L)).thenReturn(coldBrew);
         when(batchRepository.save(any())).thenAnswer(i -> { MaterialBatch b = i.getArgument(0); b.setId(8L); return b; });
         var shorter = java.time.LocalDateTime.now().plusDays(3);
-        var res = productionService.produce(new ProduceRequest(20L, BigDecimal.ONE, shorter, null));
+        var res = productionService.produce(new ProduceRequest(20L, BigDecimal.ONE, shorter, null, null));
         assertThat(res.expiresAt()).isEqualTo(shorter);
         assertThat(res.expiryDate()).isEqualTo(shorter.toLocalDate());
     }
 
     @Test
+    void produceTakesThePickedLotFirst() {
+        when(inventoryService.get(20L)).thenReturn(coldBrew);
+        when(batchRepository.save(any())).thenAnswer(i -> { MaterialBatch b = i.getArgument(0); b.setId(9L); return b; });
+        productionService.produce(new ProduceRequest(20L, BigDecimal.ONE, null, null, java.util.Map.of(2L, 31L)));
+        verify(inventoryService).consume(eq(beans), any(), eq(MaterialTransactionType.PRODUCTION_USE),
+                any(), eq(null), any(), any(MaterialBatch.class), eq(31L));
+    }
+
+    @Test
     void produceChecksStockBeforeTouchingAnything() {
         when(inventoryService.get(20L)).thenReturn(coldBrew);
-        assertThatThrownBy(() -> productionService.produce(new ProduceRequest(20L, new BigDecimal("21"), null, null)))
+        assertThatThrownBy(() -> productionService.produce(new ProduceRequest(20L, new BigDecimal("21"), null, null, null)))
                 .isInstanceOf(BadRequestException.class)
                 .hasMessage("Không đủ Hạt Arabica: cần 5250 g, còn 5000 g");
         verify(batchRepository, never()).save(any());
