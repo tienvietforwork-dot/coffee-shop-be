@@ -47,10 +47,7 @@ public class Material extends BaseEntity {
     /** PREPARED: output of one batch made by the formula in {@link #components} */
     @Column(name = "yield_quantity", precision = 12, scale = 2)
     private BigDecimal yieldQuantity;
-    /** PREPARED: how long making a batch takes */
-    @Column(name = "prep_minutes")
-    private Integer prepMinutes;
-    /** PREPARED: a finished batch expires this many minutes later */
+    /** PREPARED: a batch expires this many minutes after it is made */
     @Column(name = "shelf_life_minutes")
     private Integer shelfLifeMinutes;
     /** PREPARED: how to make one standard batch */

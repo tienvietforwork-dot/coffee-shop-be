@@ -10,7 +10,7 @@ import java.util.List;
 
 public record MaterialResponse(Long id, String name, String unit, BigDecimal stockQuantity, BigDecimal minStock,
                                MaterialStatus status, boolean lowStock, MaterialKind kind, BigDecimal yieldQuantity,
-                               Integer prepMinutes, Integer shelfLifeMinutes, List<Component> components,
+                               Integer shelfLifeMinutes, List<Component> components,
                                String instructions, List<Usage> usedIn) {
 
     /** where a material goes: a coffee (per cup, kind COFFEE) or a prepared material (per standard batch, kind PREPARED) */
@@ -31,7 +31,7 @@ public record MaterialResponse(Long id, String name, String unit, BigDecimal sto
                 c.getComponent().getUnit(), c.getQuantity())).toList()
                 : null;
         return new MaterialResponse(m.getId(), m.getName(), m.getUnit(), m.getStockQuantity(), m.getMinStock(),
-                m.getStatus(), m.isLowStock(), m.getKind(), m.getYieldQuantity(), m.getPrepMinutes(), m.getShelfLifeMinutes(),
+                m.getStatus(), m.isLowStock(), m.getKind(), m.getYieldQuantity(), m.getShelfLifeMinutes(),
                 components, m.getInstructions(), usedIn);
     }
 }

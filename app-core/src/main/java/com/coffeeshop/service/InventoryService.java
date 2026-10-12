@@ -292,7 +292,6 @@ public class InventoryService {
         materialRepository.flush();
         if (material.getKind() == MaterialKind.RAW) {
             material.setYieldQuantity(null);
-            material.setPrepMinutes(null);
             material.setShelfLifeMinutes(null);
             material.setInstructions(null);
             return;
@@ -302,7 +301,6 @@ public class InventoryService {
             throw new BadRequestException("Bán thành phẩm cần định mức nguyên liệu");
         }
         material.setYieldQuantity(request.yieldQuantity());
-        material.setPrepMinutes(request.prepMinutes());
         material.setShelfLifeMinutes(request.shelfLifeMinutes());
         material.setInstructions(request.instructions() == null || request.instructions().isBlank() ? null : request.instructions().trim());
         Set<Long> seen = new HashSet<>();
