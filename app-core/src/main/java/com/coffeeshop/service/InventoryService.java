@@ -66,9 +66,11 @@ public class InventoryService {
             usedIn.computeIfAbsent(c.getComponent().getId(), k -> new ArrayList<>()).add(new MaterialResponse.Usage(
                     "PREPARED", c.getMaterial().getId(), c.getMaterial().getName(), c.getQuantity()));
         }
+        Map<Long, LocalDate> nextExpiry = new HashMap<>();
+        for (Object[] row : batchRepository.findNextExpiryDates()) nextExpiry.put((Long) row[0], (LocalDate) row[1]);
         return materialRepository.findAllByOrderByNameAsc().stream().map(m -> {
             Hibernate.initialize(m.getComponents());
-            return MaterialResponse.from(m, usedIn.getOrDefault(m.getId(), List.of()));
+            return MaterialResponse.from(m, usedIn.getOrDefault(m.getId(), List.of()), nextExpiry.get(m.getId()));
         }).toList();
     }
 

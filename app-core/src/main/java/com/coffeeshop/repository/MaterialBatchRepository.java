@@ -38,4 +38,14 @@ public interface MaterialBatchRepository extends JpaRepository<MaterialBatch, Lo
               and b.expiresAt is not null and b.expiresAt <= :now
             """)
     List<MaterialBatch> findExpiredAt(LocalDateTime now);
+
+    /** per material: [materialId, earliest expiry date] over the lots still in stock */
+    @Query("""
+            select b.material.id, min(b.expiryDate) from MaterialBatch b
+            where b.status = com.coffeeshop.entity.enums.BatchStatus.AVAILABLE
+              and b.remainingQuantity > 0
+              and b.expiryDate is not null
+            group by b.material.id
+            """)
+    List<Object[]> findNextExpiryDates();
 }
