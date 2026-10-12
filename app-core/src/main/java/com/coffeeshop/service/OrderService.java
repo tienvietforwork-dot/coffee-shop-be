@@ -29,11 +29,12 @@ import java.util.Set;
 /**
  * Order lifecycle (BPMN-01 / BPMN-02):
  * <pre>
- * PENDING ─confirm→ CONFIRMED ─prepare→ PREPARING ─ready→ READY ─complete→ COMPLETED
- *    │                  │                                    └─dispatch→ DELIVERING ─complete→ COMPLETED
- *    └─reject→ REJECTED └─cancel→ CANCELLED (also from PENDING)
+ * PENDING ─confirm→ PREPARING ─ready→ READY ─complete→ COMPLETED
+ *    │                                  └─dispatch→ DELIVERING ─complete→ COMPLETED
+ *    └─reject→ REJECTED / cancel→ CANCELLED
  * </pre>
- * Materials are deducted when the order starts PREPARING; loyalty points are added on COMPLETED.
+ * Confirming starts the drinks at once and deducts the materials; counter orders start PREPARING.
+ * CONFIRMED is only left on older orders (prepare / cancel still accept it). Loyalty points are added on COMPLETED.
  */
 @Service
 @RequiredArgsConstructor
@@ -121,7 +122,7 @@ public class OrderService {
         return OrderResponse.from(order);
     }
 
-    /** Staff takes an order at the counter: confirmed immediately. */
+    /** Staff takes an order at the counter: made straight away. */
     @Transactional
     public OrderResponse createAtCounter(CounterOrderRequest request) {
         DiningTable table = request.tableId() == null ? null : tableService.get(request.tableId());
@@ -132,7 +133,8 @@ public class OrderService {
                 request.customerPhone(), request.customerName(), null, request.delivery(), null,
                 request.paymentMethod(), Boolean.TRUE.equals(request.paidNow()), request.voucherCode(), request.note());
         Order order = place(draft);
-        order.setStatus(OrderStatus.CONFIRMED);
+        inventoryService.consumeForOrder(order, staffService.current());
+        order.setStatus(OrderStatus.PREPARING);
         return publish(order);
     }
 
@@ -215,7 +217,8 @@ public class OrderService {
     public OrderResponse confirm(Long id) {
         Order order = get(id);
         expect(order, OrderStatus.PENDING);
-        order.setStatus(OrderStatus.CONFIRMED);
+        inventoryService.consumeForOrder(order, staffService.current());
+        order.setStatus(OrderStatus.PREPARING);
         return publish(order);
     }
 
@@ -247,6 +250,7 @@ public class OrderService {
         return publish(order);
     }
 
+    /** Older orders left CONFIRMED before confirming started the drinks. */
     @Transactional
     public OrderResponse startPreparing(Long id) {
         Order order = get(id);
