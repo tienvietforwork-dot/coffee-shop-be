@@ -1,12 +1,14 @@
 package com.coffeeshop.service;
 
 import com.coffeeshop.dto.request.ShipmentUpdateRequest;
+import com.coffeeshop.dto.response.OrderResponse;
 import com.coffeeshop.dto.response.ShipmentResponse;
 import com.coffeeshop.entity.Shipment;
 import com.coffeeshop.entity.enums.ShipmentStatus;
 import com.coffeeshop.exception.BadRequestException;
 import com.coffeeshop.exception.ResourceNotFoundException;
 import com.coffeeshop.repository.ShipmentRepository;
+import com.coffeeshop.websocket.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +23,7 @@ public class ShipmentService {
 
     private final ShipmentRepository shipmentRepository;
     private final OrderService orderService;
+    private final NotificationService notificationService;
 
     @Transactional(readOnly = true)
     public List<ShipmentResponse> findAll() {
@@ -53,6 +56,9 @@ public class ShipmentService {
         shipment.setStatus(request.status());
         if (request.status() == ShipmentStatus.DELIVERED) {
             orderService.completeDelivered(shipment.getOrder());
+        } else {
+            // the order carries its shipment: order screens refresh (e.g. "Đặt xe" -> "Giao cho tài xế")
+            notificationService.notifyOrderChanged(OrderResponse.from(shipment.getOrder()));
         }
         return ShipmentResponse.from(shipment);
     }
