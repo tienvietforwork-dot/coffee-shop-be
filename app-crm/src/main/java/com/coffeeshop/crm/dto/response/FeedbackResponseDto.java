@@ -14,12 +14,14 @@ public record FeedbackResponseDto(
         Long feedbackId,
         Long staffId,
         String message,
-        LocalDateTime sentAt
+        LocalDateTime sentAt,
+        LocalDateTime readAt
 ) {
     public static FeedbackResponseDto from(FeedbackResponse response) {
         return new FeedbackResponseDto(
                 response.getId(), response.getCreatedBy(), response.getCreatedAt(),
                 response.getUpdatedBy(), response.getUpdatedAt(), response.getDelFlag(), response.getDelUser(),
-                response.getFeedbackId(), response.getStaffId(), response.getMessage(), response.getSentAt());
+                response.getFeedbackId(), response.getStaffId(), response.getMessage(), response.getSentAt(),
+                response.getReadAt());
     }
 }

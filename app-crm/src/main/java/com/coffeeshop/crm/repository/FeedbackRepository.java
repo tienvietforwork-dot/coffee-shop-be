@@ -8,9 +8,11 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import java.util.Optional;
 
 @Repository
 public interface FeedbackRepository extends JpaRepository<Feedback, Long> {
+    Optional<Feedback> findByIdAndCustomerIdAndDelFlagFalse(Long id, Long customerId);
     Page<Feedback> findAllByCustomerIdAndDelFlagFalseOrderByCreatedAtDesc(Long customerId, Pageable pageable);
     Page<Feedback> findAllByDelFlagFalseOrderByCreatedAtDesc(Pageable pageable);
 

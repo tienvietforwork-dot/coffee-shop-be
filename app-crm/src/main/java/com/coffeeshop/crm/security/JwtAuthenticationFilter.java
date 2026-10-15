@@ -14,9 +14,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Component
 @RequiredArgsConstructor
@@ -36,9 +36,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (jwtUtil.isValid(token) && SecurityContextHolder.getContext().getAuthentication() == null) {
                 Claims claims = jwtUtil.parseClaims(token);
                 String username = claims.getSubject();
-                String role = claims.get("role", String.class);
+                Long userId = longClaim(claims.get("userId"));
 
-                List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+                Set<SimpleGrantedAuthority> authorities = new LinkedHashSet<>();
+                Object rolesClaim = claims.get("roles");
+                if (rolesClaim instanceof Collection<?> roles) {
+                    roles.stream()
+                            .filter(String.class::isInstance)
+                            .map(String.class::cast)
+                            .filter(value -> !value.isBlank())
+                            .map(value -> new SimpleGrantedAuthority("ROLE_" + value))
+                            .forEach(authorities::add);
+                }
+                String role = claims.get("role", String.class);
                 if (role != null && !role.isBlank()) {
                     authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
                 }
@@ -52,13 +62,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             .forEach(authorities::add);
                 }
 
+                CrmPrincipal principal = new CrmPrincipal(username, userId);
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        username, null, authorities);
+                        principal, null, authorities);
                 authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             }
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private Long longClaim(Object value) {
+        if (value instanceof Number number) return number.longValue();
+        if (value instanceof String string && !string.isBlank()) return Long.parseLong(string);
+        return null;
     }
 }

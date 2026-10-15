@@ -20,7 +20,8 @@ public record InteractionResponse(
         String status,
         LocalDateTime remindAt,
         LocalDateTime closedAt,
-        String outcome
+        String outcome,
+        Boolean visibleToCustomer
 ) {
     public static InteractionResponse from(Interaction interaction) {
         return new InteractionResponse(
@@ -28,6 +29,6 @@ public record InteractionResponse(
                 interaction.getUpdatedBy(), interaction.getUpdatedAt(), interaction.getDelFlag(), interaction.getDelUser(),
                 interaction.getCustomerId(), interaction.getChannel(), interaction.getContent(), interaction.getOccurredAt(),
                 interaction.getNote(), interaction.getStaffId(), interaction.getStatus(), interaction.getRemindAt(),
-                interaction.getClosedAt(), interaction.getOutcome());
+                interaction.getClosedAt(), interaction.getOutcome(), interaction.getVisibleToCustomer());
     }
 }

@@ -11,7 +11,7 @@ import org.hibernate.annotations.SQLRestriction;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 @Entity
-@Schema(title = "Lịch sử trả lời khách hàng", description = "Một nội dung phản hồi được ghi nhận để gửi cho khách")
+@Schema(title = "Lịch sử trả lời khách hàng", description = "Nội dung nhân viên trả lời và thời điểm khách đánh dấu đã đọc")
 @Table(name = "feedback_responses")
 @SQLRestriction("del_flag = false")
 @SQLDelete(sql = "UPDATE feedback_responses SET del_flag = true WHERE id = ?")
@@ -29,5 +29,8 @@ public class FeedbackResponse extends BaseEntity {
 
     @Column(name = "sent_at", nullable = false)
     private LocalDateTime sentAt = LocalDateTime.now();
+
+    @Column(name = "read_at")
+    private LocalDateTime readAt;
 
 }

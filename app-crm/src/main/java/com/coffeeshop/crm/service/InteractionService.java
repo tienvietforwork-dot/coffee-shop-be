@@ -52,6 +52,7 @@ public class InteractionService {
         interaction.setNote(request.getNote());
         interaction.setStaffId(request.getStaffId());
         interaction.setRemindAt(request.getRemindAt());
+        interaction.setVisibleToCustomer(Boolean.TRUE.equals(request.getVisibleToCustomer()));
         interaction.setStatus(request.getRemindAt() == null ? "OPEN" : "FOLLOW_UP");
         return interactionRepository.save(interaction);
     }
@@ -64,6 +65,7 @@ public class InteractionService {
         if (request.getContent() != null) interaction.setContent(request.getContent());
         if (request.getOccurredAt() != null) interaction.setOccurredAt(request.getOccurredAt());
         if (request.getOutcome() != null) interaction.setOutcome(request.getOutcome());
+        if (request.getVisibleToCustomer() != null) interaction.setVisibleToCustomer(request.getVisibleToCustomer());
         if (request.getNote() != null) interaction.setNote(request.getNote());
         if (request.getStaffId() != null) interaction.setStaffId(request.getStaffId());
         if (Boolean.TRUE.equals(request.getClearReminder()) && request.getRemindAt() != null) {
