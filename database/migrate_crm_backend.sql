@@ -67,6 +67,7 @@ UPDATE interactions SET occurred_at = created_at WHERE occurred_at IS NULL;
 ALTER TABLE interactions ALTER COLUMN occurred_at SET DEFAULT now();
 ALTER TABLE interactions ALTER COLUMN occurred_at SET NOT NULL;
 ALTER TABLE interactions ADD COLUMN IF NOT EXISTS outcome TEXT;
+ALTER TABLE interactions ADD COLUMN IF NOT EXISTS visible_to_customer BOOLEAN NOT NULL DEFAULT FALSE;
 
 ALTER TABLE feedbacks DROP CONSTRAINT IF EXISTS ck_feedbacks_rating;
 ALTER TABLE feedbacks ADD CONSTRAINT ck_feedbacks_rating CHECK (rating BETWEEN 1 AND 5);
@@ -89,6 +90,7 @@ CREATE TABLE IF NOT EXISTS feedback_responses (
     staff_id    BIGINT REFERENCES staff (id),
     message     TEXT NOT NULL,
     sent_at     TIMESTAMP NOT NULL DEFAULT now(),
+    read_at     TIMESTAMP,
     created_by  VARCHAR(50) NOT NULL DEFAULT 'system',
     created_at  TIMESTAMP NOT NULL DEFAULT now(),
     updated_by  VARCHAR(50),
@@ -96,6 +98,7 @@ CREATE TABLE IF NOT EXISTS feedback_responses (
     del_flag    BOOLEAN NOT NULL DEFAULT FALSE,
     del_user    VARCHAR(50)
 );
+ALTER TABLE feedback_responses ADD COLUMN IF NOT EXISTS read_at TIMESTAMP;
 CREATE INDEX IF NOT EXISTS idx_feedback_responses_feedback ON feedback_responses (feedback_id, sent_at);
 
 COMMIT;

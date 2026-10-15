@@ -36,6 +36,7 @@ public class SecurityConfig {
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
                                 "/api/v1/feedbacks/public"
                         ).permitAll()
+                        .requestMatchers("/api/v1/customer-portal/**").hasRole("CUSTOMER")
                         .requestMatchers("/api/v1/customers/**").hasAnyAuthority("crm.customers", "ROLE_ADMIN")
                         .requestMatchers("/api/v1/interactions/**").hasAnyAuthority("crm.interactions", "ROLE_ADMIN")
                         .requestMatchers("/api/v1/feedbacks/**").hasAnyAuthority("crm.feedbacks", "ROLE_ADMIN")

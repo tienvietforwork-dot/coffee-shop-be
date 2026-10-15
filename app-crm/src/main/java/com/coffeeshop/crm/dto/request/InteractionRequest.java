@@ -28,4 +28,6 @@ public class InteractionRequest {
     @Positive
     private Long staffId;
     private LocalDateTime remindAt;
+    @Schema(description = "Đặt true nếu nội dung tương tác phù hợp để khách xem trong tài khoản")
+    private Boolean visibleToCustomer = false;
 }

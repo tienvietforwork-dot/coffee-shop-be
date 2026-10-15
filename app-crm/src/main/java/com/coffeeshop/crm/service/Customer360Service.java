@@ -222,7 +222,8 @@ public class Customer360Service {
                 f.getContent(), f.getStatus(), Boolean.TRUE.equals(f.getEscalated()), f.getResolution(),
                 f.getSatisfaction(), f.getRating(), f.getStaffId(), f.getTopics().stream().sorted().toList(),
                 feedbackResponseRepository.findAllByFeedbackIdAndDelFlagFalseOrderBySentAtAsc(f.getId()).stream()
-                        .map(reply -> new Customer360Response.FeedbackReplyDto(reply.getId(), reply.getMessage(), reply.getStaffId(), reply.getSentAt()))
+                        .map(reply -> new Customer360Response.FeedbackReplyDto(reply.getId(), reply.getMessage(),
+                                reply.getStaffId(), reply.getSentAt(), reply.getReadAt()))
                         .toList(), f.getCreatedAt());
     }
 }

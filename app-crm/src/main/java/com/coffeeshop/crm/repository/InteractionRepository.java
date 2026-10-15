@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface InteractionRepository extends JpaRepository<Interaction, Long> {
     Page<Interaction> findAllByCustomerIdAndDelFlagFalseOrderByOccurredAtDesc(Long customerId, Pageable pageable);
+    Page<Interaction> findAllByCustomerIdAndVisibleToCustomerTrueAndDelFlagFalseOrderByOccurredAtDesc(Long customerId, Pageable pageable);
     Page<Interaction> findAllByDelFlagFalseOrderByOccurredAtDesc(Pageable pageable);
 
     @Query("select i from Interaction i where i.customerId = :customerId and i.delFlag = false and i.occurredAt >= :fromDate order by i.occurredAt desc")

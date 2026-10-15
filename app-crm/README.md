@@ -45,4 +45,6 @@ Direct service paths use `/api/v1/...`. Through `nginx-gateway`, call the same p
 
 Customer 360 và API phân tích nhận `fromDate`/`toDate` tùy chọn theo định dạng `YYYY-MM-DD`, tính cả hai ngày. Chỉ số số đơn 30 ngày là cửa sổ lăn. Các tiêu đề nhóm chức năng và mô tả API trong Swagger được trình bày bằng tiếng Việt; URL, tên thuộc tính JSON, bảng và entity giữ nguyên để không phá tương thích với app khác.
 
-API `/{feedbackId}/responses` ghi nhận nội dung phản hồi, nhân viên và thời điểm để lưu lịch sử; việc gửi email/chat thực tế cần tích hợp nhà cung cấp truyền tin riêng.
+API `/{feedbackId}/responses` ghi nhận nội dung trả lời để khách có thể đọc trong cổng khách hàng. Cổng khách hàng gồm `GET /api/v1/customer-portal/feedbacks`, `GET /api/v1/customer-portal/interactions` và `POST /api/v1/customer-portal/feedbacks/{feedbackId}/responses/{responseId}/read`; yêu cầu JWT role `CUSTOMER` và tài khoản phải được liên kết với `customers`. Frontend gọi endpoint `/read` khi khách mở câu trả lời; backend lưu thời điểm đọc đầu tiên và trả `readAt` cho phía nhân viên. Nhân viên chỉ cho hiển thị tương tác phù hợp cho khách bằng `visibleToCustomer: true`.
+
+Với database đã cài migration CRM trước đó, chạy thêm `../database/migrate_crm_customer_portal.sql` trong DBeaver. Tài khoản khách phải có `users.customer_id` liên kết tới đúng hồ sơ trong `customers`.

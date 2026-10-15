@@ -30,6 +30,6 @@ public record Customer360Response(
                               String content, String status, boolean escalated,
                               String resolution, String satisfaction, Short rating, Long staffId,
                               List<String> topics, List<FeedbackReplyDto> responses, LocalDateTime createdAt) { }
-    public record FeedbackReplyDto(Long id, String message, Long staffId, LocalDateTime sentAt) { }
+    public record FeedbackReplyDto(Long id, String message, Long staffId, LocalDateTime sentAt, LocalDateTime readAt) { }
     public record TimelineEventDto(String eventType, String description, LocalDateTime eventTime) { }
 }

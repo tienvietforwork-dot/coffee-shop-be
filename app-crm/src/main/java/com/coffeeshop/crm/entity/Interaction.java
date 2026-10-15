@@ -45,4 +45,7 @@ public class Interaction extends BaseEntity {
 
     @Column(name = "outcome", columnDefinition = "TEXT")
     private String outcome;
+
+    @Column(name = "visible_to_customer", nullable = false)
+    private Boolean visibleToCustomer = false;
 }

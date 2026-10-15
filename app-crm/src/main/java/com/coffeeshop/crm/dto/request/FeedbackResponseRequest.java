@@ -7,7 +7,7 @@ import lombok.Data;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 @Data
-@Schema(description = "Nội dung phản hồi được ghi nhận để gửi cho khách hàng")
+@Schema(description = "Nội dung nhân viên trả lời để khách xem trong tài khoản")
 public class FeedbackResponseRequest {
     @NotBlank
     @Size(max = 10000)
