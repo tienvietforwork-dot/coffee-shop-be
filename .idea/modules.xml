@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/app-crm/app-crm.iml" filepath="$PROJECT_DIR$/app-crm/app-crm.iml" />
+      <module fileurl="file://$PROJECT_DIR$/app-promotions/app-promotions.iml" filepath="$PROJECT_DIR$/app-promotions/app-promotions.iml" />
+      <module fileurl="file://$PROJECT_DIR$/app-stats/app-stats.iml" filepath="$PROJECT_DIR$/app-stats/app-stats.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/coffee-be-main.iml" filepath="$PROJECT_DIR$/.idea/coffee-be-main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/app-core/coffee-shop-be.iml" filepath="$PROJECT_DIR$/app-core/coffee-shop-be.iml" />
+    </modules>
+  </component>
+</project>

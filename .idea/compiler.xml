@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="app-crm" />
+        <module name="app-stats" />
+        <module name="app-promotions" />
+        <module name="coffee-shop-be" />
+      </profile>
+    </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="app-crm" target="17" />
+      <module name="app-promotions" target="17" />
+      <module name="app-stats" target="17" />
+      <module name="coffee-shop-be" target="17" />
+    </bytecodeTargetLevel>
+  </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="app-crm" options="-parameters" />
+      <module name="app-promotions" options="-parameters" />
+      <module name="app-stats" options="-parameters" />
+      <module name="coffee-shop-be" options="-parameters" />
+    </option>
+  </component>
+</project>
