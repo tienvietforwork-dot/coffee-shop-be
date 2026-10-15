@@ -1,4 +1,8 @@
 spring:
+  # Local runs read the shared coffee-shop-be/.env, then app-promotions/.env (optional, overrides it).
+  # Works from the app folder (mvnw, run-all) or the repo root (IDE). Real env vars (Render) still win.
+  config:
+    import: optional:file:../.env[.properties],optional:file:.env[.properties],optional:file:app-promotions/.env[.properties]
   application:
     name: app-promotions
   datasource:
@@ -18,7 +22,7 @@ spring:
     time-zone: UTC
     default-property-inclusion: non_null
 server:
-  port: ${PORT:${SERVER_PORT:8080}}
+  port: ${PORT:${SERVER_PORT:8083}}
 app:
   jwt:
     secret: ${JWT_SECRET:change-this-super-secret-key-in-production-please-0123456789}

@@ -30,6 +30,10 @@ Mỗi `app-*` là 1 project Spring Boot **hoàn toàn độc lập**: pom.xml ri
 3. Thêm 1 file `.github/workflows/ci-ten-module.yml` (copy từ `ci-core.yml`, đổi `paths` và `working-directory` cho khớp thư mục mới).
 4. Tạo 1 Render Web Service mới, Root Directory trỏ đúng vào `app-ten-module`.
 
+## Chạy local
+
+Xem [SETUP.md](SETUP.md): cổng của từng app, điền `.env`, chạy app-core + app của mình + frontend.
+
 ## Xem chi tiết từng app
 
 Mỗi app có README riêng trong thư mục của nó — xem [app-core/README.md](app-core/README.md) để biết chi tiết API, biến môi trường, cách chạy local.

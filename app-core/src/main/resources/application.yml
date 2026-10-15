@@ -1,4 +1,8 @@
 spring:
+  # Local runs read the shared coffee-shop-be/.env, then app-core/.env (optional, overrides it).
+  # Works from the app folder (mvnw, run-all) or the repo root (IDE). Real env vars (Render) still win.
+  config:
+    import: optional:file:../.env[.properties],optional:file:.env[.properties],optional:file:app-core/.env[.properties]
   application:
     name: coffee-shop-be
 

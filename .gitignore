@@ -1,2 +1,7 @@
 .vs/
 .claude/
+
+# Local secrets (shared .env at the root, per-app .env inside each app)
+.env
+.env.local
+logs/
