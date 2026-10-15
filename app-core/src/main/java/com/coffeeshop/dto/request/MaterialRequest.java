@@ -17,10 +17,10 @@ public record MaterialRequest(
         @NotBlank @Size(max = 100) String name,
         @NotBlank @Size(max = 20) String unit,
         @DecimalMin("0") BigDecimal minStock,
+        @Min(0) Integer expiryWarningDays,
         MaterialStatus status,
         MaterialKind kind,
         @DecimalMin("0.01") BigDecimal yieldQuantity,
-        @Min(0) Integer prepMinutes,
         @Min(1) Integer shelfLifeMinutes,
         @Valid List<Component> components,
         /** how to make one standard batch */

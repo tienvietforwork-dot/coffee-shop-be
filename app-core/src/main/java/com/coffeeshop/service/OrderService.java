@@ -2,6 +2,7 @@ package com.coffeeshop.service;
 
 import com.coffeeshop.dto.request.*;
 import com.coffeeshop.dto.response.OrderResponse;
+import com.coffeeshop.dto.response.OrderStatusHistoryResponse;
 import com.coffeeshop.dto.response.PaymentResponse;
 import com.coffeeshop.dto.response.PriceQuoteResponse;
 import com.coffeeshop.entity.*;
@@ -29,11 +30,12 @@ import java.util.Set;
 /**
  * Order lifecycle (BPMN-01 / BPMN-02):
  * <pre>
- * PENDING ─confirm→ CONFIRMED ─prepare→ PREPARING ─ready→ READY ─complete→ COMPLETED
- *    │                  │                                    └─dispatch→ DELIVERING ─complete→ COMPLETED
- *    └─reject→ REJECTED └─cancel→ CANCELLED (also from PENDING)
+ * PENDING ─confirm→ PREPARING ─ready→ READY ─complete→ COMPLETED
+ *    │                                  └─dispatch→ DELIVERING ─complete→ COMPLETED
+ *    └─reject→ REJECTED / cancel→ CANCELLED
  * </pre>
- * Materials are deducted when the order starts PREPARING; loyalty points are added on COMPLETED.
+ * Confirming starts the drinks at once and deducts the materials; counter orders start PREPARING.
+ * CONFIRMED is only left on older orders (prepare / cancel still accept it). Loyalty points are added on COMPLETED.
  */
 @Service
 @RequiredArgsConstructor
@@ -49,6 +51,7 @@ public class OrderService {
     private final ShipmentRepository shipmentRepository;
     private final VoucherRepository voucherRepository;
     private final LoyaltyPointHistoryRepository loyaltyRepository;
+    private final OrderStatusHistoryRepository statusHistoryRepository;
     private final CartService cartService;
     private final CoffeeService coffeeService;
     private final CustomerService customerService;
@@ -75,6 +78,13 @@ public class OrderService {
     @Transactional(readOnly = true)
     public OrderResponse findById(Long id) {
         return OrderResponse.from(get(id));
+    }
+
+    /** Every status change of the order, oldest first. */
+    @Transactional(readOnly = true)
+    public List<OrderStatusHistoryResponse> history(Long id) {
+        get(id);
+        return statusHistoryRepository.findByOrder(id).stream().map(OrderStatusHistoryResponse::from).toList();
     }
 
     @Transactional(readOnly = true)
@@ -121,7 +131,7 @@ public class OrderService {
         return OrderResponse.from(order);
     }
 
-    /** Staff takes an order at the counter: confirmed immediately. */
+    /** Staff takes an order at the counter: made straight away. */
     @Transactional
     public OrderResponse createAtCounter(CounterOrderRequest request) {
         DiningTable table = request.tableId() == null ? null : tableService.get(request.tableId());
@@ -132,7 +142,8 @@ public class OrderService {
                 request.customerPhone(), request.customerName(), null, request.delivery(), null,
                 request.paymentMethod(), Boolean.TRUE.equals(request.paidNow()), request.voucherCode(), request.note());
         Order order = place(draft);
-        order.setStatus(OrderStatus.CONFIRMED);
+        inventoryService.consumeForOrder(order, staffService.current());
+        moveTo(order, OrderStatus.PREPARING, null);
         return publish(order);
     }
 
@@ -184,6 +195,7 @@ public class OrderService {
             }
         }
         order = orderRepository.save(order);
+        record(order, null, order.getStatus(), null);
 
         if (quote.voucher() != null) {
             quote.voucher().setStatus(VoucherStatus.USED);
@@ -215,7 +227,8 @@ public class OrderService {
     public OrderResponse confirm(Long id) {
         Order order = get(id);
         expect(order, OrderStatus.PENDING);
-        order.setStatus(OrderStatus.CONFIRMED);
+        inventoryService.consumeForOrder(order, staffService.current());
+        moveTo(order, OrderStatus.PREPARING, null);
         return publish(order);
     }
 
@@ -247,12 +260,13 @@ public class OrderService {
         return publish(order);
     }
 
+    /** Older orders left CONFIRMED before confirming started the drinks. */
     @Transactional
     public OrderResponse startPreparing(Long id) {
         Order order = get(id);
         expect(order, OrderStatus.CONFIRMED);
         inventoryService.consumeForOrder(order, staffService.current());
-        order.setStatus(OrderStatus.PREPARING);
+        moveTo(order, OrderStatus.PREPARING, null);
         return publish(order);
     }
 
@@ -260,7 +274,7 @@ public class OrderService {
     public OrderResponse markReady(Long id) {
         Order order = get(id);
         expect(order, OrderStatus.PREPARING);
-        order.setStatus(OrderStatus.READY);
+        moveTo(order, OrderStatus.READY, null);
         return publish(order);
     }
 
@@ -275,7 +289,7 @@ public class OrderService {
             throw new BadRequestException("Chưa đặt xe cho đơn này");
         }
         shipment.setStatus(ShipmentStatus.DELIVERING);
-        order.setStatus(OrderStatus.DELIVERING);
+        moveTo(order, OrderStatus.DELIVERING, null);
         return publish(order);
     }
 
@@ -307,7 +321,7 @@ public class OrderService {
             order.getShipment().setStatus(ShipmentStatus.DELIVERED);
             order.getShipment().setDeliveredAt(now);
         }
-        order.setStatus(OrderStatus.COMPLETED);
+        moveTo(order, OrderStatus.COMPLETED, null);
         Customer customer = order.getCustomer();
         if (customer != null) {
             int points = order.getTotalAmount().divide(vndPerPoint, 0, RoundingMode.FLOOR).intValue();
@@ -354,7 +368,7 @@ public class OrderService {
 
     /** Reject / cancel: refund what was paid, give back the voucher and the promotion quota, free the table. */
     private void close(Order order, OrderStatus status, String reason) {
-        order.setStatus(status);
+        moveTo(order, status, reason);
         order.setCancelReason(reason);
         for (Payment p : order.getPayments()) {
             if (p.getStatus() == PaymentStatus.PAID) {
@@ -399,6 +413,18 @@ public class OrderService {
         OrderResponse response = OrderResponse.from(order);
         notificationService.notifyOrderChanged(response);
         return response;
+    }
+
+    /** Every status change goes through here so it is kept in order_status_history. */
+    private void moveTo(Order order, OrderStatus to, String note) {
+        OrderStatus from = order.getStatus();
+        order.setStatus(to);
+        record(order, from, to, note);
+    }
+
+    private void record(Order order, OrderStatus from, OrderStatus to, String note) {
+        statusHistoryRepository.save(OrderStatusHistory.builder().order(order).fromStatus(from).toStatus(to)
+                .staff(staffService.current()).note(note).build());
     }
 
     private static void expect(Order order, OrderStatus... allowed) {

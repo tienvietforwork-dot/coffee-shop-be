@@ -3,6 +3,7 @@ package com.coffeeshop.controller;
 import com.coffeeshop.dto.request.*;
 import com.coffeeshop.dto.response.IncidentResponse;
 import com.coffeeshop.dto.response.OrderResponse;
+import com.coffeeshop.dto.response.OrderStatusHistoryResponse;
 import com.coffeeshop.dto.response.PaymentResponse;
 import com.coffeeshop.dto.response.PriceQuoteResponse;
 import com.coffeeshop.entity.enums.OrderChannel;
@@ -41,6 +42,12 @@ public class OrderController {
     @PreAuthorize(Perm.CAN_READ_ORDERS)
     public OrderResponse findById(@PathVariable Long id) {
         return orderService.findById(id);
+    }
+
+    @GetMapping("/api/orders/{id}/history")
+    @PreAuthorize(Perm.CAN_READ_ORDERS)
+    public List<OrderStatusHistoryResponse> history(@PathVariable Long id) {
+        return orderService.history(id);
     }
 
     @PostMapping("/api/orders/quote")

@@ -42,6 +42,9 @@ CREATE TABLE customers (
     full_name      VARCHAR(100),
     phone          VARCHAR(15) NOT NULL,
     email          VARCHAR(100),
+    date_of_birth  DATE,
+    gender         VARCHAR(20),
+    description    TEXT,
     loyalty_points INT         NOT NULL DEFAULT 0 CHECK (loyalty_points >= 0),
     registered_at  TIMESTAMP   NOT NULL DEFAULT now(),
     created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
@@ -199,6 +202,7 @@ CREATE TABLE materials (
     unit           VARCHAR(20)   NOT NULL,
     stock_quantity NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
     min_stock      NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (min_stock >= 0),
+    expiry_warning_days INT CHECK (expiry_warning_days >= 0), -- cảnh báo trước khi lô hết hạn (ngày); NULL = mặc định (thô 7 ngày, bán thành phẩm không), 0 = không cảnh báo
     status         VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
     -- RAW = nguyên liệu nhập mua; PREPARED = bán thành phẩm tự chế biến (vd cốt cold brew)
     kind            VARCHAR(20)   NOT NULL DEFAULT 'RAW' CHECK (kind IN ('RAW', 'PREPARED')),
@@ -323,11 +327,13 @@ CREATE TABLE customer_addresses (
 CREATE INDEX idx_customer_addresses_customer ON customer_addresses (customer_id);
 CREATE UNIQUE INDEX uq_customer_addresses_default ON customer_addresses (customer_id) WHERE is_default AND NOT del_flag;
 
+
 CREATE TABLE customer_groups (
     id              BIGSERIAL PRIMARY KEY,
     name            VARCHAR(100) NOT NULL,
     description     TEXT,
-    criteria_type   VARCHAR(30) CHECK (criteria_type IN ('SPENDING', 'FREQUENCY', 'RECENCY', 'FAVORITE_COFFEE', 'MANUAL')),
+    group_type      VARCHAR(20)  NOT NULL DEFAULT 'MANUAL' CHECK (group_type IN ('AUTOMATIC', 'MANUAL')),
+    -- Example: {"min_spend": 5000000, "min_orders": 10, "last_order_days": 30}
     criteria_rule   JSONB,
     recalculated_at TIMESTAMP,
     created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
@@ -344,6 +350,7 @@ CREATE TABLE customer_group_members (
     group_id    BIGINT    NOT NULL REFERENCES customer_groups (id),
     customer_id BIGINT    NOT NULL REFERENCES customers (id),
     is_manual   BOOLEAN   NOT NULL DEFAULT FALSE,
+    is_excluded BOOLEAN   NOT NULL DEFAULT FALSE,
     added_at    TIMESTAMP NOT NULL DEFAULT now(),
     created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
     created_at TIMESTAMP    NOT NULL DEFAULT now(),
@@ -360,7 +367,10 @@ CREATE TABLE interactions (
     customer_id BIGINT      NOT NULL REFERENCES customers (id),
     channel     VARCHAR(20) CHECK (channel IN ('CALL', 'CHAT', 'EMAIL', 'IN_STORE', 'NOTE')),
     content     TEXT,
+    occurred_at TIMESTAMP NOT NULL DEFAULT now(),
     note        TEXT,
+    outcome     TEXT,
+    staff_id    BIGINT REFERENCES staff (id),
     status      VARCHAR(20) NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'FOLLOW_UP', 'CLOSED')),
     remind_at   TIMESTAMP,
     closed_at   TIMESTAMP,
@@ -377,7 +387,9 @@ CREATE INDEX idx_interactions_remind ON interactions (remind_at) WHERE closed_at
 CREATE TABLE feedbacks (
     id           BIGSERIAL PRIMARY KEY,
     customer_id  BIGINT      NOT NULL REFERENCES customers (id),
+    staff_id     BIGINT      REFERENCES staff (id),
     topic        VARCHAR(50),
+    issue_type   VARCHAR(20) CHECK (issue_type IN ('PRODUCT', 'SERVICE', 'DELIVERY', 'PAYMENT', 'OTHER')),
     category     VARCHAR(30) CHECK (category IN ('COMPLAINT', 'SUGGESTION', 'PRAISE')),
     sentiment    VARCHAR(20) CHECK (sentiment IN ('POSITIVE', 'NEUTRAL', 'NEGATIVE')),
     content      TEXT        NOT NULL,
@@ -386,6 +398,7 @@ CREATE TABLE feedbacks (
     escalated    BOOLEAN     NOT NULL DEFAULT FALSE,
     resolution   TEXT,
     satisfaction VARCHAR(20) CHECK (satisfaction IN ('SATISFIED', 'UNSATISFIED')),
+    rating       SMALLINT CHECK (rating BETWEEN 1 AND 5),
     closed_at    TIMESTAMP,
     created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
     created_at TIMESTAMP    NOT NULL DEFAULT now(),
@@ -395,6 +408,30 @@ CREATE TABLE feedbacks (
     del_user   VARCHAR(50)
 );
 CREATE INDEX idx_feedbacks_customer ON feedbacks (customer_id);
+
+CREATE TABLE feedback_topics (
+    feedback_id BIGINT NOT NULL REFERENCES feedbacks (id),
+    topic       VARCHAR(100) NOT NULL,
+    PRIMARY KEY (feedback_id, topic)
+);
+INSERT INTO feedback_topics (feedback_id, topic)
+SELECT id, trim(topic) FROM feedbacks WHERE topic IS NOT NULL AND trim(topic) <> ''
+ON CONFLICT DO NOTHING;
+
+CREATE TABLE feedback_responses (
+    id          BIGSERIAL PRIMARY KEY,
+    feedback_id BIGINT NOT NULL REFERENCES feedbacks (id),
+    staff_id    BIGINT REFERENCES staff (id),
+    message     TEXT NOT NULL,
+    sent_at     TIMESTAMP NOT NULL DEFAULT now(),
+    created_by  VARCHAR(50) NOT NULL DEFAULT 'system',
+    created_at  TIMESTAMP NOT NULL DEFAULT now(),
+    updated_by  VARCHAR(50),
+    updated_at  TIMESTAMP,
+    del_flag    BOOLEAN NOT NULL DEFAULT FALSE,
+    del_user    VARCHAR(50)
+);
+CREATE INDEX idx_feedback_responses_feedback ON feedback_responses (feedback_id, sent_at);
 
 -- ---------------------------------------------------------------------
 -- Bán hàng & vận hành
@@ -622,6 +659,23 @@ CREATE TABLE loyalty_point_history (
 );
 CREATE INDEX idx_lph_customer ON loyalty_point_history (customer_id);
 CREATE INDEX idx_lph_order ON loyalty_point_history (order_id);
+
+-- Lịch sử chuyển trạng thái đơn hàng: mỗi lần đổi trạng thái 1 dòng (from_status NULL = lúc đặt đơn).
+CREATE TABLE order_status_history (
+    id          BIGSERIAL PRIMARY KEY,
+    order_id    BIGINT      NOT NULL REFERENCES orders (id),
+    from_status VARCHAR(20),
+    to_status   VARCHAR(20) NOT NULL,
+    staff_id    BIGINT      REFERENCES staff (id),
+    note        VARCHAR(255),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE INDEX idx_order_status_history_order ON order_status_history (order_id);
 
 CREATE TABLE vouchers (
     id              BIGSERIAL PRIMARY KEY,

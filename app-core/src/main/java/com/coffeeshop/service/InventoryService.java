@@ -66,10 +66,29 @@ public class InventoryService {
             usedIn.computeIfAbsent(c.getComponent().getId(), k -> new ArrayList<>()).add(new MaterialResponse.Usage(
                     "PREPARED", c.getMaterial().getId(), c.getMaterial().getName(), c.getQuantity()));
         }
+        Map<Long, LocalDate> nextExpiry = new HashMap<>();
+        for (Object[] row : batchRepository.findNextExpiryDates()) nextExpiry.put((Long) row[0], (LocalDate) row[1]);
         return materialRepository.findAllByOrderByNameAsc().stream().map(m -> {
             Hibernate.initialize(m.getComponents());
-            return MaterialResponse.from(m, usedIn.getOrDefault(m.getId(), List.of()));
+            LocalDate next = nextExpiry.get(m.getId());
+            return MaterialResponse.from(m, usedIn.getOrDefault(m.getId(), List.of()), next, next != null && inWarningWindow(m, next));
         }).toList();
+    }
+
+    /** Lots still in stock whose expiry is inside their material's warning window (per material, or the shop default). */
+    @Transactional(readOnly = true)
+    public List<MaterialBatch> expiringLots() {
+        Integer longest = materialRepository.maxExpiryWarningDays();
+        int window = Math.max(expiryWarningDays, longest == null ? 0 : longest);
+        return batchRepository.findExpiringBefore(LocalDate.now().plusDays(window)).stream()
+                .filter(b -> inWarningWindow(b.getMaterial(), b.getExpiryDate())).toList();
+    }
+
+    /** unset: raw materials use the shop default; prepared ones (shelf life of hours) are not warned about */
+    private boolean inWarningWindow(Material m, LocalDate expiry) {
+        int days = m.getExpiryWarningDays() != null ? m.getExpiryWarningDays()
+                : m.getKind() == MaterialKind.PREPARED ? 0 : expiryWarningDays;
+        return days > 0 && !expiry.isAfter(LocalDate.now().plusDays(days));
     }
 
     @Transactional
@@ -118,8 +137,7 @@ public class InventoryService {
     public InventoryAlertsResponse alerts() {
         return new InventoryAlertsResponse(
                 materialRepository.findLowStock().stream().map(MaterialResponse::from).toList(),
-                batchRepository.findExpiringBefore(LocalDate.now().plusDays(expiryWarningDays)).stream()
-                        .map(BatchResponse::from).toList());
+                expiringLots().stream().map(BatchResponse::from).toList());
     }
 
     /** Phiếu nhập: creates a new batch. */
@@ -127,7 +145,7 @@ public class InventoryService {
     public BatchResponse importStock(StockImportRequest request) {
         Material material = get(request.materialId());
         if (material.getKind() == MaterialKind.PREPARED) {
-            throw new BadRequestException("'" + material.getName() + "' là bán thành phẩm — tạo bằng chức năng Chế biến, không nhập mua");
+            throw new BadRequestException("'" + material.getName() + "' là nguyên liệu chế biến / đang sử dụng — tạo bằng chức năng Chế biến, không nhập mua");
         }
         if (request.expiryDate() != null && request.expiryDate().isBefore(LocalDate.now())) {
             throw new BadRequestException("Hạn sử dụng đã qua");
@@ -229,13 +247,27 @@ public class InventoryService {
     /** FEFO stock-out; {@code producedBatch}: the prepared-material batch this stock goes into (PRODUCTION_USE). */
     List<MaterialTransaction> consume(Material material, BigDecimal quantity, MaterialTransactionType type,
                                       Staff staff, OrderItem orderItem, String note, MaterialBatch producedBatch) {
+        return consume(material, quantity, type, staff, orderItem, note, producedBatch, null);
+    }
+
+    /** {@code firstBatchId}: take from this lot first (staff picked it), the rest FEFO as usual. */
+    List<MaterialTransaction> consume(Material material, BigDecimal quantity, MaterialTransactionType type,
+                                      Staff staff, OrderItem orderItem, String note, MaterialBatch producedBatch,
+                                      Long firstBatchId) {
         if (material.getStockQuantity().compareTo(quantity) < 0) {
             throw new BadRequestException("Không đủ tồn kho '" + material.getName() + "': còn "
                     + material.getStockQuantity().stripTrailingZeros().toPlainString() + " " + material.getUnit());
         }
         BigDecimal left = quantity;
         List<MaterialTransaction> result = new java.util.ArrayList<>();
-        for (MaterialBatch batch : batchRepository.findAvailableFefo(material.getId())) {
+        List<MaterialBatch> lots = new java.util.ArrayList<>(batchRepository.findAvailableFefo(material.getId()));
+        if (firstBatchId != null) {
+            MaterialBatch first = lots.stream().filter(b -> b.getId().equals(firstBatchId)).findFirst()
+                    .orElseThrow(() -> new BadRequestException("Lô #" + firstBatchId + " không còn hàng của '" + material.getName() + "'"));
+            lots.remove(first);
+            lots.add(0, first);
+        }
+        for (MaterialBatch batch : lots) {
             if (left.signum() <= 0) break;
             BigDecimal take = left.min(batch.getRemainingQuantity());
             batch.setRemainingQuantity(batch.getRemainingQuantity().subtract(take));
@@ -284,6 +316,7 @@ public class InventoryService {
         material.setName(request.name().trim());
         material.setUnit(request.unit().trim());
         material.setMinStock(request.minStock() == null ? BigDecimal.ZERO : request.minStock());
+        material.setExpiryWarningDays(request.expiryWarningDays());
         if (request.status() != null) material.setStatus(request.status());
         material.setKind(request.kind() == null ? MaterialKind.RAW : request.kind());
         // replace the formula (soft delete keeps history; flush before re-adding because of the unique index)
@@ -292,17 +325,15 @@ public class InventoryService {
         materialRepository.flush();
         if (material.getKind() == MaterialKind.RAW) {
             material.setYieldQuantity(null);
-            material.setPrepMinutes(null);
             material.setShelfLifeMinutes(null);
             material.setInstructions(null);
             return;
         }
-        if (request.yieldQuantity() == null) throw new BadRequestException("Bán thành phẩm cần định lượng chuẩn");
+        if (request.yieldQuantity() == null) throw new BadRequestException("Nguyên liệu chế biến cần định lượng chuẩn");
         if (request.components() == null || request.components().isEmpty()) {
-            throw new BadRequestException("Bán thành phẩm cần định mức nguyên liệu");
+            throw new BadRequestException("Nguyên liệu chế biến cần định mức nguyên liệu thô");
         }
         material.setYieldQuantity(request.yieldQuantity());
-        material.setPrepMinutes(request.prepMinutes());
         material.setShelfLifeMinutes(request.shelfLifeMinutes());
         material.setInstructions(request.instructions() == null || request.instructions().isBlank() ? null : request.instructions().trim());
         Set<Long> seen = new HashSet<>();

@@ -2,7 +2,6 @@ package com.coffeeshop.service;
 
 import com.coffeeshop.dto.response.DashboardResponse;
 import com.coffeeshop.entity.enums.OrderStatus;
-import com.coffeeshop.repository.MaterialBatchRepository;
 import com.coffeeshop.repository.MaterialRepository;
 import com.coffeeshop.repository.OrderItemRepository;
 import com.coffeeshop.repository.OrderRepository;
@@ -22,7 +21,7 @@ public class DashboardService {
     private final OrderRepository orderRepository;
     private final OrderItemRepository orderItemRepository;
     private final MaterialRepository materialRepository;
-    private final MaterialBatchRepository batchRepository;
+    private final InventoryService inventoryService;
 
     @Transactional(readOnly = true)
     public DashboardResponse summary() {
@@ -37,7 +36,7 @@ public class DashboardService {
                 orderRepository.countByStatusIn(List.of(OrderStatus.PENDING, OrderStatus.CONFIRMED,
                         OrderStatus.PREPARING, OrderStatus.READY, OrderStatus.DELIVERING)),
                 materialRepository.findLowStock().size(),
-                batchRepository.findExpiringBefore(LocalDate.now().plusDays(7)).size(),
+                inventoryService.expiringLots().size(),
                 top);
     }
 }

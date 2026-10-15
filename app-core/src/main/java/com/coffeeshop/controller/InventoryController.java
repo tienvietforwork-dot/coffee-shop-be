@@ -1,6 +1,5 @@
 package com.coffeeshop.controller;
 
-import com.coffeeshop.dto.request.FinishBatchRequest;
 import com.coffeeshop.dto.request.MaterialRequest;
 import com.coffeeshop.dto.request.ProduceRequest;
 import com.coffeeshop.dto.request.StockAdjustRequest;
@@ -91,23 +90,11 @@ public class InventoryController {
         return inventoryService.adjust(request);
     }
 
-    /** Start batches of a prepared material (e.g. cold brew): inputs leave stock now, the batch is PREPARING. */
+    /** Record made batches of a prepared material (e.g. cold brew): inputs leave stock, the batch is in stock at once. */
     @PostMapping("/api/inventory/produce")
     @PreAuthorize(Perm.CAN_STOCK)
     @ResponseStatus(HttpStatus.CREATED)
     public BatchResponse produce(@Valid @RequestBody ProduceRequest request) {
-        return productionService.start(request);
-    }
-
-    @PostMapping("/api/inventory/batches/{id}/finish")
-    @PreAuthorize(Perm.CAN_STOCK)
-    public BatchResponse finishBatch(@PathVariable Long id, @Valid @RequestBody FinishBatchRequest request) {
-        return productionService.finish(id, request);
-    }
-
-    @PostMapping("/api/inventory/batches/{id}/discard")
-    @PreAuthorize(Perm.CAN_STOCK)
-    public BatchResponse discardBatch(@PathVariable Long id, @Valid @RequestBody(required = false) FinishBatchRequest request) {
-        return productionService.discard(id, request);
+        return productionService.produce(request);
     }
 }

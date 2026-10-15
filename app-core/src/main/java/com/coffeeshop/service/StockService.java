@@ -10,8 +10,6 @@ import com.coffeeshop.websocket.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -98,22 +96,10 @@ public class StockService {
             }
             changes.add(new StatusChange(c.getId(), c.getName(), c.getStatus()));
         }
-        if (!changes.isEmpty()) afterCommit(() -> notificationService.notifyMenuChanged(changes));
+        if (!changes.isEmpty()) notificationService.notifyMenuChanged(changes); // sent after commit
         return changes;
     }
 
-    private static void afterCommit(Runnable action) {
-        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            action.run();
-            return;
-        }
-        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-            @Override
-            public void afterCommit() {
-                action.run();
-            }
-        });
-    }
     /** Rejects an order whose lines together need more of some material than is in stock. */
     @Transactional(readOnly = true)
     public void requireStock(List<PricingService.InputLine> lines) {
