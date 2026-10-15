@@ -1,81 +1,50 @@
-# app-crm -- Quan ly cham soc khach hang (CRM)
+# app-crm — Quản lý quan hệ khách hàng
 
-## Gioi thieu
+`app-crm` là dịch vụ Spring Boot chạy độc lập. Dịch vụ dùng chung PostgreSQL với các app backend khác, không phụ thuộc mã Java hoặc gọi API nội bộ của các app đó. CRM đọc đơn hàng, chi tiết đơn, cà phê và danh mục từ database chung để tính chỉ số và phân nhóm.
 
-`app-crm` la mot module admin-tool doc lap trong he thong coffee-shop-be. App nay
-**khong co dang nhap / bang users cua rieng no** -- no tin tuong hoan toan vao JWT
-da duoc phat hanh boi `app-core` (module chinh, so huu Auth/Users). Vi vay:
+## Chức năng chính
 
-- Bien moi truong `JWT_SECRET` cua app nay **phai giong het** `JWT_SECRET` cua
-  `app-core`, vi ca hai deu dung chung mot secret key de ky/verify token (HMAC-SHA).
-- App nay chi **verify** token (khong co `generateToken`), khong tra cuu database
-  nguoi dung -- toan bo thong tin (username, role) duoc lay truc tiep tu claims
-  cua JWT.
-- Tat ca cac endpoint (tru `/actuator/health`) yeu cau role `ADMIN`. Day la quyet
-  dinh cua team: ca 3 module ve tinh (`app-crm`, `app-stats`, `app-promotions`)
-  deu la cong cu quan tri noi bo, chi danh cho ADMIN, khong can phan quyen phuc
-  tap nhieu role nhu app-core.
-- Database: dung chung mot Neon Postgres voi `app-core`, nhung moi module tu
-  quan ly bang cua minh. `ddl-auto: none` -- schema duoc tao thu cong qua DBeaver,
-  khong dung Hibernate auto-generate hay migration tool nao.
+- Tìm kiếm khách hàng, cập nhật hồ sơ, quản lý địa chỉ và hồ sơ 360 độ.
+- Chỉ số mua hàng từ đơn hoàn tất, chưa xóa: chi tiêu, số đơn, giá trị trung bình, tần suất gần đây, sản phẩm/danh mục yêu thích và lịch sử mua.
+- Nhóm khách thủ công/tự động, xem trước, tính toán lại và quản lý thành viên.
+- Lịch sử tương tác, lịch nhắc chăm sóc, kết quả tương tác và quy trình feedback nhiều chủ đề.
+- Phân loại cảm xúc theo từ khóa khi không truyền sentiment; nhân viên có thể ghi đè kết quả.
+- Ghi lịch sử nội dung phản hồi gửi khách, báo cáo giá trị khách, mức quan tâm sản phẩm, so sánh nhóm/kỳ và xuất CSV.
 
-## Chay local
+Các API nghiệp vụ yêu cầu JWT quyền ADMIN do `app-core` cấp. Hai dịch vụ cần dùng cùng `JWT_SECRET`. Health, OpenAPI và `POST /api/v1/feedbacks/public` (tiếp nhận góp ý từ khách) là endpoint công khai.
 
-1. Copy file env mau:
-   ```bash
-   cp .env.example .env
-   ```
-2. Mo `.env` va dien:
-   - `JWT_SECRET` -- copy chinh xac tu `.env` cua `app-core`.
-   - `SPRING_DATASOURCE_URL` / `USERNAME` / `PASSWORD` -- connection string Neon
-     (co the dung chung connection string voi `app-core`).
-3. Chay app:
-   ```bash
-   ./mvnw spring-boot:run
-   ```
-   Tren Windows:
-   ```bash
-   mvnw.cmd spring-boot:run
-   ```
+## Database setup
 
-## Vi du test bang curl
+Schema khởi tạo nằm ở [`../database/schema.sql`](../database/schema.sql). Với database hiện có, chạy [`../database/migrate_crm_backend.sql`](../database/migrate_crm_backend.sql) thủ công trước khi khởi động phiên bản backend mới. Migration thêm thời điểm/kết quả tương tác, bảng chủ đề feedback và bảng lịch sử phản hồi; không sửa dữ liệu đơn hàng của Core. Hibernate dùng `ddl-auto: none`, không tự thay đổi schema.
 
-Buoc 1 -- lay token tu app-core (dang nhap voi tai khoan co role ADMIN):
+CRM đọc các bảng do Core quản lý: `orders`, `order_items`, `coffees`, `categories`, `promotions` và `vouchers`. Chỉ số mua hàng và nhóm tự động chỉ tính đơn `COMPLETED`, `del_flag = false`.
+
+## Run locally
+
+Copy `.env.example` to `.env`, set the shared database credentials and the same `JWT_SECRET` as `app-core`, then run:
 
 ```bash
-curl -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "your-password"}'
+mvn spring-boot:run
 ```
 
-Buoc 2 -- goi thu endpoint ping cua app-crm bang token vua lay duoc:
+The application reads `PORT` (default `8080`), `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `JWT_SECRET`, and `CORS_ALLOWED_ORIGIN`.
 
-```bash
-curl http://localhost:8081/api/ping \
-  -H "Authorization: Bearer <access_token_tu_buoc_1>"
-```
+## API routes
 
-Response mau:
+Direct service paths use `/api/v1/...`. Through `nginx-gateway`, call the same paths under `/api/crm`, for example `/api/crm/v1/customers`; the gateway removes `/crm` before forwarding.
 
-```json
-{
-  "module": "app-crm",
-  "authenticatedAs": "admin",
-  "authorities": ["ROLE_ADMIN"]
-}
-```
+| Area | Routes |
+|---|---|
+| Customers | `GET/POST /api/v1/customers`, `PUT /{id}`, `GET /{id}/360`, `POST /{id}/merge` |
+| Addresses | `/api/v1/customers/{customerId}/addresses` |
+| Customer groups | `/api/v1/customer-groups` and `/{id}/members`, `/preview`, `/evaluate` |
+| Tương tác | `/api/v1/interactions`, `/reminders`, `/{id}`, `/{id}/close` |
+| Phản hồi | `POST /api/v1/feedbacks/public` (khách gửi góp ý không cần đăng nhập); API CRM yêu cầu JWT có quyền tương ứng như `crm.feedbacks`, `crm.customers`, `crm.interactions`, `crm.groups` hoặc `crm.insights`. Quyền ADMIN vẫn được cấp đầy đủ qua danh sách quyền trong JWT. |
+| Phân tích | `/api/v1/insights/top-customers` (`sortBy=spend|orders|average`), `/inactive-customers`, `/customer-value`, `/product-affinity`, `/sales-trends` (`period=week|month|quarter`), `/customer-growth`, `/feedback-summary`, `/repeated-complaints`, `/groups/{groupId}`, `/groups/compare`, `/customers/{id}/period-comparison` |
+| Export | `GET /api/v1/insights/top-customers/export` (CSV) |
 
-## Can lam tiep (what to build next)
+Customer 360 và API phân tích nhận `fromDate`/`toDate` tùy chọn theo định dạng `YYYY-MM-DD`, tính cả hai ngày. Chỉ số số đơn 30 ngày là cửa sổ lăn. Các tiêu đề nhóm chức năng và mô tả API trong Swagger được trình bày bằng tiếng Việt; URL, tên thuộc tính JSON, bảng và entity giữ nguyên để không phá tương thích với app khác.
 
-1. Thiet ke bang du lieu can cho CRM (vi du: bang `customers` luu thong tin
-   khach hang than thiet, lich su cham soc, ghi chu...). Tao bang nay **thu cong**
-   tren Neon qua DBeaver, theo dung quy trinh trong `SETUP_GUIDE.docx` cua team
-   (khong dung Hibernate ddl-auto, khong dung migration tool).
-2. Viet `@Entity` tuong ung (vi du `Customer.java`) trong package
-   `com.coffeeshop.crm.entity`, anh xa dung ten cot da tao tren Neon.
-3. Viet `Repository` (Spring Data JPA), `Service`, `Controller` theo dung pattern
-   da co san trong `app-core` (xem `app-core/src/main/java/com/coffeeshop/...`
-   de tham khao cach to chuc code, DTO request/response, exception handling...).
-4. Xoa `PingController` (chi la placeholder de xac nhan JWT hoat dong dung) khi
-   da co controller thuc te.
-5. Deploy len Render nhu mot Web Service rieng, voi Root Directory = `app-crm`.
+API `/{feedbackId}/responses` ghi nhận nội dung trả lời để khách có thể đọc trong cổng khách hàng. Cổng khách hàng gồm `GET /api/v1/customer-portal/feedbacks`, `GET /api/v1/customer-portal/interactions` và `POST /api/v1/customer-portal/feedbacks/{feedbackId}/responses/{responseId}/read`; yêu cầu JWT role `CUSTOMER` và tài khoản phải được liên kết với `customers`. Frontend gọi endpoint `/read` khi khách mở câu trả lời; backend lưu thời điểm đọc đầu tiên và trả `readAt` cho phía nhân viên. Nhân viên chỉ cho hiển thị tương tác phù hợp cho khách bằng `visibleToCustomer: true`.
+
+Với database đã cài migration CRM trước đó, chạy thêm `../database/migrate_crm_customer_portal.sql` trong DBeaver. Tài khoản khách phải có `users.customer_id` liên kết tới đúng hồ sơ trong `customers`.

@@ -4,30 +4,54 @@ spring:
   config:
     import: optional:file:../.env[.properties],optional:file:.env[.properties],optional:file:app-stats/.env[.properties]
   application:
-    name: app-stats
+    name: coffee-shop-be
+
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/coffeeshop}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
+
   jpa:
     hibernate:
+      # Schema is managed by hand directly on the shared Neon database via
+      # DBeaver (no Flyway/migration files) — Hibernate must never try to
+      # create/alter/validate tables here.
       ddl-auto: none
     open-in-view: false
     properties:
       hibernate:
+        format_sql: false
         jdbc:
           time_zone: UTC
+
+  servlet:
+    multipart:
+      max-file-size: 3MB
+      max-request-size: 4MB
+
   jackson:
     time-zone: UTC
     default-property-inclusion: non_null
+
 server:
   port: ${PORT:${SERVER_PORT:8082}}
+
 app:
   jwt:
     secret: ${JWT_SECRET:change-this-super-secret-key-in-production-please-0123456789}
+    expiration-ms: ${JWT_EXPIRATION_MS:86400000}
   cors:
     allowed-origin: ${CORS_ALLOWED_ORIGIN:http://localhost:5173}
+  shipping:
+    fee: ${SHIPPING_FEE:15000}
+  loyalty:
+    vnd-per-point: 10000
+  inventory:
+    expiry-warning-days: 7
+    # CoffeeStatusBackgroundService cycle: sets coffees SOLD_OUT / AVAILABLE from stock (5 minutes)
+    status-scan-ms: ${STATUS_SCAN_MS:300000}
+
 management:
   endpoints:
     web:
@@ -36,6 +60,14 @@ management:
   endpoint:
     health:
       show-details: never
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
 logging:
   level:
     root: INFO
+    com.coffeeshop: INFO

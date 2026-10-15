@@ -17,8 +17,8 @@ public class OpenApiConfig {
     public OpenAPI crmOpenAPI() {
         return new OpenAPI()
                 .info(new Info()
-                        .title("Coffee Shop - CRM API")
-                        .description("Customer care module. Trusts JWTs issued by app-core (POST /api/auth/login there) — paste that token below.")
+                        .title("Coffee Shop - CRM (Quản lý quan hệ khách hàng)")
+                        .description("API quản lý khách hàng, phân nhóm, tương tác, phản hồi và phân tích. Xác thực bằng JWT do app-core cấp qua POST /api/auth/login.")
                         .version("v1"))
                 .addSecurityItem(new SecurityRequirement().addList(SCHEME_NAME))
                 .components(new Components().addSecuritySchemes(SCHEME_NAME,
