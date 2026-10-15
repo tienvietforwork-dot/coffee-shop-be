@@ -2,6 +2,9 @@
 
 Cổng vào duy nhất cho frontend — gộp 4 backend độc lập (`app-core`, `app-crm`, `app-stats`, `app-promotions`) thành 1 địa chỉ. Frontend chỉ cần biết URL của gateway này, không cần biết 4 app kia nằm ở đâu.
 
+> Gateway này chỉ chạy trên Render. Khi chạy local, Vite dev server của `coffee-shop-fe` làm thay việc định tuyến
+> (`devGateway` trong `vite.config.ts`, xem [SETUP.md](../SETUP.md)). **Đổi/thêm quy tắc ở đây thì sửa luôn bên đó.**
+
 ## Quy tắc định tuyến
 
 | Đường dẫn frontend gọi | Chuyển tới |

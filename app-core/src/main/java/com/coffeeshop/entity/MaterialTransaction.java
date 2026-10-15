@@ -45,6 +45,10 @@ public class MaterialTransaction extends BaseEntity {
     /** Signed: positive = stock in, negative = stock out. */
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal quantity;
+    /** DISPOSAL / EXPORT: why it left */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 30)
+    private TransactionReason reason;
     @Column(length = 255)
     private String note;
 }

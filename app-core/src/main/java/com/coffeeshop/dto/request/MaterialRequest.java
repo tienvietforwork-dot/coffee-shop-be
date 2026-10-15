@@ -23,8 +23,13 @@ public record MaterialRequest(
         @DecimalMin("0.01") BigDecimal yieldQuantity,
         @Min(1) Integer shelfLifeMinutes,
         @Valid List<Component> components,
+        /** raw materials: how they are bought; replaces the current list */
+        @Valid List<Package> packages,
         /** how to make one standard batch */
         String instructions) {
+
+    public record Package(@NotBlank @Size(max = 50) String name, @NotNull @DecimalMin("0.01") BigDecimal size) {
+    }
 
     public record Component(@NotNull Long componentId, @NotNull @DecimalMin("0.01") BigDecimal quantity) {
     }

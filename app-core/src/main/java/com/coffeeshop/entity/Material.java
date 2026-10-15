@@ -59,6 +59,11 @@ public class Material extends BaseEntity {
     @Builder.Default
     @OneToMany(mappedBy = "material", cascade = CascadeType.ALL)
     private List<MaterialComponent> components = new ArrayList<>();
+    /** how it is bought (raw materials): "Hộp 1 L" = 1000 ml */
+    @Builder.Default
+    @OneToMany(mappedBy = "material", cascade = CascadeType.ALL)
+    @OrderBy("size")
+    private List<MaterialPackage> packages = new ArrayList<>();
 
     public boolean isLowStock() {
         return stockQuantity.compareTo(minStock) < 0;

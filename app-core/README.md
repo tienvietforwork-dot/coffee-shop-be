@@ -38,8 +38,8 @@ Hibernate để `ddl-auto: none`. Các file SQL ở [`../database`](../database)
 ## Chạy local
 
 ```bash
-cp .env.example .env   # điền SPRING_DATASOURCE_* của Neon, JWT_SECRET
-set -a && . ./.env && set +a && mvn spring-boot:run
+cp ../.env.example ../.env   # file .env chung ở gốc repo: Neon + JWT_SECRET
+./mvnw spring-boot:run   # Windows: mvnw.cmd spring-boot:run (tự đọc .env)
 ```
 
 Swagger UI: `http://localhost:8080/swagger-ui.html`. Test: `mvn test` (H2 in-memory).

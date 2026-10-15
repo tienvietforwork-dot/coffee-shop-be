@@ -2,7 +2,7 @@ package com.coffeeshop.service;
 
 import com.coffeeshop.dto.request.MaterialRequest;
 import com.coffeeshop.dto.request.StockAdjustRequest;
-import com.coffeeshop.dto.request.StockExportRequest;
+import com.coffeeshop.dto.request.StockOutRequest;
 import com.coffeeshop.dto.request.StockImportRequest;
 import com.coffeeshop.dto.response.BatchResponse;
 import com.coffeeshop.dto.response.InventoryAlertsResponse;
@@ -13,6 +13,7 @@ import com.coffeeshop.entity.enums.BatchStatus;
 import com.coffeeshop.entity.enums.MaterialKind;
 import com.coffeeshop.entity.enums.MaterialStatus;
 import com.coffeeshop.entity.enums.MaterialTransactionType;
+import com.coffeeshop.entity.enums.TransactionReason;
 import com.coffeeshop.exception.BadRequestException;
 import com.coffeeshop.exception.ResourceNotFoundException;
 import com.coffeeshop.repository.*;
@@ -70,6 +71,7 @@ public class InventoryService {
         for (Object[] row : batchRepository.findNextExpiryDates()) nextExpiry.put((Long) row[0], (LocalDate) row[1]);
         return materialRepository.findAllByOrderByNameAsc().stream().map(m -> {
             Hibernate.initialize(m.getComponents());
+            Hibernate.initialize(m.getPackages());
             LocalDate next = nextExpiry.get(m.getId());
             return MaterialResponse.from(m, usedIn.getOrDefault(m.getId(), List.of()), next, next != null && inWarningWindow(m, next));
         }).toList();
@@ -150,30 +152,64 @@ public class InventoryService {
         if (request.expiryDate() != null && request.expiryDate().isBefore(LocalDate.now())) {
             throw new BadRequestException("Hạn sử dụng đã qua");
         }
+        MaterialPackage pkg = null;
+        BigDecimal quantity = request.quantity();
+        if (request.packageId() != null) {
+            pkg = material.getPackages().stream().filter(p -> p.getId().equals(request.packageId())).findFirst()
+                    .orElseThrow(() -> new BadRequestException("Quy cách không thuộc nguyên liệu '" + material.getName() + "'"));
+            if (request.packageCount() == null) throw new BadRequestException("Nhập số " + pkg.getName());
+            quantity = pkg.getSize().multiply(request.packageCount()).setScale(2, java.math.RoundingMode.HALF_UP);
+        }
+        if (quantity == null) throw new BadRequestException("Nhập số lượng");
         MaterialBatch batch = batchRepository.save(MaterialBatch.builder()
                 .material(material)
-                .importQuantity(request.quantity())
-                .remainingQuantity(request.quantity())
+                .importQuantity(quantity)
+                .remainingQuantity(quantity)
                 .unitCost(request.unitCost())
                 .expiryDate(request.expiryDate())
+                .packageName(pkg == null ? null : pkg.getName())
+                .packageSize(pkg == null ? null : pkg.getSize())
+                .packageCount(pkg == null ? null : request.packageCount())
                 .build());
-        material.setStockQuantity(material.getStockQuantity().add(request.quantity()));
+        material.setStockQuantity(material.getStockQuantity().add(quantity));
         if (material.getStatus() == MaterialStatus.INACTIVE) material.setStatus(MaterialStatus.ACTIVE);
-        record(batch, MaterialTransactionType.IMPORT, request.quantity(), staffService.current(), null,
+        record(batch, MaterialTransactionType.IMPORT, quantity, staffService.current(), null,
                 request.note());
         coffeeStatusBackgroundService.requestRun();
         return BatchResponse.from(batch);
     }
 
-    /** Phiếu xuất: takes stock out FEFO. */
+    /** Phiếu hủy: write off part or all of one lot (hết hạn, hỏng, đổ vỡ, pha hỏng). */
     @Transactional
-    public List<MaterialTransactionResponse> exportStock(StockExportRequest request) {
-        Material material = get(request.materialId());
-        var result = consume(material, request.quantity(), MaterialTransactionType.EXPORT,
-                staffService.current(), null, request.note()).stream()
-                .map(MaterialTransactionResponse::from).toList();
+    public MaterialTransactionResponse dispose(StockOutRequest request) {
+        if (!request.reason().isDisposal()) throw new BadRequestException("Lý do không dùng cho phiếu hủy");
+        return takeOut(request, MaterialTransactionType.DISPOSAL);
+    }
+
+    /** Xuất khác: stock leaving for something other than sales or production (trả nhà cung cấp, dùng nội bộ). */
+    @Transactional
+    public MaterialTransactionResponse exportOther(StockOutRequest request) {
+        if (request.reason().isDisposal()) throw new BadRequestException("Hàng hỏng / hết hạn dùng phiếu hủy");
+        return takeOut(request, MaterialTransactionType.EXPORT);
+    }
+
+    private MaterialTransactionResponse takeOut(StockOutRequest request, MaterialTransactionType type) {
+        MaterialBatch batch = batchRepository.findById(request.batchId())
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lô: " + request.batchId()));
+        if (batch.getStatus() != BatchStatus.AVAILABLE || batch.getRemainingQuantity().compareTo(request.quantity()) < 0) {
+            throw new BadRequestException("Lô #" + batch.getId() + " chỉ còn "
+                    + batch.getRemainingQuantity().stripTrailingZeros().toPlainString() + " " + batch.getMaterial().getUnit());
+        }
+        batch.setRemainingQuantity(batch.getRemainingQuantity().subtract(request.quantity()));
+        if (batch.getRemainingQuantity().signum() == 0) batch.setStatus(BatchStatus.DEPLETED);
+        Material material = batch.getMaterial();
+        material.setStockQuantity(material.getStockQuantity().subtract(request.quantity()));
+        checkLowStock(material);
+        var tx = transactionRepository.save(MaterialTransaction.builder().batch(batch).type(type)
+                .quantity(request.quantity().negate()).reason(request.reason()).staff(staffService.current())
+                .note(request.note()).build());
         coffeeStatusBackgroundService.requestRun();
-        return result;
+        return MaterialTransactionResponse.from(tx);
     }
 
     /** Kiểm kê: set the counted quantity of one batch. */
@@ -232,7 +268,8 @@ public class InventoryService {
             batch.setStatus(BatchStatus.EXPIRED);
             Material material = batch.getMaterial();
             material.setStockQuantity(material.getStockQuantity().subtract(remaining));
-            record(batch, MaterialTransactionType.ADJUSTMENT, remaining.negate(), null, null, "Hủy lô hết hạn");
+            transactionRepository.save(MaterialTransaction.builder().batch(batch).type(MaterialTransactionType.DISPOSAL)
+                    .reason(TransactionReason.EXPIRED).quantity(remaining.negate()).note("Tự hủy lô hết hạn").build());
             checkLowStock(material);
         }
         if (!expired.isEmpty()) coffeeStatusBackgroundService.requestRun();
@@ -298,6 +335,7 @@ public class InventoryService {
     /** Response including the prepared-material formula (loaded here, inside the transaction). */
     private MaterialResponse withFormula(Material material) {
         Hibernate.initialize(material.getComponents());
+        Hibernate.initialize(material.getPackages());
         return MaterialResponse.from(material);
     }
 
@@ -323,6 +361,17 @@ public class InventoryService {
         material.getComponents().forEach(MaterialComponent::softDelete);
         material.getComponents().clear();
         materialRepository.flush();
+        // replace the packaging list the same way (raw materials only)
+        material.getPackages().forEach(MaterialPackage::softDelete);
+        material.getPackages().clear();
+        materialRepository.flush();
+        if (material.getKind() == MaterialKind.RAW && request.packages() != null) {
+            Set<String> names = new HashSet<>();
+            for (MaterialRequest.Package p : request.packages()) {
+                if (!names.add(p.name().trim().toLowerCase())) throw new BadRequestException("Quy cách bị lặp: " + p.name());
+                material.getPackages().add(MaterialPackage.builder().material(material).name(p.name().trim()).size(p.size()).build());
+            }
+        }
         if (material.getKind() == MaterialKind.RAW) {
             material.setYieldQuantity(null);
             material.setShelfLifeMinutes(null);
