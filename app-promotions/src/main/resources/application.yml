@@ -36,6 +36,18 @@ management:
   endpoint:
     health:
       show-details: never
+springdoc:
+  default-produces-media-type: application/json   # application/json instead of */*
+  default-consumes-media-type: application/json
+  swagger-ui:
+    doc-expansion: none                # controllers start collapsed
+    default-models-expand-depth: -1    # hide the Schemas section at the bottom
+    try-it-out-enabled: true           # no extra "Try it out" click
+    persist-authorization: true        # keep the Bearer token across reloads
+    tags-sorter: alpha
+    operations-sorter: method
+    filter: true                       # search box to filter by tag
+    display-request-duration: true
 logging:
   level:
     root: INFO
