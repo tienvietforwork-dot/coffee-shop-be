@@ -5,3 +5,7 @@
 .env
 .env.local
 logs/
+
+# IDE settings are per machine (JDK names, paths) - never commit them
+.idea/
+*.iml
