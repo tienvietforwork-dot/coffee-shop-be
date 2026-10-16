@@ -12,9 +12,9 @@
     </parent>
 
     <groupId>com.coffeeshop</groupId>
-    <artifactId>coffee-shop-be</artifactId>
+    <artifactId>app-core</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>coffee-shop-be</name>
+    <name>app-core</name>
     <description>Coffee Shop Management System - Backend (DATN project)</description>
     <packaging>jar</packaging>
 
