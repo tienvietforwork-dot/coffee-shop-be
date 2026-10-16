@@ -53,7 +53,7 @@ run-all.cmd core,crm         # chỉ chạy vài app  (Mac/Linux: ./run-all.sh c
 ```
 
 Hoặc chạy lẻ: `cd app-crm` rồi `mvnw.cmd spring-boot:run` (Mac/Linux `./mvnw spring-boot:run`),
-hoặc trong IntelliJ mở thư mục `coffee-shop-be` và Run class `*Application` của app đó.
+hoặc trong IntelliJ mở thư mục `coffee-shop-be` (đủ cả 4 app nhờ `pom.xml` ở gốc; nếu chỉ thấy 1–2 app thì Maven → Reload All) và Run class `*Application` của app đó.
 Log phải có `Tomcat started on port 8080` (hoặc 8081/8082/8083).
 
 ## 5. Chạy frontend
