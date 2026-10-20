@@ -3,7 +3,6 @@ package com.coffeeshop.service;
 import com.coffeeshop.dto.request.MaterialRequest;
 import com.coffeeshop.dto.request.StockAdjustRequest;
 import com.coffeeshop.dto.request.StockOutRequest;
-import com.coffeeshop.dto.request.StockImportRequest;
 import com.coffeeshop.dto.response.BatchResponse;
 import com.coffeeshop.dto.response.InventoryAlertsResponse;
 import com.coffeeshop.dto.response.MaterialResponse;
@@ -142,41 +141,50 @@ public class InventoryService {
                 expiringLots().stream().map(BatchResponse::from).toList());
     }
 
-    /** Phiếu nhập: creates a new batch. */
-    @Transactional
-    public BatchResponse importStock(StockImportRequest request) {
-        Material material = get(request.materialId());
+    /** Packaging of a purchased material, checked to belong to it (null: loose). */
+    MaterialPackage packageOf(Material material, Long packageId) {
+        if (packageId == null) return null;
+        return material.getPackages().stream().filter(p -> p.getId().equals(packageId)).findFirst()
+                .orElseThrow(() -> new BadRequestException("Quy cách không thuộc nguyên liệu '" + material.getName() + "'"));
+    }
+
+    /** A material that can be bought (not a prepared one, which is made with Chế biến). */
+    Material purchasable(Long materialId) {
+        Material material = get(materialId);
         if (material.getKind() == MaterialKind.PREPARED) {
             throw new BadRequestException("'" + material.getName() + "' là nguyên liệu chế biến / đang sử dụng — tạo bằng chức năng Chế biến, không nhập mua");
         }
-        if (request.expiryDate() != null && request.expiryDate().isBefore(LocalDate.now())) {
-            throw new BadRequestException("Hạn sử dụng đã qua");
+        return material;
+    }
+
+    /**
+     * One line of a phiếu nhập: a new lot of {@code quantity} (in the material's unit), packaging copied as given.
+     * The caller has checked the material is purchasable.
+     */
+    MaterialBatch receiveLot(Material material, BigDecimal quantity, String packageName, BigDecimal packageSize,
+                             BigDecimal packageCount, BigDecimal unitCost, LocalDate expiryDate, GoodsReceipt receipt,
+                             PurchaseOrderItem orderItem, Staff staff, String note) {
+        if (expiryDate != null && expiryDate.isBefore(LocalDate.now())) {
+            throw new BadRequestException("Hạn sử dụng của '" + material.getName() + "' đã qua");
         }
-        MaterialPackage pkg = null;
-        BigDecimal quantity = request.quantity();
-        if (request.packageId() != null) {
-            pkg = material.getPackages().stream().filter(p -> p.getId().equals(request.packageId())).findFirst()
-                    .orElseThrow(() -> new BadRequestException("Quy cách không thuộc nguyên liệu '" + material.getName() + "'"));
-            if (request.packageCount() == null) throw new BadRequestException("Nhập số " + pkg.getName());
-            quantity = pkg.getSize().multiply(request.packageCount()).setScale(2, java.math.RoundingMode.HALF_UP);
-        }
-        if (quantity == null) throw new BadRequestException("Nhập số lượng");
         MaterialBatch batch = batchRepository.save(MaterialBatch.builder()
                 .material(material)
                 .importQuantity(quantity)
                 .remainingQuantity(quantity)
-                .unitCost(request.unitCost())
-                .expiryDate(request.expiryDate())
-                .packageName(pkg == null ? null : pkg.getName())
-                .packageSize(pkg == null ? null : pkg.getSize())
-                .packageCount(pkg == null ? null : request.packageCount())
+                .unitCost(unitCost)
+                .expiryDate(expiryDate)
+                .packageName(packageName)
+                .packageSize(packageSize)
+                .packageCount(packageCount)
+                .goodsReceipt(receipt)
+                .purchaseOrderItem(orderItem)
                 .build());
+        receipt.getBatches().add(batch);
         material.setStockQuantity(material.getStockQuantity().add(quantity));
         if (material.getStatus() == MaterialStatus.INACTIVE) material.setStatus(MaterialStatus.ACTIVE);
-        record(batch, MaterialTransactionType.IMPORT, quantity, staffService.current(), null,
-                request.note());
+        record(batch, MaterialTransactionType.IMPORT, quantity, staff, null, note);
         coffeeStatusBackgroundService.requestRun();
-        return BatchResponse.from(batch);
+        return batch;
     }
 
     /** Phiếu hủy: write off part or all of one lot (hết hạn, hỏng, đổ vỡ, pha hỏng). */

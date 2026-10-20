@@ -53,4 +53,12 @@ public class MaterialBatch extends BaseEntity {
     private BigDecimal packageSize;
     @Column(name = "package_count", precision = 12, scale = 2)
     private BigDecimal packageCount;
+    /** phiếu nhập that brought the lot in (null: prepared-material lot, or stock from before receipts existed) */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "goods_receipt_id")
+    private GoodsReceipt goodsReceipt;
+    /** purchase order line this lot was received against */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "purchase_order_item_id")
+    private PurchaseOrderItem purchaseOrderItem;
 }

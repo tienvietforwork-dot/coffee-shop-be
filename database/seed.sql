@@ -31,6 +31,8 @@ INSERT INTO permissions (code, name, path, module, description, sort_order) VALU
  ('materials.edit',       'Sửa nguyên liệu & kiểm kê',     NULL,                          'core',       'Tạo/sửa nguyên liệu, mức tồn tối thiểu, kiểm kê', 71),
  ('stock',                'Nhập / xuất kho',               '/admin/stock',                'core',       NULL, 72),
  ('stock-history',        'Lịch sử kho',                   '/admin/stock-history',        'core',       NULL, 73),
+ ('suppliers',            'Nhà cung cấp',                  '/admin/suppliers',            'core',       'Nhà cung cấp, nguyên liệu họ bán, giá tham khảo', 74),
+ ('purchase-orders',      'Phiếu đặt hàng',                '/admin/purchase-orders',      'core',       'Lập, gửi, hủy, đóng phiếu đặt hàng nhà cung cấp', 75),
  ('tables',               'Bàn & mã QR',                   '/admin/tables',               'core',       NULL, 80),
  ('tables.edit',          'Sửa bàn & tạo lại QR',          NULL,                          'core',       NULL, 81),
  ('crm.customers',        'Hồ sơ khách hàng',              '/admin/crm/customers',        'crm',        NULL, 100),
@@ -201,6 +203,22 @@ SELECT b.id, (SELECT id FROM staff WHERE phone = '0901000001'),
        CASE m.kind WHEN 'PREPARED' THEN 'PRODUCE' ELSE 'IMPORT' END, b.import_quantity,
        CASE m.kind WHEN 'PREPARED' THEN 'Tồn đầu kỳ (đã chế biến sẵn)' ELSE 'Nhập kho ban đầu' END
 FROM material_batches b JOIN materials m ON m.id = b.material_id;
+
+-- Nhà cung cấp và nguyên liệu họ bán (giá tham khảo: đ / đơn vị gốc)
+INSERT INTO suppliers (name, contact_name, phone, email, address) VALUES
+ ('Cà phê Cầu Đất Farm', 'Anh Hùng', '0912000001', 'sales@caudatfarm.vn', 'Cầu Đất, Đà Lạt, Lâm Đồng'),
+ ('Sữa & nguyên liệu pha chế Minh Phát', 'Chị Lan', '0912000002', 'minhphat@gmail.com', 'Q.Tân Bình, TP.HCM'),
+ ('Chợ đầu mối Bình Điền', 'Chú Tư', '0912000003', NULL, 'Q.8, TP.HCM');
+
+INSERT INTO supplier_materials (supplier_id, material_id, unit_price)
+SELECT s.id, m.id, v.p FROM (VALUES
+ ('Cà phê Cầu Đất Farm', 'Cà phê Robusta rang xay', 0.25), ('Cà phê Cầu Đất Farm', 'Hạt Arabica', 0.45),
+ ('Sữa & nguyên liệu pha chế Minh Phát', 'Sữa đặc', 0.06), ('Sữa & nguyên liệu pha chế Minh Phát', 'Sữa tươi', 0.035),
+ ('Sữa & nguyên liệu pha chế Minh Phát', 'Whipping cream', 0.12), ('Sữa & nguyên liệu pha chế Minh Phát', 'Cốt dừa', 0.09),
+ ('Sữa & nguyên liệu pha chế Minh Phát', 'Đường', 0.025),
+ ('Chợ đầu mối Bình Điền', 'Trứng gà', 3500), ('Chợ đầu mối Bình Điền', 'Cam vàng', 9000), ('Chợ đầu mối Bình Điền', 'Sả cây', 0.04),
+ ('Chợ đầu mối Bình Điền', 'Muối', 0.01), ('Chợ đầu mối Bình Điền', 'Đá viên', 0.002)
+) AS v(sup, mat, p) JOIN suppliers s ON s.name = v.sup JOIN materials m ON m.name = v.mat;
 
 INSERT INTO recipes (coffee_id, brew_method, version, brew_time_min, description, is_active)
 SELECT c.id, v.bm, 1, v.t, v.d, TRUE FROM (VALUES

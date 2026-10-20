@@ -11,7 +11,7 @@
 --     Xóa = xóa mềm (del_flag = TRUE, del_user = người xóa). Ràng buộc UNIQUE là unique index
 --     có điều kiện "WHERE NOT del_flag" để tạo lại được bản ghi đã xóa.
 --   * Bảng liên kết dùng khóa chính id + unique index (vì xóa mềm không xóa được dòng khỏi khóa ghép).
--- 32 bảng. Chạy trong 1 transaction.
+-- 44 bảng. Chạy trong 1 transaction.
 -- =====================================================================
 
 BEGIN;
@@ -301,6 +301,112 @@ CREATE TABLE recipe_steps (
 );
 CREATE UNIQUE INDEX uq_recipe_steps ON recipe_steps (recipe_id, step_no) WHERE NOT del_flag;
 
+-- ---------------------------------------------------------------------
+-- Nhà cung cấp, phiếu đặt hàng nhà cung cấp, phiếu nhập kho
+-- Phiếu đặt: DRAFT (nháp) → ORDERED (đã đặt) → PARTIALLY_RECEIVED (nhận một phần) → COMPLETED (hoàn tất) / CANCELLED
+-- Mỗi lần nhận hàng = 1 goods_receipts; mỗi dòng nhận về = 1 material_batches. Nhập lẻ: purchase_order_id NULL.
+-- ---------------------------------------------------------------------
+CREATE TABLE suppliers (
+    id           BIGSERIAL PRIMARY KEY,
+    name         VARCHAR(100) NOT NULL,
+    contact_name VARCHAR(100),
+    phone        VARCHAR(15),
+    email        VARCHAR(100),
+    address      VARCHAR(255),
+    tax_code     VARCHAR(20),
+    note         VARCHAR(255),
+    -- INACTIVE = ngừng hợp tác (phiếu cũ vẫn tham chiếu nên không xóa)
+    status       VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX uq_suppliers_name ON suppliers (lower(name)) WHERE NOT del_flag;
+
+-- Nguyên liệu nhà cung cấp bán: quy cách hay đặt + giá tham khảo (đ / đơn vị gốc, như material_batches.unit_cost)
+CREATE TABLE supplier_materials (
+    id          BIGSERIAL PRIMARY KEY,
+    supplier_id BIGINT        NOT NULL REFERENCES suppliers (id),
+    material_id BIGINT        NOT NULL REFERENCES materials (id),
+    package_id  BIGINT        REFERENCES material_packages (id),
+    unit_price  NUMERIC(12,2) CHECK (unit_price >= 0),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX uq_supplier_materials ON supplier_materials (supplier_id, material_id) WHERE NOT del_flag;
+CREATE INDEX idx_supplier_materials_material ON supplier_materials (material_id);
+
+CREATE TABLE purchase_orders (
+    id            BIGSERIAL PRIMARY KEY,
+    code          VARCHAR(20)  NOT NULL,
+    supplier_id   BIGINT       NOT NULL REFERENCES suppliers (id),
+    staff_id      BIGINT       REFERENCES staff (id),           -- người lập phiếu
+    status        VARCHAR(20)  NOT NULL DEFAULT 'DRAFT'
+                  CHECK (status IN ('DRAFT', 'ORDERED', 'PARTIALLY_RECEIVED', 'COMPLETED', 'CANCELLED')),
+    expected_date DATE,                                         -- ngày hẹn giao
+    ordered_at    TIMESTAMP,                                    -- lúc gửi nhà cung cấp
+    completed_at  TIMESTAMP,                                    -- nhận đủ / đóng phiếu / hủy
+    note          VARCHAR(255),
+    close_reason  VARCHAR(255),                                 -- đóng khi chưa nhận đủ, hoặc lý do hủy
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX uq_purchase_orders_code ON purchase_orders (code) WHERE NOT del_flag;
+CREATE INDEX idx_purchase_orders_supplier ON purchase_orders (supplier_id);
+CREATE INDEX idx_purchase_orders_status ON purchase_orders (status);
+
+-- Dòng phiếu đặt. quantity / received_quantity theo đơn vị gốc của nguyên liệu; quy cách chụp lại lúc đặt.
+CREATE TABLE purchase_order_items (
+    id                BIGSERIAL PRIMARY KEY,
+    purchase_order_id BIGINT        NOT NULL REFERENCES purchase_orders (id),
+    material_id       BIGINT        NOT NULL REFERENCES materials (id),
+    package_name      VARCHAR(50),
+    package_size      NUMERIC(12,2) CHECK (package_size > 0),
+    package_count     NUMERIC(12,2) CHECK (package_count > 0),
+    quantity          NUMERIC(12,2) NOT NULL CHECK (quantity > 0),
+    received_quantity NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (received_quantity >= 0),
+    unit_price        NUMERIC(12,2) CHECK (unit_price >= 0),   -- đ / đơn vị gốc
+    note              VARCHAR(255),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE INDEX idx_purchase_order_items_order ON purchase_order_items (purchase_order_id);
+CREATE INDEX idx_purchase_order_items_material ON purchase_order_items (material_id);
+
+-- Phiếu nhập kho: 1 lần nhận hàng (theo phiếu đặt, hoặc nhập lẻ khi purchase_order_id NULL). Không sửa / xóa.
+CREATE TABLE goods_receipts (
+    id                BIGSERIAL PRIMARY KEY,
+    code              VARCHAR(20)  NOT NULL,
+    supplier_id       BIGINT       NOT NULL REFERENCES suppliers (id),
+    purchase_order_id BIGINT       REFERENCES purchase_orders (id),
+    staff_id          BIGINT       REFERENCES staff (id),
+    note              VARCHAR(255),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX uq_goods_receipts_code ON goods_receipts (code) WHERE NOT del_flag;
+CREATE INDEX idx_goods_receipts_supplier ON goods_receipts (supplier_id);
+CREATE INDEX idx_goods_receipts_order ON goods_receipts (purchase_order_id);
+
 CREATE TABLE material_batches (
     id                 BIGSERIAL PRIMARY KEY,
     material_id        BIGINT        NOT NULL REFERENCES materials (id),
@@ -324,6 +430,8 @@ CREATE TABLE material_batches (
     CHECK (remaining_quantity <= import_quantity)
 );
 CREATE INDEX idx_material_batches_material ON material_batches (material_id);
+CREATE INDEX idx_material_batches_receipt ON material_batches (goods_receipt_id);
+CREATE INDEX idx_material_batches_po_item ON material_batches (purchase_order_item_id);
 
 -- ---------------------------------------------------------------------
 -- Khách hàng (CRM)

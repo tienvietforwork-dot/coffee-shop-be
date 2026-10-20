@@ -25,6 +25,8 @@ public final class Perm {
     public static final String MATERIALS_EDIT = "materials.edit";
     public static final String STOCK = "stock";
     public static final String STOCK_HISTORY = "stock-history";
+    public static final String SUPPLIERS = "suppliers";
+    public static final String PURCHASE_ORDERS = "purchase-orders";
     public static final String TABLES = "tables";
     public static final String TABLES_EDIT = "tables.edit";
     public static final String CRM_CUSTOMERS = "crm.customers";
@@ -45,6 +47,14 @@ public final class Perm {
     public static final String CAN_STOCK = "hasAuthority('stock')";
     public static final String CAN_STOCK_HISTORY = "hasAnyAuthority('stock-history','materials')";
     public static final String CAN_INVENTORY_ALERTS = "hasAnyAuthority('dashboard','materials','stock')";
+    /** Suppliers are picked on purchase orders and on loose imports (Nhập / xuất kho). */
+    public static final String CAN_READ_SUPPLIERS = "hasAnyAuthority('suppliers','purchase-orders','stock')";
+    public static final String CAN_SUPPLIERS = "hasAuthority('suppliers')";
+    /** Staff with Nhập / xuất kho see the orders waiting for goods and receive them. */
+    public static final String CAN_READ_PURCHASE_ORDERS = "hasAnyAuthority('purchase-orders','stock')";
+    public static final String CAN_PURCHASE_ORDERS = "hasAuthority('purchase-orders')";
+    public static final String CAN_RECEIVE_GOODS = "hasAnyAuthority('purchase-orders','stock')";
+    public static final String CAN_READ_RECEIPTS = "hasAnyAuthority('purchase-orders','stock','stock-history')";
     public static final String CAN_READ_TABLES = "hasAnyAuthority('tables','pos')";
     public static final String CAN_TABLES_EDIT = "hasAuthority('tables.edit')";
     public static final String CAN_ORDERS = "hasAuthority('orders')";

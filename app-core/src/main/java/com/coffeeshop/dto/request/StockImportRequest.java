@@ -7,10 +7,11 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 /**
- * Phiếu nhập: either {@code packageId} + {@code packageCount} (10 × "Hộp 500 ml" = 5000 ml)
- * or a loose {@code quantity} in the material's unit.
+ * Nhập lẻ (không theo phiếu đặt): either {@code packageId} + {@code packageCount} (10 × "Hộp 500 ml" = 5000 ml)
+ * or a loose {@code quantity} in the material's unit. The supplier is required.
  */
 public record StockImportRequest(
+        @NotNull Long supplierId,
         @NotNull Long materialId,
         Long packageId,
         @DecimalMin("0.01") BigDecimal packageCount,
