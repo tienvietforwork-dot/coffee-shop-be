@@ -31,6 +31,20 @@ INSERT INTO permissions (code, name, path, module, description, sort_order) VALU
  ('materials.edit',       'Sửa nguyên liệu & kiểm kê',     NULL,                          'core',       'Tạo/sửa nguyên liệu, mức tồn tối thiểu, kiểm kê', 71),
  ('stock',                'Nhập / xuất kho',               '/admin/stock',                'core',       NULL, 72),
  ('stock-history',        'Lịch sử kho',                   '/admin/stock-history',        'core',       NULL, 73),
+ ('suppliers',            'Nhà cung cấp',                  '/admin/suppliers',            'core',       'Nhà cung cấp, nguyên liệu họ bán, giá tham khảo', 74),
+ ('purchase-orders',      'Phiếu đặt hàng',                '/admin/purchase-orders',      'core',       'Lập, gửi, hủy, đóng phiếu đặt hàng nhà cung cấp; hủy phiếu nhập', 75),
+ ('supplier-returns',     'Trả hàng nhập',                 '/admin/supplier-returns',     'core',       'Phiếu trả hàng nhà cung cấp', 76),
+ ('supplier-debts',       'Công nợ nhà cung cấp',          '/admin/supplier-debts',       'core',       'Công nợ phải trả, sổ chi tiết, phiếu chi', 77),
+ ('stocktakes',           'Kiểm kê kho',                   '/admin/stocktakes',           'core',       'Phiếu kiểm kê, cân bằng kho', 78),
+ ('inventory-report',     'Báo cáo xuất nhập tồn',         '/admin/inventory-report',     'core',       'Báo cáo xuất – nhập – tồn, chốt tồn theo ngày', 79),
+ ('coffee-costs',         'Giá vốn món',                   '/admin/coffee-costs',         'core',       'Giá vốn theo định lượng, tỷ lệ food cost', 69),
+ ('cash-shifts',          'Ca thu ngân',                   '/admin/cash-shifts',          'core',       'Mở / chốt ca, thu chi trong ca, bàn giao ca', 22),
+ ('invoices',             'Hóa đơn điện tử',               '/admin/invoices',             'core',       'Hóa đơn từ máy tính tiền: tra cứu, thay thế, gửi lại', 23),
+ ('payment-reconciliation','Đối soát thanh toán',          '/admin/payment-reconciliation','core',      'Giao dịch VNPAY, truy vấn lại, đánh dấu đã đối soát', 94),
+ ('delivery-zones',       'Khu vực giao hàng',             '/admin/delivery-zones',       'core',       'Quận giao được, phí ship, miễn phí từ, đơn tối thiểu', 33),
+ ('work-shifts',          'Phân ca & chấm công',           '/admin/work-shifts',          'core',       'Ca mẫu, xếp ca, sửa chấm công, bảng chấm công', 92),
+ ('notifications',        'Tin nhắn khách hàng',           '/admin/notifications',        'core',       'Mẫu tin ZNS / SMS theo đơn, nhật ký gửi', 95),
+ ('audit-logs',           'Nhật ký thao tác',              '/admin/audit-logs',           'core',       'Ai làm gì, lúc nào (chỉ xem)', 96),
  ('tables',               'Bàn & mã QR',                   '/admin/tables',               'core',       NULL, 80),
  ('tables.edit',          'Sửa bàn & tạo lại QR',          NULL,                          'core',       NULL, 81),
  ('crm.customers',        'Hồ sơ khách hàng',              '/admin/crm/customers',        'crm',        NULL, 100),
@@ -55,7 +69,8 @@ SELECT r.id, p.id FROM roles r, permissions p WHERE r.code = 'ADMIN' AND p.modul
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN (
     'dashboard', 'orders', 'pos', 'shipments', 'incidents', 'menu', 'categories', 'materials', 'stock',
-    'stock-history', 'tables', 'crm.customers', 'crm.interactions', 'crm.feedbacks')
+    'stock-history', 'tables', 'crm.customers', 'crm.interactions', 'crm.feedbacks',
+    'cash-shifts', 'stocktakes', 'invoices')
 WHERE r.code = 'STAFF';
 
 -- Khách hàng
@@ -179,10 +194,10 @@ JOIN materials m ON m.name = v.mat JOIN materials k ON k.name = v.comp;
 -- Lô đầu kỳ: nguyên liệu thô nhập mua; bán thành phẩm là tồn đầu kỳ đã chế biến sẵn (hạn dùng theo shelf_life_minutes)
 INSERT INTO material_batches (material_id, import_quantity, remaining_quantity, unit_cost, expiry_date)
 SELECT m.id, v.q, v.q, v.c, CURRENT_DATE + v.d FROM (VALUES
- ('Cà phê Robusta rang xay', 8000, 0.25, 60), ('Hạt Arabica', 5000, 0.45, 90), ('Sữa đặc', 6000, 0.06, 120),
- ('Sữa tươi', 8000, 0.035, 5), ('Đường', 5000, 0.025, 365), ('Trứng gà', 60, 3500, 10),
- ('Cốt dừa', 800, 0.09, 30), ('Cam vàng', 30, 9000, 7), ('Đá viên', 30000, 0.002, 2),
- ('Sả cây', 3000, 0.04, 7), ('Whipping cream', 4000, 0.12, 30), ('Muối', 1000, 0.01, 365)
+ ('Cà phê Robusta rang xay', 8000, 250, 60), ('Hạt Arabica', 5000, 450, 90), ('Sữa đặc', 6000, 60, 120),
+ ('Sữa tươi', 8000, 35, 5), ('Đường', 5000, 25, 365), ('Trứng gà', 60, 3500, 10),
+ ('Cốt dừa', 800, 90, 30), ('Cam vàng', 30, 9000, 7), ('Đá viên', 30000, 2, 2),
+ ('Sả cây', 3000, 40, 7), ('Whipping cream', 4000, 120, 30), ('Muối', 1000, 10, 365)
 ) AS v(name, q, c, d) JOIN materials m ON m.name = v.name;
 
 INSERT INTO material_batches (material_id, import_quantity, remaining_quantity, expiry_date, expires_at, ready_at)
@@ -201,6 +216,22 @@ SELECT b.id, (SELECT id FROM staff WHERE phone = '0901000001'),
        CASE m.kind WHEN 'PREPARED' THEN 'PRODUCE' ELSE 'IMPORT' END, b.import_quantity,
        CASE m.kind WHEN 'PREPARED' THEN 'Tồn đầu kỳ (đã chế biến sẵn)' ELSE 'Nhập kho ban đầu' END
 FROM material_batches b JOIN materials m ON m.id = b.material_id;
+
+-- Nhà cung cấp và nguyên liệu họ bán (giá tham khảo: đ / đơn vị gốc)
+INSERT INTO suppliers (name, contact_name, phone, email, address) VALUES
+ ('Cà phê Cầu Đất Farm', 'Anh Hùng', '0912000001', 'sales@caudatfarm.vn', 'Cầu Đất, Đà Lạt, Lâm Đồng'),
+ ('Sữa & nguyên liệu pha chế Minh Phát', 'Chị Lan', '0912000002', 'minhphat@gmail.com', 'Q.Tân Bình, TP.HCM'),
+ ('Chợ đầu mối Bình Điền', 'Chú Tư', '0912000003', NULL, 'Q.8, TP.HCM');
+
+INSERT INTO supplier_materials (supplier_id, material_id, unit_price)
+SELECT s.id, m.id, v.p FROM (VALUES
+ ('Cà phê Cầu Đất Farm', 'Cà phê Robusta rang xay', 250), ('Cà phê Cầu Đất Farm', 'Hạt Arabica', 450),
+ ('Sữa & nguyên liệu pha chế Minh Phát', 'Sữa đặc', 60), ('Sữa & nguyên liệu pha chế Minh Phát', 'Sữa tươi', 35),
+ ('Sữa & nguyên liệu pha chế Minh Phát', 'Whipping cream', 120), ('Sữa & nguyên liệu pha chế Minh Phát', 'Cốt dừa', 90),
+ ('Sữa & nguyên liệu pha chế Minh Phát', 'Đường', 25),
+ ('Chợ đầu mối Bình Điền', 'Trứng gà', 3500), ('Chợ đầu mối Bình Điền', 'Cam vàng', 9000), ('Chợ đầu mối Bình Điền', 'Sả cây', 40),
+ ('Chợ đầu mối Bình Điền', 'Muối', 10), ('Chợ đầu mối Bình Điền', 'Đá viên', 2)
+) AS v(sup, mat, p) JOIN suppliers s ON s.name = v.sup JOIN materials m ON m.name = v.mat;
 
 INSERT INTO recipes (coffee_id, brew_method, version, brew_time_min, description, is_active)
 SELECT c.id, v.bm, 1, v.t, v.d, TRUE FROM (VALUES
@@ -326,3 +357,13 @@ INSERT INTO vouchers (code, customer_id, discount_value, min_order_value, expire
  ('NAM50K', (SELECT id FROM customers WHERE phone = '0912345678'), 50000, 100000, now() + interval '30 day');
 
 COMMIT;
+
+-- Khu vực giao hàng và ca làm việc mẫu
+INSERT INTO delivery_zones (name, districts, fee, free_ship_threshold, min_order_amount, estimated_minutes, sort_order) VALUES
+ ('Nội thành gần', 'Quận 1, Quận 3, Phú Nhuận',                 15000, 150000, 50000, 25, 1),
+ ('Nội thành xa',  'Quận 4, Quận 5, Quận 10, Bình Thạnh, Tân Bình', 25000, 250000, 80000, 40, 2);
+
+INSERT INTO work_shifts (name, start_time, end_time, grace_minutes, color) VALUES
+ ('Ca sáng', '06:30', '12:30', 5, 'blue'),
+ ('Ca chiều', '12:30', '18:00', 5, 'green'),
+ ('Ca tối', '18:00', '22:30', 5, 'purple');

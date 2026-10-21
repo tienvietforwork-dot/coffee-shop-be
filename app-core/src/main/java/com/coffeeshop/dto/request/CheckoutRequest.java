@@ -18,6 +18,8 @@ public record CheckoutRequest(
         @Pattern(regexp = "^0\\d{9,10}$", message = "invalid phone number") String customerPhone,
         Long addressId,
         @Valid DeliveryAddressRequest delivery,
+        /** quận / phường giao tới: chọn khu vực giao hàng → phí ship */
+        @Size(max = 60) String deliveryDistrict,
         LocalDateTime pickupTime,
         @NotNull PaymentMethod paymentMethod,
         @Size(max = 30) String voucherCode,

@@ -4,6 +4,7 @@ import com.coffeeshop.entity.MaterialTransaction;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface MaterialTransactionRepository extends JpaRepository<MaterialTransaction, Long> {
@@ -19,4 +20,20 @@ public interface MaterialTransactionRepository extends JpaRepository<MaterialTra
             order by t.createdAt desc, t.id desc
             """)
     List<MaterialTransaction> search(Long materialId);
+
+    /**
+     * Movements per material and type from {@code from} (inclusive) to {@code to} (exclusive, null = now):
+     * [materialId, type, quantity in, quantity out (negative), value in, value out (negative)]; value = quantity × lot cost.
+     */
+    @Query("""
+            select b.material.id, t.type,
+                   sum(case when t.quantity > 0 then t.quantity else 0 end),
+                   sum(case when t.quantity < 0 then t.quantity else 0 end),
+                   sum(case when t.quantity > 0 then t.quantity * coalesce(b.unitCost, 0) else 0 end),
+                   sum(case when t.quantity < 0 then t.quantity * coalesce(b.unitCost, 0) else 0 end)
+            from MaterialTransaction t join t.batch b
+            where t.createdAt >= :from and (cast(:to as timestamp) is null or t.createdAt < :to)
+            group by b.material.id, t.type
+            """)
+    List<Object[]> movements(LocalDateTime from, LocalDateTime to);
 }

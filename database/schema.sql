@@ -11,7 +11,7 @@
 --     Xóa = xóa mềm (del_flag = TRUE, del_user = người xóa). Ràng buộc UNIQUE là unique index
 --     có điều kiện "WHERE NOT del_flag" để tạo lại được bản ghi đã xóa.
 --   * Bảng liên kết dùng khóa chính id + unique index (vì xóa mềm không xóa được dòng khỏi khóa ghép).
--- 32 bảng. Chạy trong 1 transaction.
+-- 44 bảng. Chạy trong 1 transaction.
 -- =====================================================================
 
 BEGIN;
@@ -301,6 +301,131 @@ CREATE TABLE recipe_steps (
 );
 CREATE UNIQUE INDEX uq_recipe_steps ON recipe_steps (recipe_id, step_no) WHERE NOT del_flag;
 
+-- ---------------------------------------------------------------------
+-- Nhà cung cấp, phiếu đặt hàng nhà cung cấp, phiếu nhập kho
+-- Phiếu đặt: DRAFT (nháp) → ORDERED (đã đặt) → PARTIALLY_RECEIVED (nhận một phần) → COMPLETED (hoàn tất) / CANCELLED
+-- Mỗi lần nhận hàng = 1 goods_receipts (mẫu 01-VT); dòng phiếu = goods_receipt_items, phần thực nhận = 1 material_batches.
+-- Nhập lẻ: purchase_order_id NULL. Trả hàng nhập: supplier_returns. Công nợ = phiếu nhập − trả hàng (trừ nợ) − phiếu chi.
+-- ---------------------------------------------------------------------
+CREATE TABLE suppliers (
+    id           BIGSERIAL PRIMARY KEY,
+    name         VARCHAR(100) NOT NULL,
+    contact_name VARCHAR(100),
+    phone        VARCHAR(15),
+    email        VARCHAR(100),
+    address      VARCHAR(255),
+    tax_code     VARCHAR(20),
+    note         VARCHAR(255),
+    payment_term_days INT       NOT NULL DEFAULT 0 CHECK (payment_term_days BETWEEN 0 AND 365), -- số ngày được nợ
+    -- INACTIVE = ngừng hợp tác (phiếu cũ vẫn tham chiếu nên không xóa)
+    status       VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX uq_suppliers_name ON suppliers (lower(name)) WHERE NOT del_flag;
+
+-- Nguyên liệu nhà cung cấp bán: quy cách hay đặt + giá tham khảo (đ / đơn vị gốc, như material_batches.unit_cost)
+CREATE TABLE supplier_materials (
+    id          BIGSERIAL PRIMARY KEY,
+    supplier_id BIGINT        NOT NULL REFERENCES suppliers (id),
+    material_id BIGINT        NOT NULL REFERENCES materials (id),
+    package_id  BIGINT        REFERENCES material_packages (id),
+    unit_price  NUMERIC(12,2) CHECK (unit_price >= 0),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX uq_supplier_materials ON supplier_materials (supplier_id, material_id) WHERE NOT del_flag;
+CREATE INDEX idx_supplier_materials_material ON supplier_materials (material_id);
+
+CREATE TABLE purchase_orders (
+    id            BIGSERIAL PRIMARY KEY,
+    code          VARCHAR(20)  NOT NULL,
+    supplier_id   BIGINT       NOT NULL REFERENCES suppliers (id),
+    staff_id      BIGINT       REFERENCES staff (id),           -- người lập phiếu
+    status        VARCHAR(20)  NOT NULL DEFAULT 'DRAFT'
+                  CHECK (status IN ('DRAFT', 'ORDERED', 'PARTIALLY_RECEIVED', 'COMPLETED', 'CANCELLED')),
+    expected_date DATE,                                         -- ngày hẹn giao
+    ordered_at    TIMESTAMP,                                    -- lúc gửi nhà cung cấp
+    completed_at  TIMESTAMP,                                    -- nhận đủ / đóng phiếu / hủy
+    note          VARCHAR(255),
+    close_reason  VARCHAR(255),                                 -- đóng khi chưa nhận đủ, hoặc lý do hủy
+    payment_term_days INT      NOT NULL DEFAULT 0 CHECK (payment_term_days BETWEEN 0 AND 365),
+    discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
+    vat_rate      NUMERIC(5,2) CHECK (vat_rate BETWEEN 0 AND 100), -- % thuế GTGT hàng mua; NULL = không có HĐ GTGT
+    shipping_cost NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (shipping_cost >= 0), -- chi phí nhập hàng
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX uq_purchase_orders_code ON purchase_orders (code) WHERE NOT del_flag;
+CREATE INDEX idx_purchase_orders_supplier ON purchase_orders (supplier_id);
+CREATE INDEX idx_purchase_orders_status ON purchase_orders (status);
+
+-- Dòng phiếu đặt. quantity / received_quantity theo đơn vị gốc của nguyên liệu; quy cách chụp lại lúc đặt.
+CREATE TABLE purchase_order_items (
+    id                BIGSERIAL PRIMARY KEY,
+    purchase_order_id BIGINT        NOT NULL REFERENCES purchase_orders (id),
+    material_id       BIGINT        NOT NULL REFERENCES materials (id),
+    package_name      VARCHAR(50),
+    package_size      NUMERIC(12,2) CHECK (package_size > 0),
+    package_count     NUMERIC(12,2) CHECK (package_count > 0),
+    quantity          NUMERIC(12,2) NOT NULL CHECK (quantity > 0),
+    received_quantity NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (received_quantity >= 0),
+    unit_price        NUMERIC(12,2) CHECK (unit_price >= 0),   -- đ / đơn vị gốc
+    note              VARCHAR(255),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE INDEX idx_purchase_order_items_order ON purchase_order_items (purchase_order_id);
+CREATE INDEX idx_purchase_order_items_material ON purchase_order_items (material_id);
+
+-- Phiếu nhập kho (mẫu 01-VT): 1 lần nhận hàng (theo phiếu đặt, hoặc nhập lẻ khi purchase_order_id NULL).
+-- Không sửa; hủy được khi các lô chưa dùng và chưa có phiếu trả hàng.
+CREATE TABLE goods_receipts (
+    id                BIGSERIAL PRIMARY KEY,
+    code              VARCHAR(20)  NOT NULL,
+    supplier_id       BIGINT       NOT NULL REFERENCES suppliers (id),
+    purchase_order_id BIGINT       REFERENCES purchase_orders (id),
+    staff_id          BIGINT       REFERENCES staff (id),           -- người nhập
+    deliverer_name    VARCHAR(100),                                 -- họ tên người giao hàng
+    invoice_series    VARCHAR(20),                                  -- hóa đơn nhà cung cấp: ký hiệu / số / ngày
+    invoice_no        VARCHAR(20),
+    invoice_date      DATE,
+    document_image_id BIGINT       REFERENCES images (id),          -- ảnh phiếu giao / hóa đơn kèm theo
+    discount_amount   NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
+    vat_rate          NUMERIC(5,2) CHECK (vat_rate BETWEEN 0 AND 100),
+    shipping_cost     NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (shipping_cost >= 0),
+    due_date          DATE         NOT NULL,                        -- hạn thanh toán = ngày nhập + số ngày được nợ
+    status            VARCHAR(20)  NOT NULL DEFAULT 'COMPLETED' CHECK (status IN ('COMPLETED', 'CANCELLED')),
+    cancel_reason     VARCHAR(255),
+    cancelled_at      TIMESTAMP,
+    note              VARCHAR(255),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX uq_goods_receipts_code ON goods_receipts (code) WHERE NOT del_flag;
+CREATE INDEX idx_goods_receipts_supplier ON goods_receipts (supplier_id);
+CREATE INDEX idx_goods_receipts_order ON goods_receipts (purchase_order_id);
+
 CREATE TABLE material_batches (
     id                 BIGSERIAL PRIMARY KEY,
     material_id        BIGINT        NOT NULL REFERENCES materials (id),
@@ -315,6 +440,8 @@ CREATE TABLE material_batches (
     package_name       VARCHAR(50),                                 -- quy cách lúc nhập (chụp lại): 10 × "Hộp 500 ml"
     package_size       NUMERIC(12,2) CHECK (package_size > 0),
     package_count      NUMERIC(12,2) CHECK (package_count > 0),
+    goods_receipt_id       BIGINT REFERENCES goods_receipts (id),       -- lô nhập mua: phiếu nhập
+    purchase_order_item_id BIGINT REFERENCES purchase_order_items (id), -- và dòng phiếu đặt (nếu có)
     created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
     created_at TIMESTAMP    NOT NULL DEFAULT now(),
     updated_by VARCHAR(50),
@@ -324,6 +451,108 @@ CREATE TABLE material_batches (
     CHECK (remaining_quantity <= import_quantity)
 );
 CREATE INDEX idx_material_batches_material ON material_batches (material_id);
+CREATE INDEX idx_material_batches_receipt ON material_batches (goods_receipt_id);
+CREATE INDEX idx_material_batches_po_item ON material_batches (purchase_order_item_id);
+
+-- Dòng phiếu nhập: SL theo chứng từ (phiếu giao của NCC), SL thực nhập (→ lô), SL không nhận + lý do. Đơn vị gốc của nguyên liệu.
+CREATE TABLE goods_receipt_items (
+    id                     BIGSERIAL PRIMARY KEY,
+    goods_receipt_id       BIGINT        NOT NULL REFERENCES goods_receipts (id),
+    material_id            BIGINT        NOT NULL REFERENCES materials (id),
+    purchase_order_item_id BIGINT        REFERENCES purchase_order_items (id),
+    batch_id               BIGINT        REFERENCES material_batches (id), -- NULL khi không nhận gì
+    package_name           VARCHAR(50),
+    package_size           NUMERIC(12,2) CHECK (package_size > 0),
+    document_quantity      NUMERIC(12,2) NOT NULL CHECK (document_quantity >= 0),
+    received_quantity      NUMERIC(12,2) NOT NULL CHECK (received_quantity >= 0),
+    rejected_quantity      NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (rejected_quantity >= 0),
+    reject_reason          VARCHAR(255),
+    unit_price             NUMERIC(12,2) CHECK (unit_price >= 0),    -- đ / đơn vị gốc, chưa thuế
+    expiry_date            DATE,
+    temperature            NUMERIC(5,1),                             -- °C đo lúc nhận hàng mát / đông
+    note                   VARCHAR(255),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50),
+    CHECK (received_quantity + rejected_quantity <= document_quantity)
+);
+CREATE INDEX idx_goods_receipt_items_receipt ON goods_receipt_items (goods_receipt_id);
+CREATE INDEX idx_goods_receipt_items_material ON goods_receipt_items (material_id);
+
+-- Phiếu trả hàng nhập: hàng của 1 phiếu nhập trả lại NCC. DRAFT (phiếu tạm) → COMPLETED (đã trả, trừ kho) / CANCELLED.
+-- settlement: DEBT = trừ công nợ; REFUND = NCC hoàn tiền. NCC lập hóa đơn điều chỉnh giảm (adjustment_invoice_no).
+CREATE TABLE supplier_returns (
+    id                    BIGSERIAL PRIMARY KEY,
+    code                  VARCHAR(20)  NOT NULL,
+    supplier_id           BIGINT       NOT NULL REFERENCES suppliers (id),
+    goods_receipt_id      BIGINT       NOT NULL REFERENCES goods_receipts (id),
+    staff_id              BIGINT       REFERENCES staff (id),
+    status                VARCHAR(20)  NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'COMPLETED', 'CANCELLED')),
+    reason                VARCHAR(255) NOT NULL,
+    settlement            VARCHAR(20)  NOT NULL DEFAULT 'DEBT' CHECK (settlement IN ('DEBT', 'REFUND')),
+    refund_method         VARCHAR(20)  CHECK (refund_method IN ('CASH', 'BANK_TRANSFER')),
+    vat_rate              NUMERIC(5,2) CHECK (vat_rate BETWEEN 0 AND 100),
+    adjustment_invoice_no VARCHAR(30),
+    completed_at          TIMESTAMP,
+    cancel_reason         VARCHAR(255),
+    note                  VARCHAR(255),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX uq_supplier_returns_code ON supplier_returns (code) WHERE NOT del_flag;
+CREATE INDEX idx_supplier_returns_supplier ON supplier_returns (supplier_id);
+CREATE INDEX idx_supplier_returns_receipt ON supplier_returns (goods_receipt_id);
+
+CREATE TABLE supplier_return_items (
+    id                    BIGSERIAL PRIMARY KEY,
+    supplier_return_id    BIGINT        NOT NULL REFERENCES supplier_returns (id),
+    goods_receipt_item_id BIGINT        NOT NULL REFERENCES goods_receipt_items (id),
+    quantity              NUMERIC(12,2) NOT NULL CHECK (quantity > 0),
+    unit_price            NUMERIC(12,2) NOT NULL CHECK (unit_price >= 0),
+    note                  VARCHAR(255),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE INDEX idx_supplier_return_items_return ON supplier_return_items (supplier_return_id);
+CREATE INDEX idx_supplier_return_items_line ON supplier_return_items (goods_receipt_item_id);
+
+-- Phiếu chi trả nhà cung cấp (mẫu 02-TT). goods_receipt_id: trả cho phiếu nhập đó; purchase_order_id: trả trước / đặt cọc.
+CREATE TABLE supplier_payments (
+    id                BIGSERIAL PRIMARY KEY,
+    code              VARCHAR(20)   NOT NULL,
+    supplier_id       BIGINT        NOT NULL REFERENCES suppliers (id),
+    goods_receipt_id  BIGINT        REFERENCES goods_receipts (id),
+    purchase_order_id BIGINT        REFERENCES purchase_orders (id),
+    amount            NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+    method            VARCHAR(20)   NOT NULL CHECK (method IN ('CASH', 'BANK_TRANSFER')),
+    reference         VARCHAR(100),                                -- mã giao dịch chuyển khoản
+    payee_name        VARCHAR(100),                                -- người nhận tiền
+    paid_at           TIMESTAMP     NOT NULL,
+    staff_id          BIGINT        REFERENCES staff (id),         -- người lập phiếu
+    document_image_id BIGINT        REFERENCES images (id),
+    status            VARCHAR(20)   NOT NULL DEFAULT 'COMPLETED' CHECK (status IN ('COMPLETED', 'CANCELLED')),
+    cancel_reason     VARCHAR(255),
+    note              VARCHAR(255),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX uq_supplier_payments_code ON supplier_payments (code) WHERE NOT del_flag;
+CREATE INDEX idx_supplier_payments_supplier ON supplier_payments (supplier_id);
 
 -- ---------------------------------------------------------------------
 -- Khách hàng (CRM)
@@ -729,7 +958,7 @@ CREATE TABLE material_transactions (
     order_item_id BIGINT        REFERENCES order_items (id),
     -- PRODUCTION_USE = nguyên liệu xuất để chế biến bán thành phẩm; PRODUCE = lô chế biến xong nhập kho
     -- DISPOSAL = phiếu hủy (kể cả tự hủy lô hết hạn); EXPORT = xuất khác (trả nhà cung cấp, dùng nội bộ)
-    type          VARCHAR(20)   NOT NULL CHECK (type IN ('IMPORT', 'EXPORT', 'SALE', 'ADJUSTMENT', 'PRODUCTION_USE', 'PRODUCE', 'DISPOSAL')),
+    type          VARCHAR(20)   NOT NULL CHECK (type IN ('IMPORT', 'EXPORT', 'SALE', 'ADJUSTMENT', 'PRODUCTION_USE', 'PRODUCE', 'DISPOSAL', 'IMPORT_CANCEL', 'SUPPLIER_RETURN')),
     reason        VARCHAR(30),                                  -- DISPOSAL / EXPORT: EXPIRED, SPOILED, SPILLED, BREW_FAILED, OTHER_DISPOSAL, RETURN_SUPPLIER, INTERNAL_USE
     produced_batch_id BIGINT    REFERENCES material_batches (id), -- PRODUCTION_USE: dùng để chế biến lô bán thành phẩm nào
     quantity      NUMERIC(12,2) NOT NULL,                       -- dương = nhập, âm = xuất
@@ -768,3 +997,352 @@ CREATE TABLE background_service_logs (
 CREATE INDEX idx_background_service_logs ON background_service_logs (service, check_time DESC);
 
 COMMIT;
+
+-- =====================================================================
+-- Vận hành: kiểm kê, xuất – nhập – tồn, giá vốn, ca thu ngân, phân ca & chấm công, nhật ký thao tác,
+-- thanh toán online & đối soát, giao hàng qua đối tác & khu vực, hóa đơn điện tử, tin nhắn ZNS / SMS
+-- (same as add_operations_features.sql)
+-- =====================================================================
+-- ---------------------------------------------------------------------
+-- Phiếu kiểm kê (biên bản kiểm kê vật tư, mẫu 05-VT): DRAFT (đang đếm) → BALANCED (đã cân bằng kho) / CANCELLED
+-- book_quantity = SL theo sổ lúc đưa lô vào phiếu; cân bằng kho dịch lô theo chênh lệch (material_transactions ADJUSTMENT)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS stocktakes (
+    id          BIGSERIAL PRIMARY KEY,
+    code        VARCHAR(20)  NOT NULL,
+    status      VARCHAR(20)  NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'BALANCED', 'CANCELLED')),
+    staff_id    BIGINT       REFERENCES staff (id),          -- trưởng ban kiểm kê
+    members     VARCHAR(255),                                -- người cùng kiểm
+    counted_at  TIMESTAMP    NOT NULL,
+    balanced_by BIGINT       REFERENCES staff (id),
+    balanced_at TIMESTAMP,
+    resolution  VARCHAR(255),                                -- ý kiến giải quyết số chênh lệch
+    note        VARCHAR(255),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_stocktakes_code ON stocktakes (code) WHERE NOT del_flag;
+
+CREATE TABLE IF NOT EXISTS stocktake_items (
+    id               BIGSERIAL PRIMARY KEY,
+    stocktake_id     BIGINT        NOT NULL REFERENCES stocktakes (id),
+    batch_id         BIGINT        NOT NULL REFERENCES material_batches (id),
+    book_quantity    NUMERIC(12,2) NOT NULL CHECK (book_quantity >= 0),
+    counted_quantity NUMERIC(12,2) CHECK (counted_quantity >= 0),  -- NULL = chưa đếm
+    unit_cost        NUMERIC(12,2),
+    quality          VARCHAR(10)   NOT NULL DEFAULT 'GOOD' CHECK (quality IN ('GOOD', 'POOR', 'LOST')), -- phẩm chất
+    reason           VARCHAR(255),                                 -- nguyên nhân chênh lệch
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE INDEX IF NOT EXISTS idx_stocktake_items_stocktake ON stocktake_items (stocktake_id);
+
+-- Tồn kho chốt cuối ngày (job 23:55), cho biểu đồ tồn theo ngày
+CREATE TABLE IF NOT EXISTS inventory_snapshots (
+    id            BIGSERIAL PRIMARY KEY,
+    snapshot_date DATE          NOT NULL,
+    material_id   BIGINT        NOT NULL REFERENCES materials (id),
+    quantity      NUMERIC(14,2) NOT NULL,
+    stock_value   NUMERIC(14,2) NOT NULL,
+    created_at    TIMESTAMP     NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inventory_snapshots ON inventory_snapshots (snapshot_date, material_id);
+
+-- Giá vốn món theo định lượng: 1 dòng mỗi khi giá vốn hoặc giá bán đổi (job mỗi giờ)
+CREATE TABLE IF NOT EXISTS coffee_cost_snapshots (
+    id          BIGSERIAL PRIMARY KEY,
+    coffee_id   BIGINT        NOT NULL REFERENCES coffees (id),
+    recipe_id   BIGINT        REFERENCES recipes (id),
+    unit_cost   NUMERIC(12,2) NOT NULL,
+    price       NUMERIC(12,2) NOT NULL,
+    computed_at TIMESTAMP     NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_coffee_cost_snapshots_coffee ON coffee_cost_snapshots (coffee_id, computed_at);
+
+-- ---------------------------------------------------------------------
+-- Ca thu ngân (mở / chốt ca, bàn giao ca). 1 két: chỉ 1 ca đang mở. Số liệu bán hàng chốt lúc đóng ca.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS cash_shifts (
+    id                BIGSERIAL PRIMARY KEY,
+    code              VARCHAR(20)   NOT NULL,
+    staff_id          BIGINT        REFERENCES staff (id),       -- thu ngân mở ca
+    opened_at         TIMESTAMP     NOT NULL,
+    opening_cash      NUMERIC(12,2) NOT NULL CHECK (opening_cash >= 0), -- tiền đầu ca
+    closed_at         TIMESTAMP,
+    closed_by         BIGINT        REFERENCES staff (id),
+    order_count       INT,
+    cash_sales        NUMERIC(12,2),
+    transfer_sales    NUMERIC(12,2),
+    card_sales        NUMERIC(12,2),
+    ewallet_sales     NUMERIC(12,2),
+    cash_in           NUMERIC(12,2),                             -- thu khác trong ca
+    cash_out          NUMERIC(12,2),                             -- chi trong ca
+    expected_cash     NUMERIC(12,2),                             -- tiền mặt lý thuyết
+    counted_cash      NUMERIC(12,2),                             -- tiền mặt thực đếm
+    denominations     VARCHAR(255),                              -- mệnh giá:số tờ, …
+    difference_reason VARCHAR(255),
+    next_opening_cash NUMERIC(12,2),                             -- để lại ca sau
+    handover_cash     NUMERIC(12,2),                             -- nộp quản lý / chủ quán
+    received_by       VARCHAR(100),
+    note              VARCHAR(255),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cash_shifts_code ON cash_shifts (code) WHERE NOT del_flag;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cash_shifts_open ON cash_shifts ((closed_at IS NULL)) WHERE closed_at IS NULL AND NOT del_flag;
+
+CREATE TABLE IF NOT EXISTS cash_movements (
+    id         BIGSERIAL PRIMARY KEY,
+    shift_id   BIGINT        NOT NULL REFERENCES cash_shifts (id),
+    type       VARCHAR(3)    NOT NULL CHECK (type IN ('IN', 'OUT')),
+    amount     NUMERIC(12,2) NOT NULL CHECK (amount > 0),
+    reason     VARCHAR(255)  NOT NULL,
+    staff_id   BIGINT        REFERENCES staff (id),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE INDEX IF NOT EXISTS idx_cash_movements_shift ON cash_movements (shift_id);
+
+-- ---------------------------------------------------------------------
+-- Phân ca & chấm công. Ca gãy = 2 ca trong ngày. Đi muộn / về sớm chỉ ghi nhận, không phạt tiền (BLLĐ Điều 127).
+-- leave_type: P = nghỉ có phép, KL = nghỉ không lương.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS work_shifts (
+    id            BIGSERIAL PRIMARY KEY,
+    name          VARCHAR(50) NOT NULL,
+    start_time    TIME        NOT NULL,
+    end_time      TIME        NOT NULL,
+    grace_minutes INT         NOT NULL DEFAULT 5 CHECK (grace_minutes BETWEEN 0 AND 60),
+    color         VARCHAR(20),
+    active        BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+
+CREATE TABLE IF NOT EXISTS shift_assignments (
+    id            BIGSERIAL PRIMARY KEY,
+    staff_id      BIGINT      NOT NULL REFERENCES staff (id),
+    work_shift_id BIGINT      NOT NULL REFERENCES work_shifts (id),
+    work_date     DATE        NOT NULL,
+    position      VARCHAR(30),                                  -- pha chế, thu ngân, phục vụ
+    check_in_at   TIMESTAMP,
+    check_out_at  TIMESTAMP,
+    leave_type    VARCHAR(5)  CHECK (leave_type IN ('P', 'KL')),
+    note          VARCHAR(255),
+    adjusted_by   VARCHAR(50),                                  -- quản lý sửa giờ chấm công
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_shift_assignments ON shift_assignments (staff_id, work_date, work_shift_id) WHERE NOT del_flag;
+CREATE INDEX IF NOT EXISTS idx_shift_assignments_date ON shift_assignments (work_date);
+
+-- Nhật ký thao tác (ghi theo lô từ hàng đợi; tự xóa sau app.audit.retention-days)
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id          BIGSERIAL PRIMARY KEY,
+    username    VARCHAR(50),
+    module      VARCHAR(50)  NOT NULL,
+    action      VARCHAR(40)  NOT NULL,
+    method      VARCHAR(10)  NOT NULL,
+    path        VARCHAR(255) NOT NULL,
+    entity_id   VARCHAR(40),
+    status_code INT          NOT NULL,
+    duration_ms BIGINT       NOT NULL,
+    ip          VARCHAR(64),
+    detail      TEXT,
+    created_at  TIMESTAMP    NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs (created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs (username, created_at);
+
+-- ---------------------------------------------------------------------
+-- Thanh toán online qua VNPAY: 1 dòng mỗi lần tạo link (PAY) hoặc hoàn tiền (REFUND); kết quả IPN / querydr để đối soát.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS payment_transactions (
+    id                 BIGSERIAL PRIMARY KEY,
+    payment_id         BIGINT        NOT NULL REFERENCES payments (id),
+    provider           VARCHAR(20)   NOT NULL,                  -- VNPAY
+    type               VARCHAR(10)   NOT NULL CHECK (type IN ('PAY', 'REFUND')),
+    txn_ref            VARCHAR(40)   NOT NULL UNIQUE,           -- vnp_TxnRef
+    amount             NUMERIC(12,2) NOT NULL,
+    status             VARCHAR(20)   NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'EXPIRED')),
+    bank_code          VARCHAR(20),                             -- VNPAYQR, VNBANK, INTCARD, NCB…
+    provider_txn_no    VARCHAR(40),                             -- vnp_TransactionNo
+    response_code      VARCHAR(10),                             -- vnp_ResponseCode
+    transaction_status VARCHAR(10),                             -- vnp_TransactionStatus
+    pay_url            TEXT,
+    gateway_date       VARCHAR(14),                             -- vnp_CreateDate (yyyyMMddHHmmss, GMT+7)
+    expire_at          TIMESTAMP,
+    completed_at       TIMESTAMP,
+    raw_response       TEXT,
+    ipn_count          INT           NOT NULL DEFAULT 0,
+    reconciled         BOOLEAN       NOT NULL DEFAULT FALSE,    -- đã đối soát
+    reconciled_by      VARCHAR(50),
+    reconciled_at      TIMESTAMP,
+    reconcile_note     VARCHAR(255),
+    created_at         TIMESTAMP     NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_payment_transactions_payment ON payment_transactions (payment_id);
+CREATE INDEX IF NOT EXISTS idx_payment_transactions_created ON payment_transactions (created_at);
+
+-- ---------------------------------------------------------------------
+-- Phí giao hàng theo khu vực + đặt xe qua Ahamove (báo giá, tạo đơn, webhook trạng thái, hủy chuyến)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS delivery_zones (
+    id                  BIGSERIAL PRIMARY KEY,
+    name                VARCHAR(100)  NOT NULL,
+    districts           VARCHAR(500)  NOT NULL,                -- quận / phường, cách nhau dấu phẩy
+    fee                 NUMERIC(12,2) NOT NULL CHECK (fee >= 0),
+    free_ship_threshold NUMERIC(12,2) CHECK (free_ship_threshold >= 0), -- miễn phí ship từ
+    min_order_amount    NUMERIC(12,2) CHECK (min_order_amount >= 0),    -- đơn tối thiểu để giao
+    estimated_minutes   INT,
+    active              BOOLEAN       NOT NULL DEFAULT TRUE,
+    sort_order          INT           NOT NULL DEFAULT 0,
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS district         VARCHAR(60);
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS zone_name        VARCHAR(100);
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS partner          VARCHAR(20);   -- AHAMOVE; NULL = gọi xe ngoài
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS partner_order_id VARCHAR(60);
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS partner_status   VARCHAR(30);
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS partner_fee      NUMERIC(12,2); -- phí ship quán trả đối tác
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS tracking_url     VARCHAR(255);
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS driver_name      VARCHAR(100);
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS driver_phone     VARCHAR(20);
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS distance_km      NUMERIC(6,2);
+CREATE INDEX IF NOT EXISTS idx_shipments_partner_order ON shipments (partner_order_id);
+
+-- Lịch sử chuyến giao (nhân viên cập nhật / webhook đối tác)
+CREATE TABLE IF NOT EXISTS shipment_events (
+    id             BIGSERIAL PRIMARY KEY,
+    shipment_id    BIGINT      NOT NULL REFERENCES shipments (id),
+    source         VARCHAR(10) NOT NULL CHECK (source IN ('STAFF', 'PARTNER', 'SYSTEM')),
+    status         VARCHAR(20),
+    partner_status VARCHAR(30),
+    note           VARCHAR(255),
+    raw            TEXT,
+    created_by     VARCHAR(50),
+    created_at     TIMESTAMP   NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_shipment_events_shipment ON shipment_events (shipment_id);
+
+-- ---------------------------------------------------------------------
+-- Hóa đơn điện tử khởi tạo từ máy tính tiền (NĐ 254/2026, TT 91/2026): 1 hóa đơn / đơn hoàn tất, phát hành qua hàng đợi.
+-- Không hủy: sai thì lập hóa đơn thay thế (REPLACEMENT, gốc → REPLACED) hoặc điều chỉnh (ADJUSTMENT).
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS invoices (
+    id                  BIGSERIAL PRIMARY KEY,
+    order_id            BIGINT        NOT NULL REFERENCES orders (id),
+    kind                VARCHAR(15)   NOT NULL CHECK (kind IN ('ORIGINAL', 'REPLACEMENT', 'ADJUSTMENT')),
+    related_invoice_id  BIGINT        REFERENCES invoices (id),
+    status              VARCHAR(15)   NOT NULL CHECK (status IN ('PENDING', 'ISSUED', 'FAILED', 'REPLACED')),
+    template_code       VARCHAR(2)    NOT NULL,                  -- 1 = GTGT, 2 = bán hàng
+    series              VARCHAR(10)   NOT NULL,                  -- ký hiệu, ký tự thứ 5 = M (máy tính tiền)
+    invoice_no          VARCHAR(10),
+    tax_authority_code  VARCHAR(40),                             -- mã của CQT
+    lookup_code         VARCHAR(40),
+    lookup_url          VARCHAR(255),
+    provider_invoice_id VARCHAR(60),
+    buyer_name          VARCHAR(150),
+    buyer_company       VARCHAR(255),
+    buyer_tax_code      VARCHAR(20),
+    buyer_address       VARCHAR(255),
+    buyer_email         VARCHAR(100),
+    buyer_phone         VARCHAR(15),
+    buyer_id_number     VARCHAR(20),                             -- số định danh cá nhân
+    amount_before_tax   NUMERIC(12,2) NOT NULL,
+    vat_rate            NUMERIC(5,2),                            -- NULL = hóa đơn bán hàng
+    vat_amount          NUMERIC(12,2) NOT NULL,
+    total_amount        NUMERIC(12,2) NOT NULL,
+    payment_method      VARCHAR(30),
+    reason              VARCHAR(255),
+    attempts            INT           NOT NULL DEFAULT 0,
+    last_error          VARCHAR(500),
+    issued_at           TIMESTAMP,
+    created_by          VARCHAR(50),
+    created_at          TIMESTAMP     NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_invoices_order ON invoices (order_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices (status);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_number ON invoices (series, invoice_no) WHERE invoice_no IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS invoice_lines (
+    id         BIGSERIAL PRIMARY KEY,
+    invoice_id BIGINT        NOT NULL REFERENCES invoices (id),
+    line_no    INT           NOT NULL,
+    name       VARCHAR(255)  NOT NULL,
+    unit       VARCHAR(20)   NOT NULL,
+    quantity   NUMERIC(12,2) NOT NULL,
+    unit_price NUMERIC(12,2) NOT NULL,
+    amount     NUMERIC(12,2) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_invoice_lines_invoice ON invoice_lines (invoice_id);
+
+-- ---------------------------------------------------------------------
+-- Tin nhắn chăm sóc khách hàng theo đơn: Zalo ZNS, lỗi thì SMS brandname (qua eSMS). Không phải tin quảng cáo.
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS notification_templates (
+    code            VARCHAR(30)  PRIMARY KEY,
+    name            VARCHAR(100) NOT NULL,
+    enabled         BOOLEAN      NOT NULL DEFAULT TRUE,
+    zns_template_id VARCHAR(20),                                -- mẫu ZNS đã được Zalo duyệt
+    sms_content     VARCHAR(320) NOT NULL,
+    sms_fallback    BOOLEAN      NOT NULL DEFAULT TRUE,
+    updated_by      VARCHAR(50)
+);
+INSERT INTO notification_templates (code, name, enabled, sms_content) VALUES
+ ('ORDER_CONFIRMED',  'Xác nhận đơn',            TRUE,  'Coffeeholic: don {order_code} ({amount}) da duoc xac nhan, dang pha che. Theo doi: {link}'),
+ ('ORDER_READY',      'Đồ uống sẵn sàng',        TRUE,  'Coffeeholic: don {order_code} da san sang, moi {customer_name} den quay nhan.'),
+ ('ORDER_DELIVERING', 'Đang giao hàng',          TRUE,  'Coffeeholic: don {order_code} dang duoc giao. Tai xe {driver}. Theo doi: {link}'),
+ ('ORDER_COMPLETED',  'Hoàn tất đơn',            TRUE,  'Coffeeholic cam on {customer_name}! Don {order_code} da hoan tat. Hoa don dien tu: {link}'),
+ ('ORDER_CANCELLED',  'Đơn bị hủy',              TRUE,  'Coffeeholic: don {order_code} da bi huy. Ly do: {reason}. Tien da tra (neu co) se duoc hoan lai.')
+ON CONFLICT (code) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS notification_messages (
+    id            BIGSERIAL PRIMARY KEY,
+    order_id      BIGINT       REFERENCES orders (id),
+    template_code VARCHAR(30)  NOT NULL,
+    phone         VARCHAR(15)  NOT NULL,                        -- 84xxxxxxxxx
+    status        VARCHAR(15)  NOT NULL CHECK (status IN ('PENDING', 'SENT', 'DELIVERED', 'FAILED')),
+    channel       VARCHAR(5),                                   -- ZNS / SMS
+    request_id    VARCHAR(48)  NOT NULL UNIQUE,                 -- mã đơn + sự kiện: mỗi sự kiện gửi 1 lần
+    params        TEXT,
+    content       VARCHAR(320),
+    attempts      INT          NOT NULL DEFAULT 0,
+    provider_ref  VARCHAR(60),
+    error         VARCHAR(500),
+    sent_at       TIMESTAMP,
+    created_at    TIMESTAMP    NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_notification_messages_created ON notification_messages (created_at);
+
+
