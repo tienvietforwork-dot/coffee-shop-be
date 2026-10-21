@@ -51,6 +51,43 @@ app:
     expiry-warning-days: 7
     # CoffeeStatusBackgroundService cycle: sets coffees SOLD_OUT / AVAILABLE from stock (5 minutes)
     status-scan-ms: ${STATUS_SCAN_MS:300000}
+    # chốt tồn cuối ngày (inventory_snapshots)
+    snapshot-cron: "0 55 23 * * *"
+  # FE address used in links sent to customers (ZNS / SMS)
+  public-site-url: ${PUBLIC_SITE_URL:http://localhost:5173}
+  audit:
+    retention-days: ${AUDIT_RETENTION_DAYS:180}
+  # Integrations: each runs simulated until its keys are set (mode=sandbox / staging / production / misa)
+  payment:
+    vnpay:
+      mode: ${VNPAY_MODE:simulated}
+      tmn-code: ${VNPAY_TMN_CODE:COFFEEHL}
+      hash-secret: ${VNPAY_HASH_SECRET:SIMULATED-HASH-SECRET-0123456789}
+      return-url: ${VNPAY_RETURN_URL:http://localhost:5173/payment/result}
+      public-api-base: ${PUBLIC_API_BASE:http://localhost:8080}
+      expire-minutes: 15
+  delivery:
+    ahamove:
+      mode: ${AHAMOVE_MODE:simulated}
+      base-url: ${AHAMOVE_BASE_URL:https://partner-apistg.ahamove.com/v3}
+      token: ${AHAMOVE_TOKEN:}
+      service-id: ${AHAMOVE_SERVICE:SGN-BIKE}
+      webhook-token: ${AHAMOVE_WEBHOOK_TOKEN:coffeeholic-webhook}
+      shop-address: ${SHOP_ADDRESS:Coffeeholic, Quận 1, TP. Hồ Chí Minh}
+      shop-phone: ${SHOP_PHONE:0900000000}
+  einvoice:
+    mode: ${EINVOICE_MODE:simulated}
+    seller-name: ${SELLER_NAME:HỘ KINH DOANH COFFEEHOLIC}
+    seller-tax-code: ${SELLER_TAX_CODE:0312345678}
+    seller-address: ${SELLER_ADDRESS:Quận 1, TP. Hồ Chí Minh}
+    series: ${EINVOICE_SERIES:2C26MCH}
+  notify:
+    esms:
+      mode: ${ESMS_MODE:simulated}
+      api-key: ${ESMS_API_KEY:}
+      secret-key: ${ESMS_SECRET_KEY:}
+      brandname: ${ESMS_BRANDNAME:COFFEEHOLIC}
+      oa-id: ${ZALO_OA_ID:}
 
 management:
   endpoints:

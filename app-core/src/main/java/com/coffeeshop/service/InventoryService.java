@@ -1,7 +1,6 @@
 package com.coffeeshop.service;
 
 import com.coffeeshop.dto.request.MaterialRequest;
-import com.coffeeshop.dto.request.StockAdjustRequest;
 import com.coffeeshop.dto.request.StockOutRequest;
 import com.coffeeshop.dto.response.BatchResponse;
 import com.coffeeshop.dto.response.InventoryAlertsResponse;
@@ -179,7 +178,6 @@ public class InventoryService {
                 .goodsReceipt(receipt)
                 .purchaseOrderItem(orderItem)
                 .build());
-        receipt.getBatches().add(batch);
         material.setStockQuantity(material.getStockQuantity().add(quantity));
         if (material.getStatus() == MaterialStatus.INACTIVE) material.setStatus(MaterialStatus.ACTIVE);
         record(batch, MaterialTransactionType.IMPORT, quantity, staff, null, note);
@@ -194,11 +192,48 @@ public class InventoryService {
         return takeOut(request, MaterialTransactionType.DISPOSAL);
     }
 
-    /** Xuất khác: stock leaving for something other than sales or production (trả nhà cung cấp, dùng nội bộ). */
+    /** Xuất khác: stock leaving for something other than sales, production or a supplier return (dùng nội bộ). */
     @Transactional
     public MaterialTransactionResponse exportOther(StockOutRequest request) {
         if (request.reason().isDisposal()) throw new BadRequestException("Hàng hỏng / hết hạn dùng phiếu hủy");
+        if (request.reason() == TransactionReason.RETURN_SUPPLIER) {
+            throw new BadRequestException("Trả hàng nhà cung cấp lập phiếu trả hàng nhập");
+        }
         return takeOut(request, MaterialTransactionType.EXPORT);
+    }
+
+    /** Hủy phiếu nhập: an untouched lot leaves the stock again. */
+    void cancelLot(MaterialBatch batch, Staff staff, String note) {
+        if (batch.getStatus() != BatchStatus.AVAILABLE || batch.getRemainingQuantity().compareTo(batch.getImportQuantity()) != 0) {
+            throw new BadRequestException("Lô #" + batch.getId() + " (" + batch.getMaterial().getName()
+                    + ") đã được dùng, không hủy được phiếu nhập — lập phiếu trả hàng hoặc điều chỉnh kho");
+        }
+        BigDecimal quantity = batch.getRemainingQuantity();
+        batch.setRemainingQuantity(BigDecimal.ZERO);
+        batch.setStatus(BatchStatus.DEPLETED);
+        Material material = batch.getMaterial();
+        material.setStockQuantity(material.getStockQuantity().subtract(quantity));
+        record(batch, MaterialTransactionType.IMPORT_CANCEL, quantity.negate(), staff, null, note);
+        checkLowStock(material);
+        coffeeStatusBackgroundService.requestRun();
+    }
+
+    /** Phiếu trả hàng nhập: part of a lot goes back to the supplier. */
+    MaterialTransaction returnToSupplier(MaterialBatch batch, BigDecimal quantity, Staff staff, String note) {
+        if (batch.getStatus() != BatchStatus.AVAILABLE || batch.getRemainingQuantity().compareTo(quantity) < 0) {
+            throw new BadRequestException("Lô #" + batch.getId() + " (" + batch.getMaterial().getName() + ") chỉ còn "
+                    + batch.getRemainingQuantity().stripTrailingZeros().toPlainString() + " " + batch.getMaterial().getUnit());
+        }
+        batch.setRemainingQuantity(batch.getRemainingQuantity().subtract(quantity));
+        if (batch.getRemainingQuantity().signum() == 0) batch.setStatus(BatchStatus.DEPLETED);
+        Material material = batch.getMaterial();
+        material.setStockQuantity(material.getStockQuantity().subtract(quantity));
+        MaterialTransaction tx = transactionRepository.save(MaterialTransaction.builder().batch(batch)
+                .type(MaterialTransactionType.SUPPLIER_RETURN).quantity(quantity.negate())
+                .reason(TransactionReason.RETURN_SUPPLIER).staff(staff).note(note).build());
+        checkLowStock(material);
+        coffeeStatusBackgroundService.requestRun();
+        return tx;
     }
 
     private MaterialTransactionResponse takeOut(StockOutRequest request, MaterialTransactionType type) {
@@ -220,25 +255,22 @@ public class InventoryService {
         return MaterialTransactionResponse.from(tx);
     }
 
-    /** Kiểm kê: set the counted quantity of one batch. */
-    @Transactional
-    public MaterialTransactionResponse adjust(StockAdjustRequest request) {
-        MaterialBatch batch = batchRepository.findById(request.batchId())
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy lô: " + request.batchId()));
-        if (request.actualQuantity().compareTo(batch.getImportQuantity()) > 0) {
-            throw new BadRequestException("Số lượng thực tế lớn hơn số lượng nhập của lô");
-        }
-        BigDecimal delta = request.actualQuantity().subtract(batch.getRemainingQuantity());
-        if (delta.signum() == 0) throw new BadRequestException("Số lượng không thay đổi");
-        batch.setRemainingQuantity(request.actualQuantity());
-        batch.setStatus(request.actualQuantity().signum() == 0 ? BatchStatus.DEPLETED : BatchStatus.AVAILABLE);
+    /**
+     * Cân bằng kho for one lot of a phiếu kiểm kê: moves it by {@code delta} (thừa +, thiếu −), kept within
+     * 0 … the lot's import quantity. Returns the quantity actually moved.
+     */
+    BigDecimal adjustLot(MaterialBatch batch, BigDecimal delta, Staff staff, String note) {
+        BigDecimal target = batch.getRemainingQuantity().add(delta).max(BigDecimal.ZERO).min(batch.getImportQuantity());
+        BigDecimal moved = target.subtract(batch.getRemainingQuantity());
+        if (moved.signum() == 0) return moved;
+        batch.setRemainingQuantity(target);
+        if (batch.getStatus() != BatchStatus.EXPIRED) batch.setStatus(target.signum() == 0 ? BatchStatus.DEPLETED : BatchStatus.AVAILABLE);
         Material material = batch.getMaterial();
-        material.setStockQuantity(material.getStockQuantity().add(delta));
+        material.setStockQuantity(material.getStockQuantity().add(moved));
         checkLowStock(material);
-        var tx = MaterialTransactionResponse.from(record(batch, MaterialTransactionType.ADJUSTMENT, delta,
-                staffService.current(), null, request.note() == null ? "Kiểm kê" : request.note()));
+        record(batch, MaterialTransactionType.ADJUSTMENT, moved, staff, null, note);
         coffeeStatusBackgroundService.requestRun();
-        return tx;
+        return moved;
     }
 
     /** Deducts materials for every item of an order according to the coffee's active recipe. */

@@ -36,6 +36,10 @@ public class Supplier extends BaseEntity {
     private String taxCode;
     @Column(length = 255)
     private String note;
+    /** điều khoản thanh toán: số ngày được nợ kể từ ngày nhập hàng (0 = trả ngay khi nhận hàng) */
+    @Builder.Default
+    @Column(name = "payment_term_days", nullable = false)
+    private int paymentTermDays = 0;
     @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

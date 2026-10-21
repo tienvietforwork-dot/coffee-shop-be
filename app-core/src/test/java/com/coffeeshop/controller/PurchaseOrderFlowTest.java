@@ -82,7 +82,7 @@ class PurchaseOrderFlowTest {
 
         // a draft cannot be received
         mvc.perform(post("/api/purchase-orders/" + id + "/receipts").contentType(MediaType.APPLICATION_JSON)
-                .content(body(java.util.Map.of("lines", java.util.List.of(java.util.Map.of("itemId", itemId, "packageCount", 1))))))
+                .content(body(java.util.Map.of("lines", java.util.List.of(java.util.Map.of("itemId", itemId, "receivedCount", 1))))))
                 .andExpect(status().isBadRequest());
 
         mvc.perform(post("/api/purchase-orders/" + id + "/send")).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ORDERED"));
@@ -92,9 +92,9 @@ class PurchaseOrderFlowTest {
         // first delivery: 4 boxes
         mvc.perform(post("/api/purchase-orders/" + id + "/receipts").contentType(MediaType.APPLICATION_JSON).content(body(java.util.Map.of(
                         "note", "Giao đợt 1",
-                        "lines", java.util.List.of(java.util.Map.of("itemId", itemId, "packageCount", 4, "expiryDate", LocalDate.now().plusDays(10).toString()))))))
+                        "lines", java.util.List.of(java.util.Map.of("itemId", itemId, "receivedCount", 4, "expiryDate", LocalDate.now().plusDays(10).toString()))))))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.lines[0].importQuantity").value(4000))
+                .andExpect(jsonPath("$.lines[0].receivedQuantity").value(4000))
                 .andExpect(jsonPath("$.lines[0].packageName").value("Hộp 1 L"))
                 .andExpect(jsonPath("$.totalAmount").value(140000));
         mvc.perform(get("/api/purchase-orders/" + id)).andExpect(jsonPath("$.status").value("PARTIALLY_RECEIVED"))
@@ -105,12 +105,12 @@ class PurchaseOrderFlowTest {
                 .andExpect(status().isBadRequest());
         // more than what is still due is refused
         mvc.perform(post("/api/purchase-orders/" + id + "/receipts").contentType(MediaType.APPLICATION_JSON)
-                        .content(body(java.util.Map.of("lines", java.util.List.of(java.util.Map.of("itemId", itemId, "packageCount", 7))))))
+                        .content(body(java.util.Map.of("lines", java.util.List.of(java.util.Map.of("itemId", itemId, "receivedCount", 7))))))
                 .andExpect(status().isBadRequest());
 
         // second delivery: the remaining 6 boxes → completed
         mvc.perform(post("/api/purchase-orders/" + id + "/receipts").contentType(MediaType.APPLICATION_JSON)
-                        .content(body(java.util.Map.of("lines", java.util.List.of(java.util.Map.of("itemId", itemId, "packageCount", 6))))))
+                        .content(body(java.util.Map.of("lines", java.util.List.of(java.util.Map.of("itemId", itemId, "receivedCount", 6))))))
                 .andExpect(status().isCreated());
         mvc.perform(get("/api/purchase-orders/" + id)).andExpect(jsonPath("$.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.receipts.length()").value(2));
@@ -141,7 +141,7 @@ class PurchaseOrderFlowTest {
 
         long itemA = call(mvc.perform(get("/api/purchase-orders/" + a))).at("/items/0/id").asLong();
         mvc.perform(post("/api/purchase-orders/" + a + "/receipts").contentType(MediaType.APPLICATION_JSON)
-                .content(body(java.util.Map.of("lines", java.util.List.of(java.util.Map.of("itemId", itemA, "quantity", 1000)))))).andExpect(status().isCreated());
+                .content(body(java.util.Map.of("lines", java.util.List.of(java.util.Map.of("itemId", itemA, "receivedCount", 1000)))))).andExpect(status().isCreated());
         mvc.perform(post("/api/purchase-orders/" + a + "/close").contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"NCC hết hàng\"}"))
                 .andExpect(jsonPath("$.status").value("COMPLETED")).andExpect(jsonPath("$.closeReason").value("NCC hết hàng"));
 
@@ -152,22 +152,23 @@ class PurchaseOrderFlowTest {
     @Test
     void looseImportNeedsAnActiveSupplier() throws Exception {
         long supplierId = createSupplier();
-        String loose = "{\"materialId\":" + milk.getId() + ",\"quantity\":500}";
-        mvc.perform(post("/api/inventory/import").contentType(MediaType.APPLICATION_JSON).content(loose)).andExpect(status().isBadRequest());
+        String line = "[{\"materialId\":" + milk.getId() + ",\"receivedCount\":500}]";
+        mvc.perform(post("/api/goods-receipts").contentType(MediaType.APPLICATION_JSON).content("{\"lines\":" + line + "}"))
+                .andExpect(status().isBadRequest());
 
-        mvc.perform(post("/api/inventory/import").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"supplierId\":" + supplierId + ",\"materialId\":" + milk.getId() + ",\"packageId\":" + box + ",\"packageCount\":2}"))
+        mvc.perform(post("/api/goods-receipts").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"supplierId\":" + supplierId + ",\"lines\":[{\"materialId\":" + milk.getId() + ",\"packageId\":" + box + ",\"receivedCount\":2}]}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.importQuantity").value(2000))
-                .andExpect(jsonPath("$.receiptCode").exists());
+                .andExpect(jsonPath("$.lines[0].receivedQuantity").value(2000))
+                .andExpect(jsonPath("$.code").exists());
         mvc.perform(get("/api/goods-receipts").param("supplierId", String.valueOf(supplierId)))
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].purchaseOrderId").doesNotExist());
 
         // ngừng hợp tác: no new orders or imports with it
         mvc.perform(delete("/api/suppliers/" + supplierId)).andExpect(status().isNoContent());
-        mvc.perform(post("/api/inventory/import").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"supplierId\":" + supplierId + ",\"materialId\":" + milk.getId() + ",\"quantity\":500}"))
+        mvc.perform(post("/api/goods-receipts").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"supplierId\":" + supplierId + ",\"lines\":" + line + "}"))
                 .andExpect(status().isBadRequest());
     }
 

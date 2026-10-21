@@ -7,7 +7,6 @@ import com.coffeeshop.dto.response.GoodsReceiptResponse;
 import com.coffeeshop.dto.response.PurchaseOrderResponse;
 import com.coffeeshop.entity.enums.PurchaseOrderStatus;
 import com.coffeeshop.security.Perm;
-import com.coffeeshop.service.GoodsReceiptService;
 import com.coffeeshop.service.PurchaseOrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,13 +16,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-/** Phiếu đặt hàng nhà cung cấp and the phiếu nhập received against them. */
+/** Phiếu đặt hàng nhà cung cấp; goods arriving against one are received here (phiếu nhập). */
 @RestController
 @RequiredArgsConstructor
 public class PurchaseOrderController {
 
     private final PurchaseOrderService orderService;
-    private final GoodsReceiptService receiptService;
 
     @GetMapping("/api/purchase-orders")
     @PreAuthorize(Perm.CAN_READ_PURCHASE_ORDERS)
@@ -83,10 +81,4 @@ public class PurchaseOrderController {
         return orderService.receive(id, request);
     }
 
-    @GetMapping("/api/goods-receipts")
-    @PreAuthorize(Perm.CAN_READ_RECEIPTS)
-    public List<GoodsReceiptResponse> receipts(@RequestParam(required = false) Long supplierId,
-                                               @RequestParam(required = false) Long purchaseOrderId) {
-        return receiptService.search(supplierId, purchaseOrderId);
-    }
 }

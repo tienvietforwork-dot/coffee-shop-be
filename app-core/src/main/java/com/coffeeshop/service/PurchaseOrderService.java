@@ -4,12 +4,10 @@ import com.coffeeshop.dto.request.GoodsReceiptRequest;
 import com.coffeeshop.dto.request.PurchaseOrderRequest;
 import com.coffeeshop.dto.response.GoodsReceiptResponse;
 import com.coffeeshop.dto.response.PurchaseOrderResponse;
-import com.coffeeshop.entity.GoodsReceipt;
 import com.coffeeshop.entity.Material;
 import com.coffeeshop.entity.MaterialPackage;
 import com.coffeeshop.entity.PurchaseOrder;
 import com.coffeeshop.entity.PurchaseOrderItem;
-import com.coffeeshop.entity.Staff;
 import com.coffeeshop.entity.enums.PurchaseOrderStatus;
 import com.coffeeshop.exception.BadRequestException;
 import com.coffeeshop.exception.ResourceNotFoundException;
@@ -25,10 +23,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * Phiếu đặt hàng nhà cung cấp: DRAFT → ORDERED → PARTIALLY_RECEIVED → COMPLETED, or CANCELLED.
@@ -52,7 +47,7 @@ public class PurchaseOrderService {
     @Transactional(readOnly = true)
     public PurchaseOrderResponse find(Long id) {
         PurchaseOrder order = get(id);
-        return PurchaseOrderResponse.from(order, receiptService.search(null, id));
+        return PurchaseOrderResponse.from(order, receiptService.search(null, id, null, null, null));
     }
 
     @Transactional
@@ -112,46 +107,10 @@ public class PurchaseOrderService {
         return PurchaseOrderResponse.from(order);
     }
 
-    /** Phiếu nhập for one delivery: each line becomes a lot; the order is completed once every line is in. */
+    /** Phiếu nhập for one delivery: each accepted line becomes a lot; the order follows what has come in. */
     @Transactional
     public GoodsReceiptResponse receive(Long id, GoodsReceiptRequest request) {
-        PurchaseOrder order = get(id);
-        if (order.getStatus() != PurchaseOrderStatus.ORDERED && order.getStatus() != PurchaseOrderStatus.PARTIALLY_RECEIVED) {
-            throw new BadRequestException("Phiếu " + order.getCode() + " không ở trạng thái chờ nhận hàng");
-        }
-        Map<Long, PurchaseOrderItem> items = order.getItems().stream()
-                .collect(Collectors.toMap(PurchaseOrderItem::getId, Function.identity()));
-        Staff staff = staffService.current();
-        GoodsReceipt receipt = receiptService.open(order.getSupplier(), order, staff, request.note());
-        Set<Long> seen = new HashSet<>();
-        for (GoodsReceiptRequest.Line line : request.lines()) {
-            PurchaseOrderItem item = items.get(line.itemId());
-            if (item == null) throw new BadRequestException("Dòng #" + line.itemId() + " không thuộc phiếu " + order.getCode());
-            if (!seen.add(item.getId())) throw new BadRequestException("Dòng bị lặp: " + item.getMaterial().getName());
-            BigDecimal quantity = line.quantity();
-            BigDecimal packageCount = null;
-            if (line.packageCount() != null) {
-                if (item.getPackageSize() == null) throw new BadRequestException("'" + item.getMaterial().getName() + "' đặt lẻ, nhập số lượng");
-                packageCount = line.packageCount();
-                quantity = item.getPackageSize().multiply(packageCount).setScale(2, RoundingMode.HALF_UP);
-            }
-            if (quantity == null) throw new BadRequestException("Nhập số lượng nhận của '" + item.getMaterial().getName() + "'");
-            if (quantity.compareTo(item.remaining()) > 0) {
-                throw new BadRequestException("'" + item.getMaterial().getName() + "' chỉ còn "
-                        + item.remaining().stripTrailingZeros().toPlainString() + " " + item.getMaterial().getUnit() + " chưa nhận");
-            }
-            inventoryService.receiveLot(item.getMaterial(), quantity,
-                    packageCount == null ? null : item.getPackageName(), packageCount == null ? null : item.getPackageSize(),
-                    packageCount, line.unitPrice() != null ? line.unitPrice() : item.getUnitPrice(), line.expiryDate(),
-                    receipt, item, staff, "Phiếu nhập " + receipt.getCode() + " · đặt hàng " + order.getCode());
-            item.setReceivedQuantity(item.getReceivedQuantity().add(quantity));
-        }
-        if (order.getItems().stream().allMatch(i -> i.remaining().signum() == 0)) {
-            finish(order, PurchaseOrderStatus.COMPLETED, null);
-        } else {
-            order.setStatus(PurchaseOrderStatus.PARTIALLY_RECEIVED);
-        }
-        return GoodsReceiptResponse.from(receipt);
+        return receiptService.receiveForOrder(get(id), request);
     }
 
     private void finish(PurchaseOrder order, PurchaseOrderStatus status, String reason) {
@@ -179,6 +138,10 @@ public class PurchaseOrderService {
         }
         order.setExpectedDate(request.expectedDate());
         order.setNote(request.note() == null || request.note().isBlank() ? null : request.note().trim());
+        order.setPaymentTermDays(request.paymentTermDays() != null ? request.paymentTermDays() : order.getSupplier().getPaymentTermDays());
+        order.setDiscountAmount(request.discountAmount() == null ? BigDecimal.ZERO : request.discountAmount());
+        order.setVatRate(request.vatRate());
+        order.setShippingCost(request.shippingCost() == null ? BigDecimal.ZERO : request.shippingCost());
         order.getItems().forEach(PurchaseOrderItem::softDelete);
         order.getItems().clear();
         Set<Long> seen = new HashSet<>();
@@ -199,6 +162,7 @@ public class PurchaseOrderService {
                     .quantity(quantity).unitPrice(line.unitPrice())
                     .note(line.note() == null || line.note().isBlank() ? null : line.note().trim()).build());
         }
+        if (order.getDiscountAmount().compareTo(order.goodsAmount()) > 0) throw new BadRequestException("Giảm giá lớn hơn tiền hàng");
         orderRepository.flush(); // the new lines get their ids, which the response carries
     }
 

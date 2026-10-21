@@ -105,6 +105,15 @@ public class PricingService {
 
     public Quote quote(List<InputLine> input, OrderType orderType, String customerPhone, String voucherCode,
                        LocalDateTime now) {
+        return quote(input, orderType, customerPhone, voucherCode, now, null);
+    }
+
+    /**
+     * {@code deliveryFee}: phí giao hàng from what is left to pay after discounts (khu vực, miễn phí từ … đ);
+     * null = the flat app.shipping.fee.
+     */
+    public Quote quote(List<InputLine> input, OrderType orderType, String customerPhone, String voucherCode,
+                       LocalDateTime now, java.util.function.Function<BigDecimal, BigDecimal> deliveryFee) {
         Map<Long, List<PromotionItem>> coffeePromos = runningCoffeePromotions(now);
         Map<Long, Integer> promoUsage = new HashMap<>();
         List<PricedLine> lines = new ArrayList<>();
@@ -151,7 +160,8 @@ public class PricingService {
             }
         }
 
-        BigDecimal fee = orderType == OrderType.DELIVERY ? shippingFee : BigDecimal.ZERO;
+        BigDecimal fee = orderType != OrderType.DELIVERY ? BigDecimal.ZERO
+                : deliveryFee == null ? shippingFee : deliveryFee.apply(afterPromotion.subtract(voucherDiscount));
         BigDecimal total = afterPromotion.subtract(voucherDiscount).add(fee);
         return new Quote(lines, subtotal, orderPromotion, promotionDiscount, voucher,
                 voucherCode == null ? null : voucherCode.trim(), voucherDiscount, voucherMessage, fee, total,

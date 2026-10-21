@@ -32,7 +32,19 @@ INSERT INTO permissions (code, name, path, module, description, sort_order) VALU
  ('stock',                'Nhập / xuất kho',               '/admin/stock',                'core',       NULL, 72),
  ('stock-history',        'Lịch sử kho',                   '/admin/stock-history',        'core',       NULL, 73),
  ('suppliers',            'Nhà cung cấp',                  '/admin/suppliers',            'core',       'Nhà cung cấp, nguyên liệu họ bán, giá tham khảo', 74),
- ('purchase-orders',      'Phiếu đặt hàng',                '/admin/purchase-orders',      'core',       'Lập, gửi, hủy, đóng phiếu đặt hàng nhà cung cấp', 75),
+ ('purchase-orders',      'Phiếu đặt hàng',                '/admin/purchase-orders',      'core',       'Lập, gửi, hủy, đóng phiếu đặt hàng nhà cung cấp; hủy phiếu nhập', 75),
+ ('supplier-returns',     'Trả hàng nhập',                 '/admin/supplier-returns',     'core',       'Phiếu trả hàng nhà cung cấp', 76),
+ ('supplier-debts',       'Công nợ nhà cung cấp',          '/admin/supplier-debts',       'core',       'Công nợ phải trả, sổ chi tiết, phiếu chi', 77),
+ ('stocktakes',           'Kiểm kê kho',                   '/admin/stocktakes',           'core',       'Phiếu kiểm kê, cân bằng kho', 78),
+ ('inventory-report',     'Báo cáo xuất nhập tồn',         '/admin/inventory-report',     'core',       'Báo cáo xuất – nhập – tồn, chốt tồn theo ngày', 79),
+ ('coffee-costs',         'Giá vốn món',                   '/admin/coffee-costs',         'core',       'Giá vốn theo định lượng, tỷ lệ food cost', 69),
+ ('cash-shifts',          'Ca thu ngân',                   '/admin/cash-shifts',          'core',       'Mở / chốt ca, thu chi trong ca, bàn giao ca', 22),
+ ('invoices',             'Hóa đơn điện tử',               '/admin/invoices',             'core',       'Hóa đơn từ máy tính tiền: tra cứu, thay thế, gửi lại', 23),
+ ('payment-reconciliation','Đối soát thanh toán',          '/admin/payment-reconciliation','core',      'Giao dịch VNPAY, truy vấn lại, đánh dấu đã đối soát', 94),
+ ('delivery-zones',       'Khu vực giao hàng',             '/admin/delivery-zones',       'core',       'Quận giao được, phí ship, miễn phí từ, đơn tối thiểu', 33),
+ ('work-shifts',          'Phân ca & chấm công',           '/admin/work-shifts',          'core',       'Ca mẫu, xếp ca, sửa chấm công, bảng chấm công', 92),
+ ('notifications',        'Tin nhắn khách hàng',           '/admin/notifications',        'core',       'Mẫu tin ZNS / SMS theo đơn, nhật ký gửi', 95),
+ ('audit-logs',           'Nhật ký thao tác',              '/admin/audit-logs',           'core',       'Ai làm gì, lúc nào (chỉ xem)', 96),
  ('tables',               'Bàn & mã QR',                   '/admin/tables',               'core',       NULL, 80),
  ('tables.edit',          'Sửa bàn & tạo lại QR',          NULL,                          'core',       NULL, 81),
  ('crm.customers',        'Hồ sơ khách hàng',              '/admin/crm/customers',        'crm',        NULL, 100),
@@ -57,7 +69,8 @@ SELECT r.id, p.id FROM roles r, permissions p WHERE r.code = 'ADMIN' AND p.modul
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN (
     'dashboard', 'orders', 'pos', 'shipments', 'incidents', 'menu', 'categories', 'materials', 'stock',
-    'stock-history', 'tables', 'crm.customers', 'crm.interactions', 'crm.feedbacks')
+    'stock-history', 'tables', 'crm.customers', 'crm.interactions', 'crm.feedbacks',
+    'cash-shifts', 'stocktakes', 'invoices')
 WHERE r.code = 'STAFF';
 
 -- Khách hàng
@@ -344,3 +357,13 @@ INSERT INTO vouchers (code, customer_id, discount_value, min_order_value, expire
  ('NAM50K', (SELECT id FROM customers WHERE phone = '0912345678'), 50000, 100000, now() + interval '30 day');
 
 COMMIT;
+
+-- Khu vực giao hàng và ca làm việc mẫu
+INSERT INTO delivery_zones (name, districts, fee, free_ship_threshold, min_order_amount, estimated_minutes, sort_order) VALUES
+ ('Nội thành gần', 'Quận 1, Quận 3, Phú Nhuận',                 15000, 150000, 50000, 25, 1),
+ ('Nội thành xa',  'Quận 4, Quận 5, Quận 10, Bình Thạnh, Tân Bình', 25000, 250000, 80000, 40, 2);
+
+INSERT INTO work_shifts (name, start_time, end_time, grace_minutes, color) VALUES
+ ('Ca sáng', '06:30', '12:30', 5, 'blue'),
+ ('Ca chiều', '12:30', '18:00', 5, 'green'),
+ ('Ca tối', '18:00', '22:30', 5, 'purple');

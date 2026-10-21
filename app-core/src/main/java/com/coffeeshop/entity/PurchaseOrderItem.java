@@ -45,6 +45,11 @@ public class PurchaseOrderItem extends BaseEntity {
     @Column(length = 255)
     private String note;
 
+    /** thành tiền = số lượng đặt × đơn giá */
+    public BigDecimal amount() {
+        return unitPrice == null ? BigDecimal.ZERO : unitPrice.multiply(quantity);
+    }
+
     public BigDecimal remaining() {
         return quantity.subtract(receivedQuantity).max(BigDecimal.ZERO);
     }

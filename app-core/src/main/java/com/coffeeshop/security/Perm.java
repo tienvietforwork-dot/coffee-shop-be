@@ -27,6 +27,18 @@ public final class Perm {
     public static final String STOCK_HISTORY = "stock-history";
     public static final String SUPPLIERS = "suppliers";
     public static final String PURCHASE_ORDERS = "purchase-orders";
+    public static final String SUPPLIER_RETURNS = "supplier-returns";
+    public static final String SUPPLIER_DEBTS = "supplier-debts";
+    public static final String STOCKTAKES = "stocktakes";
+    public static final String INVENTORY_REPORT = "inventory-report";
+    public static final String COFFEE_COSTS = "coffee-costs";
+    public static final String CASH_SHIFTS = "cash-shifts";
+    public static final String WORK_SHIFTS = "work-shifts";
+    public static final String AUDIT_LOGS = "audit-logs";
+    public static final String PAYMENT_RECONCILIATION = "payment-reconciliation";
+    public static final String DELIVERY_ZONES = "delivery-zones";
+    public static final String INVOICES = "invoices";
+    public static final String NOTIFICATIONS = "notifications";
     public static final String TABLES = "tables";
     public static final String TABLES_EDIT = "tables.edit";
     public static final String CRM_CUSTOMERS = "crm.customers";
@@ -48,13 +60,33 @@ public final class Perm {
     public static final String CAN_STOCK_HISTORY = "hasAnyAuthority('stock-history','materials')";
     public static final String CAN_INVENTORY_ALERTS = "hasAnyAuthority('dashboard','materials','stock')";
     /** Suppliers are picked on purchase orders and on loose imports (Nhập / xuất kho). */
-    public static final String CAN_READ_SUPPLIERS = "hasAnyAuthority('suppliers','purchase-orders','stock')";
+    public static final String CAN_READ_SUPPLIERS = "hasAnyAuthority('suppliers','purchase-orders','stock','supplier-returns','supplier-debts')";
     public static final String CAN_SUPPLIERS = "hasAuthority('suppliers')";
     /** Staff with Nhập / xuất kho see the orders waiting for goods and receive them. */
     public static final String CAN_READ_PURCHASE_ORDERS = "hasAnyAuthority('purchase-orders','stock')";
     public static final String CAN_PURCHASE_ORDERS = "hasAuthority('purchase-orders')";
     public static final String CAN_RECEIVE_GOODS = "hasAnyAuthority('purchase-orders','stock')";
-    public static final String CAN_READ_RECEIPTS = "hasAnyAuthority('purchase-orders','stock','stock-history')";
+    public static final String CAN_READ_RECEIPTS = "hasAnyAuthority('purchase-orders','stock','stock-history','supplier-returns','supplier-debts')";
+    /** Hủy phiếu nhập: the manager (người lập phiếu đặt hàng). */
+    public static final String CAN_CANCEL_RECEIPT = "hasAuthority('purchase-orders')";
+    public static final String CAN_SUPPLIER_RETURNS = "hasAuthority('supplier-returns')";
+    public static final String CAN_SUPPLIER_DEBTS = "hasAuthority('supplier-debts')";
+    public static final String CAN_STOCKTAKE = "hasAuthority('stocktakes')";
+    public static final String CAN_INVENTORY_REPORT = "hasAuthority('inventory-report')";
+    public static final String CAN_COFFEE_COSTS = "hasAuthority('coffee-costs')";
+    /** changing a selling price from the giá vốn screen is a menu edit */
+    public static final String CAN_COFFEE_COSTS_EDIT = "hasAuthority('coffee-costs') and hasAuthority('menu.edit')";
+    /** thu ngân mở / chốt ca ở quầy */
+    public static final String CAN_CASH_SHIFTS = "hasAnyAuthority('cash-shifts','pos')";
+    public static final String CAN_WORK_SHIFTS = "hasAuthority('work-shifts')";
+    /** lịch ca is read by the manager screen and staff management */
+    public static final String CAN_READ_WORK_SHIFTS = "hasAnyAuthority('work-shifts','staff')";
+    public static final String CAN_AUDIT_LOGS = "hasAuthority('audit-logs')";
+    public static final String CAN_PAYMENT_RECONCILIATION = "hasAuthority('payment-reconciliation')";
+    public static final String CAN_DELIVERY_ZONES = "hasAuthority('delivery-zones')";
+    /** thu ngân also adds the buyer's company details at the counter */
+    public static final String CAN_INVOICES = "hasAnyAuthority('invoices','pos')";
+    public static final String CAN_NOTIFICATIONS = "hasAuthority('notifications')";
     public static final String CAN_READ_TABLES = "hasAnyAuthority('tables','pos')";
     public static final String CAN_TABLES_EDIT = "hasAuthority('tables.edit')";
     public static final String CAN_ORDERS = "hasAuthority('orders')";

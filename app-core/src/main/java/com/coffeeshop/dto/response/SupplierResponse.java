@@ -8,7 +8,8 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public record SupplierResponse(Long id, String name, String contactName, String phone, String email, String address,
-                               String taxCode, String note, SupplierStatus status, List<Item> materials) {
+                               String taxCode, String note, int paymentTermDays, SupplierStatus status,
+                               List<Item> materials) {
 
     public record Item(Long materialId, String materialName, String unit, Long packageId, String packageName,
                        BigDecimal packageSize, BigDecimal unitPrice) {
@@ -22,7 +23,7 @@ public record SupplierResponse(Long id, String name, String contactName, String 
 
     public static SupplierResponse from(Supplier s) {
         return new SupplierResponse(s.getId(), s.getName(), s.getContactName(), s.getPhone(), s.getEmail(),
-                s.getAddress(), s.getTaxCode(), s.getNote(), s.getStatus(),
+                s.getAddress(), s.getTaxCode(), s.getNote(), s.getPaymentTermDays(), s.getStatus(),
                 s.getMaterials().stream().map(Item::from).toList());
     }
 }

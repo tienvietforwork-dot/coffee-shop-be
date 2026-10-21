@@ -78,6 +78,7 @@ public class SupplierService {
         supplier.setAddress(blankToNull(request.address()));
         supplier.setTaxCode(blankToNull(request.taxCode()));
         supplier.setNote(blankToNull(request.note()));
+        supplier.setPaymentTermDays(request.paymentTermDays() == null ? 0 : request.paymentTermDays());
         if (request.status() != null) supplier.setStatus(request.status());
         // replace the material list (soft delete keeps history; flush before re-adding because of the unique index)
         supplier.getMaterials().forEach(SupplierMaterial::softDelete);
