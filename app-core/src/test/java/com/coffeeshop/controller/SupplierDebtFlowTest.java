@@ -118,6 +118,11 @@ class SupplierDebtFlowTest {
         // 311.600 − 64.800 − 50.000 − 100.000 = 96.800
         assertThat(mine.get("balance").decimalValue()).isEqualByComparingTo("96800");
         assertThat(mine.get("openReceipts").asInt()).isEqualTo(1);
+        // no paying more than the receipt / the supplier is still owed
+        perform(post("/api/supplier-payments", Map.of("supplierId", supplierId, "amount", 96801, "method", "CASH",
+                "goodsReceiptId", receipt.get("id").asLong()))).andExpect(status().isBadRequest());
+        perform(post("/api/supplier-payments", Map.of("supplierId", supplierId, "amount", 5000000, "method", "CASH")))
+                .andExpect(status().isBadRequest());
 
         JsonNode ledger = call(get("/api/supplier-debts/" + supplierId + "/ledger"));
         assertThat(ledger.get("rows").size()).isEqualTo(4);

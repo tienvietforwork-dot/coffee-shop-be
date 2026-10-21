@@ -65,6 +65,7 @@ public class OrderService {
     private final DeliveryZoneService deliveryZoneService;
     private final InvoiceService invoiceService;
     private final CustomerNotificationService customerNotificationService;
+    private final CashShiftService cashShiftService;
 
     /** Loyalty: 1 point per this many VND paid. */
     @Value("${app.loyalty.vnd-per-point:10000}")
@@ -389,6 +390,7 @@ public class OrderService {
         BigDecimal refunded = payment.getRefundAmount().add(amount);
         if (refunded.compareTo(payment.getAmount()) > 0) throw new BadRequestException("Số tiền hoàn vượt quá số đã thu");
         onlinePaymentService.refundIfOnline(payment, amount); // paid through VNPAY: the money goes back the same way
+        if (payment.getMethod() == PaymentMethod.CASH) cashShiftService.recordCashRefund(payment.getOrder().getOrderCode(), amount);
         payment.setRefundAmount(refunded);
         if (refunded.compareTo(payment.getAmount()) == 0) payment.setStatus(PaymentStatus.REFUNDED);
         // money back on an invoiced order: hóa đơn điều chỉnh giảm
@@ -406,7 +408,9 @@ public class OrderService {
         moveTo(order, status, reason);
         for (Payment p : order.getPayments()) {
             if (p.getStatus() == PaymentStatus.PAID) {
-                onlinePaymentService.refundIfOnline(p, p.getAmount().subtract(p.getRefundAmount()));
+                BigDecimal back = p.getAmount().subtract(p.getRefundAmount());
+                onlinePaymentService.refundIfOnline(p, back);
+                if (p.getMethod() == PaymentMethod.CASH && back.signum() > 0) cashShiftService.recordCashRefund(order.getOrderCode(), back);
                 p.setRefundAmount(p.getAmount());
                 p.setStatus(PaymentStatus.REFUNDED);
             } else if (p.getStatus() == PaymentStatus.PENDING) {

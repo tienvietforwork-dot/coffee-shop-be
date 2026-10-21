@@ -80,6 +80,13 @@ public class CashShiftService {
         return CashShiftResponse.from(s, sales(s, LocalDateTime.now()));
     }
 
+    /** Hoàn tiền mặt cho khách: the money leaves the till of the shift now open (none open: nothing to record). */
+    @Transactional
+    public void recordCashRefund(String orderCode, BigDecimal amount) {
+        shiftRepository.findFirstByClosedAtIsNullOrderByIdDesc().ifPresent(s -> s.getMovements().add(CashMovement.builder()
+                .shift(s).type("OUT").amount(amount).reason("Hoàn tiền mặt đơn " + orderCode).staff(staffService.current()).build()));
+    }
+
     @Transactional
     public CashShiftResponse close(CashShiftCloseRequest request) {
         CashShift s = openShift();

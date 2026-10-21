@@ -142,4 +142,15 @@ class DeliveryFlowTest {
         mvc.perform(body(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/shipments/" + s.getId()),
                 Map.of("status", "DELIVERED"))).andExpect(status().isBadRequest());
     }
+
+    @Test
+    void anOutsideDriverTakesTheReadyOrderAndDeliversIt() throws Exception {
+        Shipment s = deliveryOrder(OrderStatus.READY);
+        var patch = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/shipments/" + s.getId());
+        call(body(patch, Map.of("status", "DELIVERING", "carrier", "GrabExpress", "trackingCode", "GRAB-1")));
+        assertThat(orderRepository.findById(s.getOrder().getId()).orElseThrow().getStatus()).isEqualTo(OrderStatus.DELIVERING);
+        call(body(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/shipments/" + s.getId()),
+                Map.of("status", "DELIVERED")));
+        assertThat(orderRepository.findById(s.getOrder().getId()).orElseThrow().getStatus()).isEqualTo(OrderStatus.COMPLETED);
+    }
 }

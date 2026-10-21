@@ -35,6 +35,7 @@ public class SupplierPaymentService {
     private final PurchaseOrderRepository orderRepository;
     private final SupplierService supplierService;
     private final StaffService staffService;
+    private final SupplierDebtService debtService;
 
     @Transactional(readOnly = true)
     public List<SupplierPaymentResponse> search(Long supplierId, LocalDate from, LocalDate to) {
@@ -58,6 +59,19 @@ public class SupplierPaymentService {
             if (!order.getSupplier().getId().equals(supplier.getId())) throw new BadRequestException("Phiếu đặt của nhà cung cấp khác");
             if (order.getStatus() == PurchaseOrderStatus.DRAFT || order.getStatus() == PurchaseOrderStatus.CANCELLED) {
                 throw new BadRequestException("Chỉ trả trước cho phiếu đặt đã gửi nhà cung cấp");
+            }
+        }
+        // trả theo phiếu nhập: không vượt số còn nợ của phiếu; chi chung: không vượt tổng nợ (trả trước thì gắn phiếu đặt)
+        if (receipt != null) {
+            var s = debtService.settlement(receipt);
+            BigDecimal remaining = receipt.payable().subtract(s.paid()).subtract(s.returned()).max(BigDecimal.ZERO);
+            if (request.amount().compareTo(remaining) > 0) {
+                throw new BadRequestException("Phiếu nhập " + receipt.getCode() + " chỉ còn nợ " + vnd(remaining));
+            }
+        } else if (order == null) {
+            BigDecimal balance = debtService.summary(supplier.getId()).balance().max(BigDecimal.ZERO);
+            if (request.amount().compareTo(balance) > 0) {
+                throw new BadRequestException("Chỉ còn nợ nhà cung cấp " + vnd(balance) + "; trả trước thì chọn phiếu đặt hàng");
             }
         }
         LocalDateTime paidAt = request.paidAt() == null ? LocalDateTime.now() : request.paidAt();
@@ -103,5 +117,9 @@ public class SupplierPaymentService {
     private String newCode() {
         String prefix = "PC" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyMMdd")) + "-";
         return prefix + String.format("%03d", paymentRepository.countByCodeStartingWith(prefix) + 1);
+    }
+
+    private static String vnd(BigDecimal v) {
+        return String.format("%,.0f", v).replace(',', '.') + "đ";
     }
 }

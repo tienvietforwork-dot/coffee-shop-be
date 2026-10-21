@@ -77,6 +77,11 @@ public class ShipmentService {
         if (request.status() == ShipmentStatus.BOOKED && (shipment.getCarrier() == null || shipment.getCarrier().isBlank())) {
             throw new BadRequestException("Cần nhập đơn vị vận chuyển khi đặt xe");
         }
+        boolean leaving = request.status() == ShipmentStatus.DELIVERING || request.status() == ShipmentStatus.DELIVERED;
+        if (leaving && shipment.getOrder().getStatus() == OrderStatus.READY) {
+            move(shipment, ShipmentStatus.DELIVERING, "STAFF", null, request.note(), null);
+            orderService.dispatch(shipment.getOrder().getId()); // tài xế đã lấy hàng
+        }
         move(shipment, request.status(), "STAFF", null, request.note(), null);
         return ShipmentResponse.from(shipment);
     }

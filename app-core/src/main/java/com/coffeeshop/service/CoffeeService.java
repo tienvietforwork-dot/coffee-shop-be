@@ -5,6 +5,7 @@ import com.coffeeshop.dto.response.CoffeeResponse;
 import com.coffeeshop.dto.response.MenuResponse;
 import com.coffeeshop.entity.Coffee;
 import com.coffeeshop.entity.enums.CoffeeStatus;
+import com.coffeeshop.exception.BadRequestException;
 import com.coffeeshop.exception.ResourceNotFoundException;
 import com.coffeeshop.repository.CategoryRepository;
 import com.coffeeshop.repository.CoffeeRepository;
@@ -121,7 +122,11 @@ public class CoffeeService {
 
     private void apply(Coffee coffee, CoffeeRequest request) {
         coffee.setCategory(categoryService.get(request.categoryId()));
-        coffee.setName(request.name().trim());
+        String name = request.name().trim();
+        if (!name.equalsIgnoreCase(coffee.getName()) && coffeeRepository.existsByNameIgnoreCase(name)) {
+            throw new BadRequestException("Món đã có trong thực đơn: " + name);
+        }
+        coffee.setName(name);
         Long oldImage = coffee.getImageId();
         if (request.imageId() != null) imageService.requireExists(request.imageId());
         coffee.setImageId(request.imageId());

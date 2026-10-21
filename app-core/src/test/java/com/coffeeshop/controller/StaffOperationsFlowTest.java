@@ -66,7 +66,7 @@ class StaffOperationsFlowTest {
         });
         staff = staffRepository.save(Staff.builder().fullName("Lan " + UUID.randomUUID().toString().substring(0, 6)).phone("0900000001").build());
         var principal = new UserPrincipal(1L, "lan", "x", true, List.of("STAFF"),
-                Set.of("cash-shifts", "pos", "work-shifts", "staff", "audit-logs"), staff.getId(), null);
+                Set.of("cash-shifts", "pos", "work-shifts", "staff", "audit-logs", "orders.refund"), staff.getId(), null);
         manager = new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
     }
 
@@ -78,12 +78,23 @@ class StaffOperationsFlowTest {
         return s.isBlank() ? null : json.readTree(s);
     }
 
-    private void paid(PaymentMethod method, int amount) {
+    private Payment paid(PaymentMethod method, int amount) {
         Order o = orderRepository.save(Order.builder().orderCode("T" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
                 .orderType(OrderType.TAKE_AWAY).channel(OrderChannel.COUNTER).subtotal(BigDecimal.valueOf(amount))
                 .totalAmount(BigDecimal.valueOf(amount)).build());
-        paymentRepository.save(Payment.builder().order(o).method(method).amount(BigDecimal.valueOf(amount))
+        return paymentRepository.save(Payment.builder().order(o).method(method).amount(BigDecimal.valueOf(amount))
                 .status(PaymentStatus.PAID).paidAt(LocalDateTime.now()).build());
+    }
+
+    @Test
+    void aCashRefundLeavesTheTill() throws Exception {
+        call(post("/api/cash-shifts/open"), Map.of("openingCash", 500000));
+        Payment p = paid(PaymentMethod.CASH, 117000);
+        call(post("/api/payments/" + p.getId() + "/refund"), Map.of("amount", 39000));
+        JsonNode s = call(get("/api/cash-shifts/current"), null);
+        // 500.000 + 117.000 − 39.000 handed back = 578.000
+        assertThat(s.get("expectedCash").decimalValue()).isEqualByComparingTo("578000");
+        assertThat(s.get("cashOut").decimalValue()).isEqualByComparingTo("39000");
     }
 
     @Test
