@@ -1,0 +1,145 @@
+{
+  "1": {
+    "tables": ["categories", "coffees"],
+    "steps": {
+      "1": "Menu: Thực đơn & kho › Danh mục → bấm \"Thêm danh mục\" → Tên \"Cà phê muối\", Mô tả \"Cà phê phin với lớp kem muối kiểu Huế\", Thứ tự hiển thị 5 → bấm \"Lưu\" → thông báo \"Đã lưu\", dòng mới hiện trong bảng.",
+      "2": "Menu: Thực đơn & kho › Danh mục → bấm \"Thêm danh mục\" → Tên \"Cà phê muối\" (trùng) → bấm \"Lưu\" → UI hiện thông báo lỗi đỏ \"Danh mục đã tồn tại: Cà phê muối\", không thêm dòng.",
+      "3": "Menu: Thực đơn & kho › Danh mục → dòng \"Cà phê muối\" bấm \"Sửa\" → Mô tả \"Phin Robusta + kem muối béo mặn\", Thứ tự hiển thị 3 → bấm \"Lưu\" → cột Thứ tự đổi thành 3.",
+      "4": "Menu: Thực đơn & kho › Danh mục → bấm \"Thêm danh mục\" → Tên \"Danh mục thử xóa\" → bấm \"Lưu\" → dòng mới xuất hiện (danh mục chưa có món).",
+      "5": "Menu: Thực đơn & kho › Danh mục → dòng \"Danh mục thử xóa\" bấm \"Xóa\" → xác nhận hộp \"Xóa danh mục?\" → thông báo \"Đã xóa\", dòng biến mất.",
+      "6": "Menu: Thực đơn & kho › Danh mục → xem bảng danh sách (trang không có ô tìm kiếm, tự nhìn cột Tên) → thấy 5 danh mục, trong đó có \"Cà phê muối\"."
+    }
+  },
+  "2": {
+    "tables": ["images", "coffees", "recipes", "recipe_materials", "recipe_steps", "categories", "materials"],
+    "steps": {
+      "1": "Menu: Thực đơn & kho › Cà phê & công thức → bấm \"Tạo cà phê mới\" → ở ô \"Ảnh món\" bấm vùng \"Kéo thả hoặc bấm để chọn ảnh\" → chọn file PNG (≤3MB) → ảnh hiện xem trước.",
+      "2": "Menu: Thực đơn & kho › Cà phê & công thức → bấm \"Tạo cà phê mới\" → Tên cà phê \"cà phê muối\", Danh mục \"Cà phê muối\", Giá bán 35.000 → bấm \"Lưu\" → toast lỗi \"Món đã có trong thực đơn: cà phê muối\".",
+      "3": "Menu: Thực đơn & kho › Cà phê & công thức → \"Tạo cà phê mới\" → Tên \"Cà phê muối Huế\", Danh mục \"Cà phê muối\", Giá bán 35.000, Trạng thái \"Đang bán\", Mô tả \"Phin Robusta, sữa đặc, phủ kem muối\", chọn ảnh → \"Lưu\" → món hiện trong bảng, tự mở ngăn công thức.",
+      "4": "Sau khi lưu món, ngăn \"Công thức · Cà phê muối Huế\" tự mở (hoặc bấm \"Công thức\" → \"Tạo công thức\") → Cách pha \"Phin\", Thời gian pha 5, Mô tả \"Ly 360ml\" → \"Thêm nguyên liệu\": Robusta 20, sữa đặc 25, kem muối 30, đá 120 → thêm 4 bước pha → bấm \"Lưu công thức\".",
+      "5": "Không có thao tác UI: màn \"Công thức\" chỉ có một công thức đang áp dụng, nút \"Lưu công thức\" luôn kích hoạt ngay (không có chế độ lưu nháp / phiên bản v2); bước này chỉ gọi được qua API (activate=false).",
+      "6": "Không có thao tác UI cho công thức nháp v2; với công thức đang dùng thì bấm \"Công thức\" → \"Sửa công thức\" → đổi định lượng sữa đặc thành 18 → \"Lưu công thức\" (ngăn hiển thị Sữa đặc: 18 ml).",
+      "7": "Không có thao tác UI: màn \"Công thức\" không có nút xóa công thức (chỉ có \"Sửa công thức\"); xóa công thức nháp chỉ gọi được qua API.",
+      "8": "Menu: Thực đơn & kho › Cà phê & công thức → dòng \"Cà phê muối Huế\" bấm \"Sửa\" → Giá bán 39.000 → bấm \"Lưu\" → cột Giá bán đổi thành 39.000đ.",
+      "9": "Menu: Thực đơn & kho › Cà phê & công thức → cột Trạng thái của \"Cà phê muối Huế\" bấm mũi tên ▾ → chọn \"Hết món\" → toast \"Đã cập nhật\", nhãn đổi thành \"Hết món\".",
+      "10": "Menu: Thực đơn & kho › Cà phê & công thức → cột Trạng thái của \"Cà phê muối Huế\" bấm mũi tên ▾ → chọn \"Đang bán\" → nhãn trở lại \"Đang bán\".",
+      "11": "Menu: Thực đơn & kho › Cà phê & công thức → gõ \"muối\" vào ô \"Tìm món\" rồi Enter → bảng lọc ra \"Cà phê muối Huế\" (bỏ lọc thì thấy đủ 13 món).",
+      "12": "Menu: Thực đơn & kho › Cà phê & công thức → bấm nút \"In công thức\" → hộp \"In công thức — A4, mỗi tờ 8 thẻ A7\" liệt kê công thức đang áp dụng của từng món (cột Món, Sửa lần cuối); cột \"Còn pha được\" cũng dùng công thức này."
+    }
+  },
+  "3": {
+    "tables": ["categories", "coffees", "images", "promotions", "promotion_items", "recipes", "recipe_materials", "material_batches", "dining_tables"],
+    "steps": {
+      "1": "Không cần đăng nhập. Trang khách: mở trang chủ \"Thực đơn\" (đường dẫn /) → thấy các nhóm danh mục, thẻ món; bấm chip danh mục để nhảy tới nhóm, gõ \"Tìm món…\" để lọc; kiểm tra thẻ \"Cà phê muối Huế\" 39.000đ.",
+      "2": "Trang khách: quét mã QR dán trên bàn T05 (hoặc mở link /t/<mã QR>) → trang tự chuyển về thực đơn; thanh đầu trang và nút \"Thanh toán\" ở bước đặt hàng hiện \"Tại bàn T05\"."
+    }
+  },
+  "4": {
+    "tables": ["carts", "cart_items", "coffees", "dining_tables", "recipes", "recipe_materials", "material_batches", "promotions"],
+    "steps": {
+      "1": "Không có nút riêng: giỏ được tạo tự động khi khách quét QR bàn T05 (link /t/<mã QR>) rồi thêm món đầu tiên; mã giỏ lưu trong trình duyệt khách.",
+      "2": "Trang khách: bấm thẻ \"Cà phê muối Huế\" → hộp chọn món → bấm \"+\" để số lượng 2 → bấm \"Thêm vào giỏ · …\" → mở \"Giỏ hàng\" (nút trên đầu trang) thấy 2 ly, 78.000đ. Ô ghi chú món \"Ít đá\" (chưa thấy nhãn trong code).",
+      "3": "Trang khách: ở thẻ \"Bạc xỉu\" bấm nút \"+\" (Thêm Bạc xỉu) hoặc bấm thẻ → \"Thêm vào giỏ · …\" → mở \"Giỏ hàng\", thấy 2 dòng, Tạm tính 117.000đ.",
+      "4": "Trang khách: thẻ \"Americano\" bấm nút \"+\" (hoặc bấm thẻ → \"Thêm vào giỏ · …\") → mở \"Giỏ hàng\", thấy 3 dòng, Tạm tính 156.000đ.",
+      "5": "Trang khách: mở \"Giỏ hàng\" → dòng \"Bạc xỉu\" bấm nút \"Tăng\" (+) một lần để thành 2 ly → Tạm tính đổi thành 195.000đ.",
+      "6": "Trang khách: mở \"Giỏ hàng\" → dòng \"Americano\" bấm biểu tượng thùng rác (\"Xóa\") → còn 2 dòng, Tạm tính 156.000đ.",
+      "7": "Trang khách: đóng rồi mở lại \"Giỏ hàng\" (hoặc tải lại trang) → giỏ vẫn còn 2× Cà phê muối Huế, 2× Bạc xỉu, Tạm tính 156.000đ."
+    }
+  },
+  "5": {
+    "tables": ["orders", "order_items", "order_status_history", "payments", "payment_transactions", "shipments", "customers", "customer_addresses", "carts", "cart_items", "vouchers", "notification_messages", "coffees", "delivery_zones", "promotions", "dining_tables"],
+    "steps": {
+      "1": "Trang khách: ở \"Giỏ hàng\" bấm \"Đặt hàng\" → trang \"Đặt hàng\": chọn \"Tại bàn T05\" → khung \"Đơn của bạn\" hiện Tạm tính, giảm giá (đợt giảm 10%) và Tổng cộng 140.400đ (báo giá tự gọi khi đổi hình thức).",
+      "2": "Trang khách: trang \"Đặt hàng\" → mục 1 \"Tại bàn T05\", mục 2 Họ tên \"Khách bàn T05\", Ghi chú cho cửa hàng \"Mang ra cùng lúc\", mục 3 chọn \"Tiền mặt\" → bấm \"Xác nhận đặt hàng · 140.400đ\" → chuyển sang trang theo dõi đơn, trạng thái \"Chờ xác nhận\".",
+      "3": "Trang khách: vào trang chủ không quét QR (hoặc bấm nút \"Rời bàn\" ở đầu trang) để đặt online; giỏ mới được tạo tự động khi thêm món đầu tiên.",
+      "4": "Trang khách: trang chủ → thẻ \"Cà phê muối Huế\" bấm \"Thêm vào giỏ · …\" với số lượng 3 → mở \"Giỏ hàng\" thấy Tạm tính 117.000đ.",
+      "5": "Trang khách: thẻ \"Bạc xỉu\" chọn số lượng 2 → \"Thêm vào giỏ · …\" → \"Giỏ hàng\" Tạm tính 195.000đ.",
+      "6": "Trang khách: \"Giỏ hàng\" › \"Đặt hàng\" → mục 1 chọn \"Giao hàng\" → ô \"Quận / phường\" chọn \"Quận 3\" → khung \"Đơn của bạn\" hiện Tạm tính 195.000đ, Phí giao hàng 15.000đ, Tổng cộng 190.500đ.",
+      "7": "Trang khách: trang \"Đặt hàng\" chọn \"Giao hàng\" → ô \"Quận / phường\" gõ \"Củ Chi\" → danh sách hiện \"Ngoài khu vực giao hàng\", không chọn được (nếu gọi API thì lỗi \"'Củ Chi' ngoài khu vực giao hàng của quán\" hiện đỏ dưới ô).",
+      "8": "Trang khách: \"Giao hàng\" → Họ tên \"Nguyễn Thị Thu Hà\", Số điện thoại \"0938456712\", Quận / phường \"Quận 3\", Địa chỉ giao hàng, Người nhận → mục 3 chọn \"Thẻ ATM nội địa\" → bấm \"Xác nhận đặt hàng · 190.500đ\".",
+      "9": "Không có thao tác UI riêng: ngay sau khi đặt hàng bằng \"Thẻ ATM nội địa\", trang khách tự gọi tạo link VNPAY và chuyển sang cổng VNPAY giả lập (nếu quay lại: nút \"Thanh toán ngay\" ở trang theo dõi đơn).",
+      "10": "Trên trang cổng VNPAY giả lập (do backend phục vụ) bấm nút \"Thanh toán thành công\" → hệ thống IPN gọi về server rồi chuyển về trang /payment/result của khách.",
+      "11": "Trang khách: sau khi bấm \"Thanh toán thành công\" tự chuyển sang trang kết quả → hiển thị \"Thanh toán thành công\", \"Đơn CH261021WTQ3 · 190.500đ\" (chữ ký return URL được kiểm ngầm); có nút \"Xem đơn hàng\".",
+      "12": "Trang khách: bấm \"Xem đơn hàng\" (hoặc \"Đơn của tôi\" › nhập mã CH261021WTQ3 › \"Tra cứu\") → phần thanh toán của đơn hiển thị phương thức chuyển khoản và \"Đã thanh toán\".",
+      "13": "Không có thao tác UI: IPN giả mạo là cuộc gọi máy chủ-máy chủ từ cổng VNPAY (GET /api/public/payments/vnpay/ipn); người dùng không thể gửi từ giao diện, server trả RspCode 97 (sai chữ ký) và đơn không đổi."
+    }
+  },
+  "6": {
+    "tables": ["orders", "order_items", "order_status_history", "payments", "customers", "material_batches", "material_transactions", "dining_tables", "vouchers", "coffees", "promotions", "recipes", "recipe_materials"],
+    "steps": {
+      "1": "Menu: Bán hàng & vận hành › Order tại quầy → ô \"SĐT khách\" gõ 0938456712 rồi bấm \"Tìm\" → ô \"Tên khách\" tự điền \"Nguyễn Thị Thu Hà\", toast \"Nguyễn Thị Thu Hà · 0 điểm\".",
+      "2": "Menu: Bán hàng & vận hành › Order tại quầy → bấm món \"Americano\" 2 lần, món \"Cà phê muối Huế\" 1 lần → khung \"Đơn hiện tại\" chọn \"Mang về\" → xem dòng Tổng 117.000đ (báo giá tự cập nhật).",
+      "3": "Menu: Bán hàng & vận hành › Order tại quầy → thêm 2 Americano + 1 Cà phê muối Huế → \"Mang về\" → SĐT khách 0938456712 → chọn \"Tiền mặt\", bỏ tích \"Đã thu tiền\" → bấm \"Tạo đơn\" → hộp \"Đã tạo đơn CH261021RZ2K\" (chưa thu tiền).",
+      "4": "Menu: Bán hàng & vận hành › Order tại quầy → thêm 1 Bạc xỉu → chọn \"Tại bàn\" → \"Chọn bàn\" \"Bàn T05…\" → phương thức \"Thẻ\", tích \"Đã thu tiền\" → \"Tạo đơn\" → hộp \"Đã tạo đơn CH261021AKLM\", tổng 39.000đ.",
+      "5": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → chọn khoảng ngày hôm nay, ô \"Kênh\" chọn \"Tại quầy\", chuyển sang dạng danh sách (nút biểu tượng danh sách) → thấy 2 đơn CH261021AKLM, CH261021RZ2K."
+    }
+  },
+  "7": {
+    "tables": ["orders", "order_status_history", "payments", "shipments", "material_batches", "material_transactions", "loyalty_point_history", "customers", "invoices", "invoice_lines", "notification_messages", "coffees", "order_items", "recipes", "recipe_materials", "materials"],
+    "steps": {
+      "1": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → chọn khoảng ngày hôm nay → chuyển dạng danh sách → ô \"Trạng thái\" chọn \"Chờ xác nhận\" → thấy CH261021WTQ3 (Online) và CH261021U2C4 (QR tại bàn); ở dạng bảng tương ứng cột \"Chờ xác nhận\".",
+      "2": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → thẻ đơn QR bàn T05 (CH261021U2C4) bấm \"Xác nhận & pha chế\" (cũng có trong ngăn chi tiết đơn) → đơn sang cột \"Đang pha chế\".",
+      "3": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → thẻ đơn ở cột \"Đang pha chế\" bấm \"Pha xong\" → đơn sang cột \"Sẵn sàng\".",
+      "4": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → bấm vào thẻ đơn (mở ngăn chi tiết) → bấm \"Thu tiền\" (chỉ có khi đơn chưa thanh toán) → mục Thanh toán hiện \"Tiền mặt · Đã thanh toán\".",
+      "5": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → đơn ở cột \"Sẵn sàng\" bấm \"Đã phục vụ\" (đơn tại bàn đã trả) → đơn sang \"Hoàn tất\".",
+      "6": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → bấm vào đơn CH261021U2C4 mở ngăn chi tiết → kéo xuống mục \"Lịch sử trạng thái\": Đặt đơn → Đang pha chế → Sẵn sàng → Hoàn tất.",
+      "7": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → tìm đơn quầy CH261021RZ2K → nằm ngay ở cột \"Đang pha chế\" (không có bước \"Xác nhận & pha chế\").",
+      "8": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → đơn CH261021RZ2K cột \"Đang pha chế\" bấm \"Pha xong\" → sang \"Sẵn sàng\".",
+      "9": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → đơn CH261021RZ2K cột \"Sẵn sàng\" bấm \"Đã bàn giao & thu tiền\" (mang về, chưa trả) → sang \"Hoàn tất\".",
+      "10": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → tìm đơn quầy CH261021AKLM → nằm ngay ở cột \"Đang pha chế\" (đơn tại quầy vào thẳng bếp).",
+      "11": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → đơn CH261021AKLM cột \"Đang pha chế\" bấm \"Pha xong\" → sang \"Sẵn sàng\".",
+      "12": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → đơn CH261021AKLM cột \"Sẵn sàng\" bấm \"Đã phục vụ\" → sang \"Hoàn tất\".",
+      "13": "Menu: Thực đơn & kho › Nguyên liệu & lô → tab \"Nguyên liệu thô\" → dòng \"Cà phê Robusta rang xay\" bấm \"Xem chi tiết\" → bảng \"Các lô\" và cột Tồn kho (lô 10000g + lô 7790g, giảm theo công thức đã bán)."
+    }
+  },
+  "8": {
+    "tables": ["orders", "order_items", "order_status_history", "payments", "payment_transactions", "carts", "cart_items", "customers", "vouchers", "invoices", "invoice_lines", "cash_movements", "notification_messages", "cash_shifts"],
+    "steps": {
+      "1": "Trang khách: chọn món vào \"Giỏ hàng\" → \"Đặt hàng\" → mục 1 \"Mang về\", Họ tên \"Anh Bảo\", Số điện thoại \"0977123456\", mục 3 \"Tiền mặt\" → bấm \"Xác nhận đặt hàng · …\" → sang trang theo dõi đơn CH261021JYC4.",
+      "2": "Trang khách: trang theo dõi đơn (đơn \"Chờ xác nhận\") → bấm \"Hủy đơn\" → hộp \"Hủy đơn hàng?\" ô \"Lý do (không bắt buộc)\" gõ \"Đặt nhầm món\" → bấm \"Hủy đơn\" → toast \"Đã hủy đơn\", trạng thái \"Đã hủy\".",
+      "3": "Trang khách: giỏ → \"Đặt hàng\" → \"Mang về\", Họ tên \"Chị Linh\", Số điện thoại \"0966332211\" → mục 3 chọn \"Quét mã QR\" → \"Xác nhận đặt hàng\" → cổng VNPAY giả lập bấm \"Thanh toán thành công\" (đơn CH261021H3SY chuyển sang đã thanh toán).",
+      "4": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → đơn CH261021H3SY (Chờ xác nhận) bấm \"Từ chối\" → hộp \"Từ chối đơn\" ô \"Lý do (bắt buộc)\" gõ \"Hết kem muối\" → \"Xác nhận\" → đơn \"Bị từ chối\", thanh toán \"Đã hoàn tiền\".",
+      "5": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → bấm vào đơn quầy đã \"Hoàn tất\" (CH261021RZ2K) → mục Thanh toán bấm \"Hoàn tiền\" → nhập 39.000 → bấm \"Xác nhận hoàn tiền\" → toast \"Đã hoàn tiền\", hiện \"đã hoàn 39.000đ\".",
+      "6": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → mở đơn CH261021RZ2K → \"Hoàn tiền\" → ô số tiền bị chặn tối đa bằng số còn hoàn được (không gõ vượt được trên UI); lỗi \"Số tiền hoàn vượt quá số đã thu\" chỉ hiện khi gọi API.",
+      "7": "Không có thao tác UI: đơn \"Hoàn tất\" không có nút \"Hủy\" (chỉ hiện ở đơn \"Đã xác nhận\"); thử qua API sẽ trả lỗi \"Không thể thực hiện khi đơn đang ở trạng thái COMPLETED\"."
+    }
+  },
+  "9": {
+    "tables": ["orders", "order_items", "payments", "shipments", "customers", "invoices"],
+    "steps": {
+      "1": "Trang khách: menu \"Đơn của tôi\" → ô tra cứu gõ mã \"CH261021WTQ3\" → bấm \"Tra cứu\" → trang đơn hiện thanh tiến trình đến \"Hoàn tất\", mục Chi tiết 2 món, \"Giao đến: …\".",
+      "2": "Trang khách: menu \"Đơn của tôi\" → gõ mã \"KHONGCO123\" → bấm \"Tra cứu\" → trang hiện \"Không tìm thấy đơn hàng\" và nút \"Về thực đơn\".",
+      "3": "Trang khách: bấm \"Đăng nhập\" (đầu trang) → Số điện thoại, Mật khẩu → \"Đăng nhập\" → bấm tên ở góc phải chọn \"Tài khoản của tôi\" → tab \"Đơn hàng\" liệt kê CH261021RZ2K và CH261021WTQ3 (Hoàn tất)."
+    }
+  },
+  "10": {
+    "tables": ["orders", "order_status_history", "shipments", "shipment_events", "material_batches", "material_transactions", "notification_messages", "order_items", "payments", "delivery_zones"],
+    "steps": {
+      "1": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → thẻ đơn giao hàng (CH261021WTQ3, đã trả VNPAY, cột \"Chờ xác nhận\") bấm \"Xác nhận & pha chế\" → sang \"Đang pha chế\".",
+      "2": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → thẻ đơn giao hàng cột \"Đang pha chế\" bấm \"Pha xong\" → sang \"Sẵn sàng\" (thẻ hiện nút \"Đặt xe\").",
+      "3": "Menu: Bán hàng & vận hành › Giao hàng (trang \"Điều phối giao hàng\") → tab \"Đang xử lý\" → dòng CH261021WTQ3 trạng thái \"Chờ đặt xe\", có nút \"Đặt xe Ahamove\" và \"Gọi xe ngoài\".",
+      "4": "Menu: Bán hàng & vận hành › Giao hàng → bấm tab \"Tất cả\" → bảng liệt kê cả chuyến đã giao (CH261021Q4TG, CH261021WTQ3 trạng thái đã giao); tab \"Đang xử lý\" chỉ giữ chuyến chưa giao."
+    }
+  },
+  "11": {
+    "tables": ["incidents", "vouchers", "orders", "customers", "staff"],
+    "steps": {
+      "1": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → bấm vào đơn CH261021WTQ3 mở chi tiết → mục \"Sự cố\" bấm \"Ghi nhận sự cố\" → Loại sự cố \"Trễ đơn\", Mức độ \"Trung bình\", Lý do \"Tài xế lạc đường\", Mô tả \"Khách gọi phàn nàn lúc 10:40\" → bấm \"Ghi nhận\" → toast \"Đã ghi nhận sự cố\".",
+      "2": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → mở lại chi tiết đơn CH261021WTQ3 → mục \"Sự cố\" liệt kê 1 sự cố \"Trễ đơn\" \"Chưa xử lý\".",
+      "3": "Menu: Bán hàng & vận hành › Sự cố đơn hàng → dòng CH261021WTQ3 bấm \"Xử lý\" → Phương án xử lý \"Gọi xin lỗi khách, tặng voucher\", tích \"Đền bù bằng voucher\" → Giá trị giảm 20.000, Đơn tối thiểu 50.000, Số voucher 1, Hạn (ngày) 30 → bấm \"Hoàn tất xử lý\" → toast \"Đã xử lý sự cố\".",
+      "4": "Menu: Bán hàng & vận hành › Sự cố đơn hàng → bảng liệt kê sự cố (trang không có bộ lọc, nhìn cột \"Trạng thái\") → dòng CH261021WTQ3, \"Trễ đơn\", \"Đã xử lý\", cột \"Đền bù\" hiện mã voucher."
+    }
+  },
+  "12": {
+    "tables": ["dining_tables", "orders"],
+    "steps": {
+      "1": "Menu: Bán hàng & vận hành › Bàn & mã QR → bấm \"Thêm bàn\" → Số bàn \"T05\", Khu vực \"Tầng 2\", Sức chứa 4, Trạng thái \"Trống\" → bấm \"Lưu\" → thẻ bàn T05 kèm mã QR hiện ra.",
+      "2": "Menu: Bán hàng & vận hành › Bàn & mã QR → thẻ bàn T05 bấm \"Sửa\" → Khu vực \"Tầng 2 – ban công\", Sức chứa 6 → bấm \"Lưu\" → thẻ hiện \"Tầng 2 – ban công · 6 chỗ\".",
+      "3": "Menu: Bán hàng & vận hành › Bàn & mã QR → thẻ bàn T05 bấm biểu tượng tải lại (↻) → xác nhận hộp \"Tạo QR mới? Mã cũ sẽ không dùng được nữa.\" → toast \"Đã tạo mã QR mới\", mã QR trên thẻ đổi.",
+      "4": "Trang khách: mở link QR cũ (/t/<mã QR cũ>, ví dụ từ ảnh QR đã chụp) → trang hiện \"Mã QR không hợp lệ — Vui lòng nhờ nhân viên hỗ trợ.\" (API trả 404).",
+      "5": "Menu: Bán hàng & vận hành › Bàn & mã QR → bấm \"Thêm bàn\" → Số bàn \"TMP\", Sức chứa 2 → bấm \"Lưu\" → thẻ bàn TMP xuất hiện.",
+      "6": "Menu: Bán hàng & vận hành › Bàn & mã QR → thẻ bàn TMP bấm \"Sửa\" → bấm \"Xóa\" → xác nhận \"Xóa bàn?\" → toast \"Đã xóa\", thẻ biến mất.",
+      "7": "Menu: Bán hàng & vận hành › Bàn & mã QR → trang hiển thị lưới thẻ bàn (không có ô tìm kiếm, tự tìm thẻ T05) → tổng 7 bàn, T05 hiện \"Tầng 2 – ban công · 6 chỗ\"."
+    }
+  }
+}

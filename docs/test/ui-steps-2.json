@@ -1,0 +1,147 @@
+{
+  "13": {
+    "tables": ["materials", "material_packages", "material_batches", "recipe_materials"],
+    "steps": {
+      "1": "Menu: Thực đơn & kho › Nguyên liệu & lô → tab \"Nguyên liệu thô\" → xem bảng (cột Nguyên liệu, Tồn kho, Tồn tối thiểu, HSD gần nhất); tiêu đề tab hiện tổng số nguyên liệu thô.",
+      "2": "Menu: Thực đơn & kho › Nguyên liệu & lô → tab \"Nguyên liệu thô\" → bấm \"Thêm nguyên liệu\" → Tên \"Sữa yến mạch Oatside\", Đơn vị tính \"ml\", Mức tồn tối thiểu 2000, Cảnh báo trước khi hết hạn 5 ngày → \"Thêm quy cách\" 2 lần: \"Hộp 1 L\"=1000, \"Thùng 6 hộp\"=6000 → bấm \"Lưu\".",
+      "3": "Menu: Thực đơn & kho › Nguyên liệu & lô → ô \"Tìm nguyên liệu\" gõ \"Robusta\" → bấm \"Xem chi tiết\" → mục \"Quy cách đóng gói\" bấm \"Thêm quy cách\": \"Bao 5 kg\"=5000 (đã có \"Gói 1 kg\"=1000) → bấm \"Lưu\", xem lại 2 quy cách.",
+      "4": "Menu: Thực đơn & kho › Nguyên liệu & lô → \"Tìm nguyên liệu\" gõ \"Whipping cream\" → \"Xem chi tiết\" → \"Thêm quy cách\": \"Hộp 1 L\"=1000 → bấm \"Lưu\".",
+      "5": "Menu: Thực đơn & kho › Nguyên liệu & lô → tìm \"Sữa yến mạch\" → \"Xem chi tiết\" → đổi \"Mức tồn tối thiểu\" từ 2000 thành 3000 → bấm \"Lưu\"; cột \"Tồn tối thiểu\" ngoài bảng hiện 3.000 ml.",
+      "6": "Menu: Thực đơn & kho › Nguyên liệu & lô → \"Thêm nguyên liệu\" → Tên \"Bột cacao thử\", Đơn vị tính \"g\" → bấm \"Lưu\"; nguyên liệu mới xuất hiện trong bảng.",
+      "7": "Không có nút xóa trên màn hình (chưa thấy nhãn \"Xóa\" trong code): mở \"Xem chi tiết\" nguyên liệu \"Bột cacao thử\" → đổi \"Trạng thái\" sang \"Ngưng dùng\" → \"Lưu\"; nguyên liệu gắn nhãn \"Ngưng dùng\" (API DELETE thực chất chuyển trạng thái).",
+      "8": "Menu: Thực đơn & kho › Nguyên liệu & lô → tìm \"Muối\" → \"Xem chi tiết\" → đổi \"Trạng thái\" sang \"Ngưng dùng\" → \"Lưu\" (chưa thấy nút \"Xóa\" trong code); xem mục \"Các lô\" vẫn còn nguyên lô và lịch sử.",
+      "9": "Menu: Thực đơn & kho › Nguyên liệu & lô → tab \"Nguyên liệu thô\" → dòng \"Muối\" vẫn còn trong bảng và gắn nhãn \"Ngưng dùng\".",
+      "10": "Menu: Thực đơn & kho › Nguyên liệu & lô → tìm \"Muối\" → \"Xem chi tiết\" → \"Trạng thái\" chọn \"Đang dùng\" → bấm \"Lưu\"; nhãn \"Ngưng dùng\" biến mất.",
+      "11": "Menu: Thực đơn & kho › Nguyên liệu & lô → tìm \"Robusta\" → bấm \"Xem chi tiết\" → cuộn xuống mục \"Các lô\", xem lô #1: Còn lại 8.000 g, Hạn dùng 20/12/2026.",
+      "12": "Menu: Thực đơn & kho › Nguyên liệu & lô → tab \"Nguyên liệu thô\" → ô \"Tìm nguyên liệu\" gõ \"yến mạch\" → bảng chỉ còn \"Sữa yến mạch Oatside\" (tiêu đề tab hiện tổng số nguyên liệu)."
+    }
+  },
+  "14": {
+    "tables": ["materials", "material_batches"],
+    "steps": {
+      "1": "Menu: Tổng quan → xem thẻ \"Cảnh báo kho\" (tồn dưới mức tối thiểu và lô sắp hết hạn, ví dụ \"Cốt dừa còn 800 / 1000 ml\"); hoặc Thực đơn & kho › Nguyên liệu & lô → bấm tab con \"Đang cảnh báo\" xem nhãn \"Sắp hết\" / \"Sắp hết hạn\"."
+    }
+  },
+  "15": {
+    "tables": ["suppliers", "supplier_materials", "materials", "material_packages"],
+    "steps": {
+      "1": "Menu: Mua hàng › Nhà cung cấp → bấm \"Thêm nhà cung cấp\" → Tên \"Công ty TNHH Cà phê Đất Bazan\", Người liên hệ, Điện thoại 0905123789, Email, Mã số thuế 6001234567, Điều khoản thanh toán 15 ngày, Địa chỉ → \"Thêm nguyên liệu\": Robusta, giá 230 → bấm \"Lưu\".",
+      "2": "Menu: Mua hàng › Nhà cung cấp → \"Thêm nhà cung cấp\" → Tên \"NPP Sữa Hoàng Gia\", Điện thoại 0283 8456 123, Mã số thuế 0312987654, Điều khoản thanh toán 7 ngày → \"Thêm nguyên liệu\" 3 dòng (Whipping cream 145, Sữa đặc 59, Sữa yến mạch 62; chọn quy cách \"Lẻ\") → \"Lưu\".",
+      "3": "Menu: Mua hàng › Nhà cung cấp → \"Thêm nhà cung cấp\" → Tên \"NCC thử xóa\", Điện thoại 0900000000 → bấm \"Lưu\".",
+      "4": "Menu: Mua hàng › Nhà cung cấp → dòng \"NPP Sữa Hoàng Gia\" bấm \"Sửa\" → Điện thoại 0908456123, Ghi chú \"Giao 7h–9h sáng\" → bấm \"Lưu\"; cột Điện thoại đổi.",
+      "5": "Menu: Mua hàng › Nhà cung cấp → dòng \"NCC thử xóa\" bấm \"Ngừng hợp tác\" → xác nhận \"Ngừng hợp tác với nhà cung cấp này?\" (chưa thấy nút \"Xóa\" trong code; toast \"Đã ngừng hợp tác\"); NCC chuyển sang tab \"Ngừng hợp tác\".",
+      "6": "Menu: Mua hàng › Nhà cung cấp → chọn \"Tất cả\" → ô \"Tên, SĐT, nguyên liệu\" gõ \"Bazan\" → bảng chỉ còn NCC Đất Bazan; xem tổng số ở nhãn \"Đang hợp tác (n)\"."
+    }
+  },
+  "16": {
+    "tables": ["purchase_orders", "purchase_order_items", "suppliers", "supplier_materials", "materials", "material_packages", "goods_receipts", "goods_receipt_items"],
+    "steps": {
+      "1": "Menu: Mua hàng › Phiếu đặt hàng → bấm \"Lập phiếu đặt hàng\" → Nhà cung cấp \"Công ty TNHH Cà phê Đất Bazan\", Hẹn giao 23/10/2026 → dòng: Robusta, quy cách \"Bao 5 kg\", số lượng 2, đơn giá 1.150.000 → Thuế GTGT \"8%\", Ghi chú → bấm \"Lưu nháp\"; mã DH261021-001, trạng thái \"Nháp\".",
+      "2": "Menu: Mua hàng › Phiếu đặt hàng → \"Lập phiếu đặt hàng\" → Nhà cung cấp \"NPP Sữa Hoàng Gia\", Hẹn giao 22/10/2026 → dòng 1: Whipping cream, \"Hộp 1 L\", SL 12, giá 145.000; dòng 2: Sữa yến mạch, \"Hộp 1 L\", SL 6, giá 62.000 → Thuế GTGT \"8%\" → \"Lưu nháp\".",
+      "3": "Menu: Mua hàng › Phiếu đặt hàng → bấm dòng phiếu DH261021-002 → bấm \"Sửa\" → ô \"Giảm giá\" nhập 50.000 → bấm \"Lưu nháp\"; tổng tiền đổi thành 2.226.960đ.",
+      "4": "Menu: Mua hàng › Phiếu đặt hàng → bấm dòng phiếu DH261021-001 → bấm \"Gửi nhà cung cấp\" → xác nhận \"Gửi phiếu cho nhà cung cấp?\"; trạng thái thành \"Đã đặt\".",
+      "5": "Menu: Mua hàng › Phiếu đặt hàng → bấm dòng phiếu DH261021-002 → \"Gửi nhà cung cấp\" → xác nhận; trạng thái thành \"Đã đặt\".",
+      "6": "Menu: Mua hàng › Phiếu đặt hàng → mở phiếu DH261021-001 (\"Đã đặt\"): không còn nút \"Sửa\" / \"Xóa\", chỉ có \"Nhận hàng\", \"Hủy phiếu\", \"In phiếu\"; API từ chối \"Chỉ sửa được phiếu nháp\".",
+      "7": "Menu: Mua hàng › Phiếu đặt hàng → \"Lập phiếu đặt hàng\" → Nhà cung cấp \"NPP Sữa Hoàng Gia\" → dòng: Sữa yến mạch, quy cách \"Lẻ (ml)\", số lượng 2000, đơn giá 62 → \"Lưu nháp\"; mã DH261021-003.",
+      "8": "Menu: Mua hàng › Phiếu đặt hàng → bấm dòng phiếu DH261021-003 (\"Nháp\") → bấm \"Xóa\" → xác nhận \"Xóa phiếu nháp?\"; phiếu biến mất khỏi danh sách.",
+      "9": "Menu: Mua hàng › Phiếu đặt hàng → \"Lập phiếu đặt hàng\" → Nhà cung cấp \"NPP Sữa Hoàng Gia\" → dòng: Sữa yến mạch, \"Lẻ (ml)\", số lượng 6000, đơn giá 62 → \"Lưu nháp\"; mã DH261021-003 (mã được dùng lại).",
+      "10": "Menu: Mua hàng › Phiếu đặt hàng → phiếu vừa lập (Drawer tự mở) → bấm \"Gửi nhà cung cấp\" → xác nhận; trạng thái \"Đã đặt\".",
+      "11": "Menu: Mua hàng › Phiếu đặt hàng → mở phiếu \"Đã đặt\" → bấm \"Hủy phiếu\" → ô \"Lý do\" nhập \"NCC báo hết hàng yến mạch\" → bấm \"Hủy phiếu\"; trạng thái \"Đã hủy\".",
+      "12": "Menu: Mua hàng › Phiếu đặt hàng → ô chọn \"Trạng thái\" chọn \"Đã đặt\" → bảng chỉ còn 2 phiếu \"Đã đặt\".",
+      "13": "Menu: Mua hàng › Phiếu đặt hàng → ô chọn \"Nhà cung cấp\" chọn \"Công ty TNHH Cà phê Đất Bazan\" → bảng còn 1 phiếu của Bazan."
+    }
+  },
+  "17": {
+    "tables": ["goods_receipts", "goods_receipt_items", "material_batches", "material_transactions", "purchase_orders", "purchase_order_items", "supplier_payments", "suppliers", "materials", "material_packages"],
+    "steps": {
+      "1": "Menu: Mua hàng › Phiếu đặt hàng → bấm dòng phiếu DH261021-001 → xem Drawer: dòng \"Cà phê Robusta rang xay\" Đặt 2 Bao 5 kg (hoặc Thực đơn & kho › Nhập / xuất kho, thẻ \"Phiếu đặt chờ nhận hàng\").",
+      "2": "Menu: Mua hàng › Phiếu đặt hàng → mở phiếu DH261021-001 → bấm \"Nhận hàng\" → Người giao hàng \"Anh Lâm (xe tải NCC)\", Hóa đơn Ký hiệu 1C26TDB, Số 0000456, Ngày 21/10/2026 → dòng Robusta: SL theo chứng từ 2, Thực nhận 2, Hạn sử dụng 19/04/2027 → Thuế GTGT \"8%\" → bấm \"Nhập kho\".",
+      "3": "Menu: Mua hàng › Phiếu đặt hàng → bấm dòng phiếu DH261021-002 → xem Drawer: Whipping cream 12 Hộp 1 L; Sữa yến mạch Oatside 6 Hộp 1 L.",
+      "4": "Menu: Mua hàng › Phiếu đặt hàng → mở DH261021-002 → \"Nhận hàng\" → Người giao \"Chị Mai\", Hóa đơn 1C26THG / 0012890, Giảm giá 50.000, Thuế \"8%\" → Whipping: SL theo chứng từ 12, Thực nhận 11, Không nhận 1, Lý do không nhận \"Hộp móp, rỉ\", HSD 20/12/2026, Nhiệt độ 5 → Yến mạch: chứng từ 4, thực nhận 4, HSD 19/01/2027 → \"Nhập kho\".",
+      "5": "Menu: Mua hàng › Phiếu đặt hàng → bấm dòng phiếu DH261021-002 → trạng thái hiển thị \"Nhận một phần\", thanh \"Đã nhận\" chưa đủ; Yến mạch còn thiếu 2 hộp.",
+      "6": "Menu: Mua hàng › Phiếu nhập kho → bấm \"Nhập lẻ (không theo phiếu đặt)\" → Nhà cung cấp \"NPP Sữa Hoàng Gia\", Người giao hàng \"Mua tại chợ Tân Định\" → dòng: Đường, Thực nhận 5000, Đơn giá 25, Hạn sử dụng 21/10/2027 → \"Trả ngay\" 125.000, Hình thức tiền mặt → bấm \"Nhập kho\".",
+      "7": "Menu: Mua hàng › Phiếu nhập kho → \"Nhập lẻ (không theo phiếu đặt)\" → bỏ trống Nhà cung cấp, thêm dòng Đường, Thực nhận 1000, Đơn giá 25 → \"Nhập kho\": form báo ô Nhà cung cấp bắt buộc / API trả \"Chọn nhà cung cấp\".",
+      "8": "Menu: Mua hàng › Phiếu nhập kho → \"Nhập lẻ (không theo phiếu đặt)\" → Nhà cung cấp \"NPP Sữa Hoàng Gia\" → dòng: Muối, Thực nhận 1000, Đơn giá 10 → bấm \"Nhập kho\"; phiếu PN261021-004.",
+      "9": "Menu: Mua hàng › Phiếu nhập kho → bấm dòng PN261021-004 → bấm \"Hủy phiếu nhập\" → ô \"Lý do hủy\" nhập \"Nhập nhầm số lượng\" → bấm \"Hủy phiếu nhập\"; trạng thái \"Đã hủy\".",
+      "10": "Menu: Mua hàng › Phiếu nhập kho → ô \"Nhà cung cấp\" chọn \"NPP Sữa Hoàng Gia\" (chưa thấy ô lọc khoảng ngày trong code; chỉ có \"Mã phiếu, số HĐ, nguyên liệu\" và \"Trạng thái\") → xem 3 phiếu PN261021-004 / -003 / -002.",
+      "11": "Menu: Thực đơn & kho › Nguyên liệu & lô → tìm \"Robusta\" → \"Xem chi tiết\" → mục \"Các lô\": lô mới Nhập 10.000 g, Thành tiền 2.300.000đ, cạnh lô cũ 8.000 g; cột \"Tồn kho\" ngoài bảng tăng 10.000 g."
+    }
+  },
+  "18": {
+    "tables": ["material_batches", "material_transactions", "materials", "material_components", "recipe_materials"],
+    "steps": {
+      "1": "Menu: Thực đơn & kho › Nguyên liệu & lô → tìm \"Whipping cream\" → bấm \"Xem chi tiết\" → mục \"Các lô\": lô #19 (10.000 ml) và lô #11 (4.000 ml).",
+      "2": "Menu: Thực đơn & kho › Nhập / xuất kho → chọn \"Phiếu hủy\" → Nguyên liệu \"Whipping cream\" → Lô #19 → Số lượng 250 → Lý do \"Đổ vỡ / rơi vãi\" → Ghi chú \"Đổ khi đánh kem muối\" → bấm \"Hủy hàng\"; toast \"Đã hủy hàng\".",
+      "3": "Menu: Thực đơn & kho › Nhập / xuất kho → chọn \"Xuất khác\" → Nguyên liệu \"Whipping cream\" → Lô #19 → Số lượng 100 → Lý do \"Dùng nội bộ / thử món\" → Ghi chú \"R&D món kem muối dừa\" → bấm \"Xuất kho\"; toast \"Đã xuất kho\".",
+      "4": "Menu: Thực đơn & kho › Nhập / xuất kho → \"Phiếu hủy\" → chọn Lô #19, ô Số lượng nhập 999999: UI giới hạn tối đa bằng tồn lô (nút \"Cả lô\" = 9.650 ml); nếu gửi vượt API báo \"Lô #19 chỉ còn 9650 ml\".",
+      "5": "Menu: Thực đơn & kho › Nguyên liệu & lô → tab \"Nguyên liệu chế biến / đang sử dụng\" → dòng \"Kem muối\" bấm \"Chế biến\" → bấm \"×1 chuẩn\" (900 ml), xem bảng Khấu trừ (whipping, sữa, muối) → bấm \"Chế biến & nhập kho\"; toast \"Đã chế biến, lô đã vào kho\".",
+      "6": "Menu: Thực đơn & kho › Lịch sử kho → ô \"Lọc theo nguyên liệu\" chọn \"Whipping cream\" → xem các dòng cột Loại: Nhập, Xuất chế biến, Xuất khác, Hủy, Trả NCC cùng số lượng và Lý do."
+    }
+  },
+  "19": {
+    "tables": ["stocktakes", "stocktake_items", "material_batches", "material_transactions", "materials"],
+    "steps": {
+      "1": "Menu: Thực đơn & kho › Kiểm kê kho → bấm \"Lập phiếu kiểm kê\" → \"Nguyên liệu cần kiểm\" chọn Robusta, Đường, Đá viên → \"Người cùng kiểm\" \"Lê Hoàng Yến, Trần Minh Khoa\" → bấm \"Lập phiếu\"; phiếu KK261021-001 trạng thái \"Đang kiểm\".",
+      "2": "Menu: Thực đơn & kho › Kiểm kê kho → bấm dòng phiếu KK261021-001 → cột \"Thực tế\": lô Robusta nhập 7850 (sổ 8000), các lô khác nhập đúng số sổ; cột \"Phẩm chất\" \"Còn tốt\"; cột \"Nguyên nhân\" \"Hao hụt khi xay, rơi vãi\" → bấm \"Lưu số đếm\".",
+      "3": "Menu: Thực đơn & kho › Kiểm kê kho → mở phiếu KK261021-001 → bấm \"Cân bằng kho\" → ô \"Ý kiến giải quyết số chênh lệch\" nhập \"Ghi nhận hao hụt định mức\" → bấm \"Cân bằng kho\"; trạng thái \"Đã cân bằng kho\".",
+      "4": "Menu: Thực đơn & kho › Kiểm kê kho → \"Lập phiếu kiểm kê\" → \"Nguyên liệu cần kiểm\" chọn \"Muối\" → bấm \"Lập phiếu\"; phiếu KK261021-002.",
+      "5": "Menu: Thực đơn & kho › Kiểm kê kho → bấm dòng phiếu KK261021-002 → bấm \"Hủy phiếu\" → xác nhận \"Hủy phiếu kiểm kê?\"; trạng thái \"Đã hủy\".",
+      "6": "Menu: Thực đơn & kho › Kiểm kê kho → ô chọn \"Trạng thái\" chọn \"Đã cân bằng kho\" → bảng chỉ còn KK261021-001."
+    }
+  },
+  "20": {
+    "tables": ["staff", "users"],
+    "steps": {
+      "1": "Menu: Thống kê & hệ thống › Nhân viên → bấm \"Thêm nhân viên\" → Họ tên \"Trần Minh Khoa\", Điện thoại 0907112233, Email khoa.tm@coffeeholic.vn, Chức vụ \"Pha chế\", Ngày vào làm 01/10/2026, Trạng thái \"Đang làm\" → bấm \"Lưu\".",
+      "2": "Menu: Thống kê & hệ thống › Nhân viên → \"Thêm nhân viên\" → Họ tên \"Lê Hoàng Yến\", Điện thoại 0912556677, Chức vụ \"Thu ngân\", Ngày vào làm 15/09/2026, Trạng thái \"Đang làm\" → bấm \"Lưu\".",
+      "3": "Menu: Thống kê & hệ thống › Nhân viên → \"Thêm nhân viên\" → Họ tên \"Trùng\", Điện thoại 0907112233 → bấm \"Lưu\"; toast lỗi \"Số điện thoại đã được dùng: 0907112233\".",
+      "4": "Menu: Thống kê & hệ thống › Nhân viên → dòng Trần Minh Khoa bấm \"Sửa\" → đổi Chức vụ thành \"Pha chế chính\"; (thử Trạng thái \"Nghỉ phép\" rồi lưu, sau đó sửa lại \"Đang làm\") → bấm \"Lưu\".",
+      "5": "Menu: Thống kê & hệ thống › Nhân viên → \"Thêm nhân viên\" → Họ tên \"Phạm Văn Tèo\", Điện thoại 0933001122, Chức vụ \"Phục vụ\" → bấm \"Lưu\".",
+      "6": "Menu: Thống kê & hệ thống › Nhân viên → dòng Phạm Văn Tèo bấm \"Nghỉ việc\" → xác nhận \"Cho nhân viên nghỉ việc?\" (chưa thấy nút \"Xóa\" trong code); toast \"Đã cho nghỉ việc\", trạng thái \"Đã nghỉ\".",
+      "7": "Menu: Thống kê & hệ thống › Nhân viên → xem danh sách; dòng Khoa còn \"Đang làm\", Tèo \"Đã nghỉ\" (chưa thấy ô tìm kiếm trong code, tìm bằng mắt trên bảng)."
+    }
+  },
+  "21": {
+    "tables": ["users", "user_roles", "staff", "roles"],
+    "steps": {
+      "1": "Menu: Thống kê & hệ thống › Tài khoản → bấm \"Tạo tài khoản\" → Tên đăng nhập \"yen.lh\", Mật khẩu \"Yen@2026\", Họ tên \"Lê Hoàng Yến\", Điện thoại 0912556677, Role \"Nhân viên\", Hồ sơ nhân viên \"Lê Hoàng Yến · Thu ngân\", Hoạt động bật → bấm \"Lưu\".",
+      "2": "Trang /admin/login: nhập Tên đăng nhập \"yen.lh\", Mật khẩu \"Yen@2026\" → bấm \"Đăng nhập\"; vào được hệ thống quản trị với menu theo 17 quyền của Nhân viên.",
+      "3": "Đăng nhập bằng tài khoản yen.lh: nhóm \"Thống kê & hệ thống\" không có mục \"Tài khoản\"; gõ trực tiếp /admin/users thì hiện trang \"Không có quyền truy cập\" (API trả 403).",
+      "4": "Menu: Thống kê & hệ thống › Tài khoản (đăng nhập admin) → \"Tạo tài khoản\" → Tên đăng nhập \"khoa.tm\", Mật khẩu \"Khoa@2026\", Họ tên \"Trần Minh Khoa\", Role \"Nhân viên\", Hồ sơ nhân viên \"Trần Minh Khoa · Pha chế chính\" → bấm \"Lưu\".",
+      "5": "Menu: Thống kê & hệ thống › Tài khoản → dòng khoa.tm bấm \"Sửa\" → tắt công tắc \"Hoạt động\" → bấm \"Lưu\"; cột Hoạt động hiện \"Khóa\".",
+      "6": "Trang /admin/login: nhập \"khoa.tm\" / \"Khoa@2026\" → bấm \"Đăng nhập\"; toast lỗi \"Tài khoản đã bị khóa\", không vào được.",
+      "7": "Menu: Thống kê & hệ thống › Tài khoản → dòng khoa.tm bấm \"Sửa\" → bật lại công tắc \"Hoạt động\" → bấm \"Lưu\"; cột Hoạt động hiện \"Bật\".",
+      "8": "Menu: Thống kê & hệ thống › Tài khoản → \"Tạo tài khoản\" → Tên đăng nhập \"tam.thoi\", Mật khẩu \"Tam@2026\", Role \"Nhân viên\", Hoạt động bật → bấm \"Lưu\".",
+      "9": "Menu: Thống kê & hệ thống › Tài khoản → dòng tam.thoi bấm \"Xóa\" → xác nhận \"Xóa tài khoản?\"; toast \"Đã xóa\".",
+      "10": "Menu: Thống kê & hệ thống › Tài khoản → xem bảng (Tên đăng nhập, Họ tên, Role, Liên kết, Hoạt động); lọc theo role bằng nhãn \"Tất cả\" / \"Nhân viên (n)\" (chưa thấy ô tìm kiếm \"yen\" trong code)."
+    }
+  },
+  "22": {
+    "tables": ["role_permissions", "roles", "permissions", "user_roles"],
+    "steps": {
+      "1": "Menu: Thống kê & hệ thống › Phân quyền → xem 3 cột vai trò \"Quản lý\", \"Nhân viên\", \"Khách hàng\" cùng nhãn \"n tài khoản\".",
+      "2": "Menu: Thống kê & hệ thống › Phân quyền → xem cột \"Quyền\" liệt kê các quyền theo nhóm (Bán hàng & vận hành, Khách hàng (CRM)...), mỗi dòng có mã như dashboard, orders, cash-shifts.",
+      "3": "Menu: Thống kê & hệ thống › Phân quyền → dòng quyền \"Nhà cung cấp\" (suppliers) → tích ô ở cột \"Nhân viên\" → bấm nút \"Lưu\" ở đầu cột; toast \"Đã lưu phân quyền\".",
+      "4": "Menu: Thống kê & hệ thống › Phân quyền → dòng \"Nhà cung cấp\" → bỏ tích ô ở cột \"Nhân viên\" → bấm \"Lưu\"; toast \"Đã lưu phân quyền\", Nhân viên còn 17 quyền."
+    }
+  },
+  "23": {
+    "tables": ["users", "user_roles", "customers", "roles", "permissions", "role_permissions", "orders"],
+    "steps": {
+      "1": "Trang /admin/login: nhập Tên đăng nhập \"admin\", Mật khẩu \"admin123\" → bấm \"Đăng nhập\"; vào màn đầu tiên của quản trị, menu đủ quyền, góc phải hiện vai trò \"Quản lý\".",
+      "2": "Trang /admin/login: nhập \"admin\" / \"sai-mat-khau\" → bấm \"Đăng nhập\"; toast lỗi \"Sai tên đăng nhập hoặc mật khẩu\", không vào được.",
+      "3": "Trang khách: bấm \"Đăng nhập\" ở thanh đầu trang → tab \"Đăng ký\" → Số điện thoại 0938456712, Họ tên \"Nguyễn Thị Thu Hà\", Mật khẩu \"Khach@2026\" (form không có ô Email, chưa thấy nhãn trong code) → bấm \"Tạo tài khoản\"; toast \"Xin chào Nguyễn Thị Thu Hà!\".",
+      "4": "Trang khách: bấm \"Đăng nhập\" → tab \"Đăng ký\" → nhập lại SĐT 0938456712, Mật khẩu \"Khach@2026\" → bấm \"Tạo tài khoản\"; toast lỗi \"Số điện thoại đã có tài khoản, vui lòng đăng nhập\".",
+      "5": "Trang khách: bấm biểu tượng avatar → \"Tài khoản của tôi\" (/account) → xem \"Xin chào, Nguyễn Thị Thu Hà\", thẻ \"Điểm tích lũy\" 0; tab \"Thông tin\" hiện Số điện thoại 0938456712.",
+      "6": "Trang khách: avatar → \"Tài khoản của tôi\" → tab \"Thông tin\" → ô \"Email\" đổi thành thuha.ntt@outlook.com → bấm \"Lưu\"; toast \"Đã lưu\".",
+      "7": "Trang khách: avatar → \"Tài khoản của tôi\" → tab \"Thông tin\" → bấm \"Đổi mật khẩu\" → \"Mật khẩu hiện tại\" Khach@2026, \"Mật khẩu mới\" và \"Nhập lại mật khẩu mới\" ThuHa#0938 → bấm \"Lưu\"; toast \"Đã đổi mật khẩu\".",
+      "8": "Trang khách: tab \"Thông tin\" bấm \"Đăng xuất\" → bấm \"Đăng nhập\" → \"Số điện thoại\" 0938456712, \"Mật khẩu\" ThuHa#0938 → bấm \"Đăng nhập\"; toast chào mừng, đăng nhập thành công."
+    }
+  },
+  "24": {
+    "tables": ["orders", "order_items", "coffees", "materials", "material_batches"],
+    "steps": {
+      "1": "Menu: Tổng quan → xem các thẻ \"Đơn hôm nay\", \"Doanh thu (đơn hoàn tất)\", \"Đơn đang xử lý\", \"Cảnh báo kho\", danh sách \"Đơn hàng hôm nay\", \"Bán chạy 7 ngày\" và khung \"Cảnh báo kho\"."
+    }
+  }
+}

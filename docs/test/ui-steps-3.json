@@ -1,0 +1,227 @@
+{
+ "25": {
+  "tables": [
+   "payment_transactions",
+   "payments",
+   "orders"
+  ],
+  "steps": {
+   "1": "Menu: Bán hàng & vận hành › Đối soát thanh toán → chọn khoảng ngày hôm nay ở ô ngày → xem bảng giao dịch (cột \"Mã GD (TxnRef)\", \"Số tiền\", \"Kết quả cổng\", \"Đơn ghi nhận\") và các ô thống kê \"Thu qua VNPAY\", \"Hoàn qua VNPAY\".",
+   "2": "Menu: Bán hàng & vận hành › Đối soát thanh toán → chọn ngày hôm nay → bấm \"Chỉ giao dịch lệch\" → bảng trống và ô \"Cần xem lại\" = 0.",
+   "3": "Menu: Bán hàng & vận hành › Đối soát thanh toán → ở dòng giao dịch thanh toán bấm \"Truy vấn\" → thông báo \"Đã truy vấn VNPAY\", cột \"Kết quả cổng\" vẫn \"Thành công\".",
+   "4": "Menu: Bán hàng & vận hành › Đối soát thanh toán → ở dòng giao dịch bấm \"Đã đối soát\" → \"Ghi chú đối soát\" nhập \"Khớp file đối soát ngày 2026-10-21\" → bấm \"Đánh dấu đã đối soát\" → cột \"Đối soát\" hiện thẻ \"Đã đối soát\"."
+  }
+ },
+ "26": {
+  "tables": [
+   "shipments",
+   "shipment_events",
+   "orders",
+   "order_status_history",
+   "payments",
+   "order_items",
+   "carts",
+   "cart_items",
+   "customers",
+   "customer_addresses",
+   "material_batches",
+   "material_transactions",
+   "materials",
+   "invoices",
+   "notification_messages",
+   "delivery_zones"
+  ],
+  "steps": {
+   "1": "Menu: Bán hàng & vận hành › Giao hàng → ở dòng đơn \"Chờ đặt xe\" bấm \"Đặt xe Ahamove\" → cửa sổ \"Đặt xe Ahamove · mã đơn\" hiện báo giá: \"Quãng đường\", \"Thời gian dự kiến\", \"Phí Ahamove (quán trả)\".",
+   "2": "Menu: Bán hàng & vận hành › Giao hàng → cửa sổ \"Đặt xe Ahamove\" (đang hiện báo giá) → bấm \"Đặt xe\" → thông báo \"Đã đặt xe Ahamove\", dòng chuyển \"Đã đặt xe\" kèm mã chuyến SIM….",
+   "3": "Không có thao tác UI: webhook do Ahamove gọi vào máy chủ, token sai nên bị từ chối 401; kiểm tra bằng Postman/curl, màn Giao hàng không đổi trạng thái.",
+   "4": "Không có thao tác UI: webhook do Ahamove gọi; ở chế độ giả lập, tác vụ nền (quét mỗi 15 giây) tự cho tài xế nhận đơn. Xem tại Menu: Bán hàng & vận hành › Giao hàng: trạng thái \"Tài xế đã nhận\", tên tài xế Trần Văn Tài.",
+   "5": "Không có thao tác UI: webhook (hoặc tác vụ giả lập chạy mỗi 15 giây) chuyển chuyến sang đang giao. Xem tại Menu: Bán hàng & vận hành › Giao hàng: cột \"Trạng thái\" hiện \"Đang giao\".",
+   "6": "Menu: Bán hàng & vận hành › Giao hàng → ở dòng đơn bấm \"Lịch sử\" → ngăn \"Lịch sử chuyến · mã đơn\" hiện dòng thời gian Đã đặt xe → Tài xế đã nhận → Đang giao (nguồn \"Ahamove\" hoặc nhân viên).",
+   "7": "Không có thao tác UI: webhook COMPLETED (ở chế độ giả lập, tác vụ nền tự hoàn tất sau khi lấy hàng). Xem tại Menu: Bán hàng & vận hành › Giao hàng: chọn \"Tất cả\", trạng thái \"Đã giao\".",
+   "8": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → bấm vào đơn vừa giao (chế độ danh sách, lọc \"Trạng thái\" = \"Hoàn tất\") → ngăn \"Đơn …\" hiện \"Hoàn tất\", phần giao hàng \"Đã giao\" và tên tài xế.",
+   "9": "Trang khách /: thêm 6 ly vào giỏ → \"Giỏ hàng\" → \"Đặt hàng\" → trang /checkout: chọn \"Giao hàng\"; \"Họ tên\" Văn phòng Lotus; \"Số điện thoại\" 0918777666; \"Quận / phường\" Bình Thạnh; \"Địa chỉ giao hàng\" 208 Nguyễn Hữu Cảnh, P.22, Bình Thạnh; \"Người nhận (nếu khác)\" Chị Ngọc – lễ tân; thanh toán \"Tiền mặt\" → bấm \"Xác nhận đặt hàng\".",
+   "10": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → cột \"Chờ xác nhận\" → ở thẻ đơn CH261021Q4TG bấm \"Xác nhận & pha chế\" → đơn sang cột \"Đang pha chế\".",
+   "11": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → cột \"Đang pha chế\" → ở thẻ đơn bấm \"Pha xong\" → đơn sang cột \"Sẵn sàng\".",
+   "12": "Menu: Bán hàng & vận hành › Giao hàng → ở dòng đơn \"Chờ đặt xe\" bấm \"Gọi xe ngoài\" → \"Trạng thái mới\" chọn \"Đang giao\"; \"Đơn vị vận chuyển\" chọn Grab (danh sách không có \"GrabExpress\"); \"Mã chuyến / vận đơn\" GRAB-26-88123; \"Ghi chú\" Tài xế Minh 0909xxx → bấm \"Cập nhật\".",
+   "13": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → bấm vào đơn → ngăn \"Đơn …\" hiện thẻ \"Đang giao\" và phần giao hàng ghi Grab GRAB-26-88123.",
+   "14": "Menu: Bán hàng & vận hành › Giao hàng → ở dòng đơn đang giao bấm nút \"Đã giao\" → trong \"Cập nhật giao hàng\" giữ \"Trạng thái mới\" = \"Đã giao\", mã chuyến GRAB-26-88123 → bấm \"Cập nhật\".",
+   "15": "Menu: Bán hàng & vận hành › Điều phối đơn hàng → mở đơn → ngăn \"Đơn …\" hiện \"Hoàn tất\"; phần thanh toán hiện \"Tiền mặt\" và \"Đã thanh toán\" (đơn tự hoàn tất, COD ghi đã thu)."
+  }
+ },
+ "27": {
+  "tables": [
+   "invoices",
+   "invoice_lines",
+   "orders",
+   "order_items",
+   "payments"
+  ],
+  "steps": {
+   "1": "Trang khách /order/CH261021WTQ3 (đơn đã \"Hoàn tất\"; vào bằng /orders) → khung \"Hóa đơn điện tử\" → bấm \"Xuất hóa đơn công ty / cá nhân\" → chọn \"Công ty / hộ kinh doanh\"; \"Mã số thuế\" 0316789012; \"Người mua hàng\" Nguyễn Thị Thu Hà; \"Tên đơn vị\" Công ty TNHH Giải pháp Số Thu Hà; \"Địa chỉ\" 58 Võ Văn Tần, P. Võ Thị Sáu, Q.3, TP.HCM; \"Email nhận hóa đơn\" ketoan@thuha-digital.vn → bấm \"Gửi\".",
+   "2": "Menu: Bán hàng & vận hành › Hóa đơn điện tử → bấm \"Phát hành ngay\" → thông báo \"Đã phát hành\"; hóa đơn \"Chờ phát hành\" chuyển \"Đã phát hành\".",
+   "3": "Menu: Bán hàng & vận hành › Hóa đơn điện tử → ô ngày chọn hôm nay → xem bảng (cột \"Ký hiệu · số\", \"Đơn\", \"Người mua\", \"Trạng thái\").",
+   "4": "Menu: Bán hàng & vận hành › Hóa đơn điện tử → ô \"Mã đơn, số HĐ, MST\" gõ 0316789012 → bảng còn 1 hóa đơn của Công ty TNHH Giải pháp Số Thu Hà.",
+   "5": "Menu: Bán hàng & vận hành › Hóa đơn điện tử → bấm vào dòng hóa đơn → ngăn \"Hóa đơn … · số\" hiện \"Mã CQT\", \"Mã tra cứu\" và bảng 4 dòng hàng hóa.",
+   "6": "Menu: Bán hàng & vận hành › Hóa đơn điện tử → mở ngăn hóa đơn đã phát hành → bấm \"Lập hóa đơn thay thế\" → \"Tên đơn vị\" sửa thành Công ty TNHH Giải pháp Số Thu Hà Việt Nam; \"Lý do thay thế\" Sai tên đơn vị → bấm \"Lưu\".",
+   "7": "Menu: Bán hàng & vận hành › Hóa đơn điện tử → bấm \"Phát hành ngay\" → hóa đơn thay thế chuyển \"Đã phát hành\".",
+   "8": "Menu: Bán hàng & vận hành › Hóa đơn điện tử → ô ngày hôm nay → hóa đơn gốc có thẻ \"Đã bị thay thế\", hóa đơn \"Thay thế\" là \"Đã phát hành\", hóa đơn hoàn tiền có loại \"Điều chỉnh\".",
+   "9": "Trang khách /order/CH261021WTQ3 → khung \"Hóa đơn điện tử\" hiện số, ký hiệu, mã tra cứu và người mua của hóa đơn thay thế (hóa đơn gốc đã bị thay thế được ẩn)."
+  }
+ },
+ "28": {
+  "tables": [
+   "delivery_zones"
+  ],
+  "steps": {
+   "1": "Menu: Bán hàng & vận hành › Khu vực giao hàng → bấm \"Thêm khu vực\" → \"Tên khu vực\" Trung tâm; \"Quận / phường\" gõ Quận 1, Quận 3, Phú Nhuận (Enter sau mỗi quận); \"Phí ship\" 15.000; \"Miễn phí ship từ\" 200.000; \"Đơn tối thiểu\" 50.000; \"Giao trong (phút)\" 25; \"Thứ tự\" 1; \"Đang giao\" bật → \"Lưu\".",
+   "2": "Menu: Bán hàng & vận hành › Khu vực giao hàng → \"Thêm khu vực\" → \"Tên khu vực\" Vùng ven; \"Quận / phường\" Bình Thạnh, Tân Bình, Quận 10; \"Phí ship\" 25.000; \"Đơn tối thiểu\" 80.000; \"Giao trong (phút)\" 40; \"Thứ tự\" 2 → \"Lưu\".",
+   "3": "Menu: Bán hàng & vận hành › Khu vực giao hàng → dòng \"Vùng ven\" bấm \"Sửa\" → \"Phí ship\" đổi 25.000 thành 22.000 → \"Lưu\" → cột \"Phí ship\" hiện 22.000đ.",
+   "4": "Menu: Bán hàng & vận hành › Khu vực giao hàng → \"Thêm khu vực\" → \"Tên khu vực\" Thử; \"Quận / phường\" Quận 12; \"Phí ship\" 40.000 → \"Lưu\".",
+   "5": "Menu: Bán hàng & vận hành › Khu vực giao hàng → dòng \"Thử\" bấm \"Xóa\" → hỏi \"Xóa khu vực?\" → xác nhận → dòng biến mất.",
+   "6": "Trang khách /checkout → chọn \"Giao hàng\" → mở ô \"Quận / phường\" → danh sách quận kèm phí ship: Trung tâm 15.000đ, Vùng ven 22.000đ."
+  }
+ },
+ "29": {
+  "tables": [
+   "supplier_returns",
+   "supplier_return_items",
+   "material_batches",
+   "material_transactions",
+   "materials",
+   "goods_receipts",
+   "goods_receipt_items",
+   "suppliers",
+   "staff"
+  ],
+  "steps": {
+   "1": "Menu: Mua hàng › Trả hàng nhập → bấm \"Lập phiếu trả hàng\" → chọn nhà cung cấp NPP Sữa Hoàng Gia → ở phiếu nhập cần trả bấm \"Chọn\" → cửa sổ \"Trả hàng nhập · phiếu nhập …\" liệt kê Whipping cream và Sữa yến mạch Oatside kèm \"Còn trong lô\".",
+   "2": "Menu: Mua hàng › Trả hàng nhập → \"Lập phiếu trả hàng\" → chọn phiếu nhập → dòng Whipping cream \"Số lượng trả\" 1 (hộp); \"Lý do trả\" Kem tách nước khi mở hộp; \"Nhà cung cấp thanh toán\" chọn \"Trừ vào công nợ\" → bấm \"Lưu tạm\" → phiếu TH261021-001 \"Phiếu tạm\".",
+   "3": "Menu: Mua hàng › Trả hàng nhập → bấm dòng phiếu tạm → ngăn chi tiết bấm \"Sửa\" → \"Số hóa đơn điều chỉnh giảm của NCC\" nhập 0012955 → bấm \"Lưu tạm\".",
+   "4": "Menu: Mua hàng › Trả hàng nhập → bấm dòng phiếu tạm → bấm \"Trả hàng\" → xác nhận \"Trả hàng và trừ kho?\" → trạng thái \"Đã trả hàng\", kho giảm 1.000 ml.",
+   "5": "Menu: Mua hàng › Trả hàng nhập → \"Lập phiếu trả hàng\" → chọn phiếu nhập → dòng thứ hai \"Số lượng trả\" 1; \"Lý do trả\" Thử; \"Nhà cung cấp thanh toán\" chọn \"NCC hoàn tiền\"; \"Hoàn bằng\" Tiền mặt → \"Lưu tạm\" → phiếu TH261021-002.",
+   "6": "Menu: Mua hàng › Trả hàng nhập → bấm dòng phiếu TH261021-002 → \"Hủy phiếu tạm\" → \"Lý do\" Kiểm lại thấy hàng tốt → bấm \"Hủy phiếu tạm\" → trạng thái \"Đã hủy\".",
+   "7": "Menu: Mua hàng › Trả hàng nhập → \"Lập phiếu trả hàng\" → chọn phiếu nhập → \"Số lượng trả\" Whipping cream nhập 50 (ô tự chặn ở mức tối đa còn trả được; API báo \"'Whipping cream' chỉ còn trả được 10000 ml\") → \"Trả hàng\" không thành công.",
+   "8": "Menu: Mua hàng › Trả hàng nhập → ô \"Nhà cung cấp\" chọn NPP Sữa Hoàng Gia → bảng liệt kê TH261021-002 \"Đã hủy\" và TH261021-001 \"Đã trả hàng\"."
+  }
+ },
+ "30": {
+  "tables": [
+   "supplier_payments",
+   "goods_receipts",
+   "goods_receipt_items",
+   "supplier_returns",
+   "suppliers",
+   "purchase_orders"
+  ],
+  "steps": {
+   "1": "Menu: Mua hàng › Công nợ nhà cung cấp → tab \"Công nợ theo nhà cung cấp\" → xem \"Còn phải trả\" từng nhà cung cấp và cột \"Hạn\" (Đến hạn 05/11/2026 với Bazan, 28/10/2026 với NPP Sữa Hoàng Gia).",
+   "2": "Menu: Mua hàng › Công nợ nhà cung cấp → dòng Công ty TNHH Cà phê Đất Bazan bấm \"Lập phiếu chi\" → \"Số tiền\" 1.000.000; \"Hình thức\" Tiền mặt; \"Người nhận tiền\" Anh Lâm; \"Trả cho phiếu nhập\" PN261021-001; \"Ghi chú\" Trả đợt 1 → bấm \"Lập phiếu chi\".",
+   "3": "Menu: Mua hàng › Công nợ nhà cung cấp → dòng Bazan bấm \"Lập phiếu chi\" → \"Số tiền\" 1.484.000; \"Hình thức\" Chuyển khoản; \"Mã giao dịch\" FT26294718263; \"Trả cho phiếu nhập\" PN261021-001 → bấm \"Lập phiếu chi\".",
+   "4": "Menu: Mua hàng › Công nợ nhà cung cấp → \"Lập phiếu chi\" Bazan → \"Số tiền\" 99.000.000, \"Hình thức\" Tiền mặt (ô \"Trả cho phiếu nhập\" chỉ liệt kê phiếu còn nợ nên phiếu đã trả hết không chọn được) → lỗi \"Phiếu nhập PN261021-001 chỉ còn nợ 0đ\".",
+   "5": "Menu: Mua hàng › Công nợ nhà cung cấp → tab \"Phiếu chi\" → dòng phiếu chuyển khoản bấm \"Hủy\" → \"Lý do\" Sai số tham chiếu → bấm \"Hủy phiếu chi\" → trạng thái \"Đã hủy\".",
+   "6": "Menu: Mua hàng › Công nợ nhà cung cấp → dòng Bazan bấm \"Sổ chi tiết\" → ngăn \"Sổ chi tiết công nợ · …\" hiện \"Số dư đầu kỳ\", \"Phát sinh tăng (nhập)\", \"Phát sinh giảm (trả, chi)\", \"Số dư cuối kỳ\".",
+   "7": "Menu: Mua hàng › Công nợ nhà cung cấp → \"Sổ chi tiết\" Bazan → bấm \"Xuất Excel\" → trình duyệt tải file xlsx.",
+   "8": "Menu: Mua hàng › Công nợ nhà cung cấp → tab \"Phiếu chi\" → ô ngày chọn hôm nay → xem cột \"Nhà cung cấp\" để tìm Bazan (chưa thấy ô lọc nhà cung cấp trong code, chỉ có lọc ngày)."
+  }
+ },
+ "31": {
+  "tables": [
+   "inventory_snapshots",
+   "materials",
+   "material_batches",
+   "material_transactions"
+  ],
+  "steps": {
+   "1": "Menu: Thực đơn & kho › Xuất – nhập – tồn → khung \"Tồn chốt cuối ngày\" bấm \"Chốt tồn hôm nay\" → thông báo \"Đã chốt tồn hôm nay\" (thay cho job 23:55).",
+   "2": "Menu: Thực đơn & kho › Xuất – nhập – tồn → ô ngày chọn 01/10/2026 – 21/10/2026 → xem \"Tồn đầu kỳ\", \"Nhập trong kỳ\", \"Xuất trong kỳ\", \"Tồn cuối kỳ\" và bảng nguyên liệu (18 dòng).",
+   "3": "Menu: Thực đơn & kho › Xuất – nhập – tồn → khung \"Tồn chốt cuối ngày\" → ô \"Chọn nguyên liệu\" chọn Robusta → biểu đồ đường hiện tồn từng ngày (21/10: 17.610).",
+   "4": "Menu: Thực đơn & kho › Xuất – nhập – tồn → chọn khoảng ngày 01/10 – 21/10/2026 → bấm \"Xuất Excel\" → tải file xlsx."
+  }
+ },
+ "32": {
+  "tables": [
+   "cash_shifts",
+   "cash_movements",
+   "payments",
+   "orders",
+   "staff"
+  ],
+  "steps": {
+   "1": "Menu: Bán hàng & vận hành › Ca thu ngân → khi chưa có ca bấm \"Mở ca\" → ô \"Tiền đầu ca (đếm thực tế trong két)\" tự điền gợi ý, dưới ô ghi \"Ca trước để lại …\" (lần đầu 0đ).",
+   "2": "Menu: Bán hàng & vận hành › Ca thu ngân (đăng nhập tài khoản Yến) → \"Mở ca\" → \"Tiền đầu ca\" 1.500.000; \"Ghi chú\" Ca sáng → bấm \"Mở ca\" → hiện thẻ \"Ca đang mở\" mã CA261021-01.",
+   "3": "Menu: Bán hàng & vận hành › Ca thu ngân → khi đã có ca, UI không hiện nút \"Mở ca\" (chỉ có \"Thu / chi trong ca\", \"Chốt ca\"), nên mở ca thứ 2 chỉ thử được qua API: lỗi \"Đang có ca chưa chốt — chốt ca đó trước khi mở ca mới\".",
+   "4": "Menu: Bán hàng & vận hành › Ca thu ngân → thẻ \"Ca đang mở\" bấm \"Thu / chi trong ca\" → chọn \"Chi (mua đá, trả ship…)\"; \"Số tiền\" 50.000; \"Lý do\" Mua 2 bao đá 20kg → bấm \"Ghi\" → dòng loại \"Chi\" hiện trong bảng.",
+   "5": "Menu: Bán hàng & vận hành › Ca thu ngân → \"Thu / chi trong ca\" → chọn \"Thu (nạp tiền lẻ…)\"; \"Số tiền\" 20.000; \"Lý do\" Khách bàn 3 trả bù → bấm \"Ghi\" → dòng loại \"Thu\".",
+   "6": "Menu: Bán hàng & vận hành › Ca thu ngân → xem thẻ \"Ca đang mở\": \"Tiền đầu ca\", \"Doanh thu trong ca\", \"Trong đó tiền mặt\", \"Tiền mặt lý thuyết\".",
+   "7": "Menu: Bán hàng & vận hành › Ca thu ngân → bấm \"Chốt ca\" → cột \"Số tờ\": 500.000×3, 200.000×2, 20.000×1, 1.000×1 (thực đếm 1.921.000đ, \"Chênh lệch\" Khớp); \"Để lại két cho ca sau\" 1.000.000; \"Người nhận ca / quản lý\" Nguyễn Minh Anh (quản lý); \"Ghi chú\" Ca sáng 21/10 → bấm \"Chốt ca\".",
+   "8": "Menu: Bán hàng & vận hành › Ca thu ngân → khung \"Lịch sử ca\" → ô ngày chọn hôm nay → dòng CA261021-01 với \"Thực đếm\", \"Chênh lệch\" Khớp, \"Nộp lại\" 921.000."
+  }
+ },
+ "33": {
+  "tables": [
+   "work_shifts",
+   "shift_assignments",
+   "staff"
+  ],
+  "steps": {
+   "1": "Menu: Thống kê & hệ thống › Phân ca & chấm công → tab \"Ca mẫu\" → \"Thêm ca\" → \"Tên ca\" Ca gãy trưa; \"Giờ vào\" 11:00; \"Giờ ra\" 14:00; \"Cho phép trễ (phút)\" 5; \"Màu\" chọn màu → \"Lưu\" → cột \"Số giờ\" 3 giờ.",
+   "2": "Menu: Thống kê & hệ thống › Phân ca & chấm công → tab \"Ca mẫu\" → dòng \"Ca gãy trưa\" bấm \"Sửa\" → \"Cho phép trễ (phút)\" 10 → \"Lưu\" → cột \"Cho phép trễ\" hiện 10 phút.",
+   "3": "Menu: Thống kê & hệ thống › Phân ca & chấm công → tab \"Ca mẫu\" → \"Thêm ca\" → \"Tên ca\" Ca test; \"Giờ vào\" 07:00; \"Giờ ra\" 10:00; \"Cho phép trễ (phút)\" 5 → \"Lưu\".",
+   "4": "Menu: Thống kê & hệ thống › Phân ca & chấm công → tab \"Lịch tuần\" → \"Xếp ca\" → \"Ca\" Ca test (07:00–10:00); \"Nhân viên\" Yến, Khoa; \"Ngày\" chọn hôm nay và ngày mai; \"Vị trí\" Thu ngân → bấm \"Xếp ca\".",
+   "5": "Menu: Thống kê & hệ thống › Phân ca & chấm công → tab \"Lịch tuần\" (tuần chứa 21/10) → các ô nhân viên × ngày hiện thẻ \"Ca test\" (4 ca).",
+   "6": "Đăng nhập tài khoản Yến → thanh trên cùng bấm \"Chấm công\" (không có mục menu riêng) → khung \"Chấm công hôm nay\" liệt kê ca \"Ca test 07:00–10:00\" kèm nút \"Vào ca\".",
+   "7": "Đăng nhập tài khoản Yến → thanh trên cùng bấm \"Chấm công\" → ở dòng \"Ca test\" bấm \"Vào ca\" → thông báo \"Đã chấm vào ca\", hiện giờ vào (có thể kèm \"muộn …′\").",
+   "8": "Đăng nhập tài khoản Yến → thanh trên cùng \"Chấm công\" → ở dòng \"Ca test\" bấm \"Ra ca\" → thông báo \"Đã chấm ra ca\", hiện \"Vào … · ra …\".",
+   "9": "Menu: Thống kê & hệ thống › Phân ca & chấm công → tab \"Lịch tuần\" → bấm thẻ ca của Khoa hôm nay → chọn \"Nghỉ có phép\"; \"Lý do sửa\" Xin nghỉ ốm, có giấy → bấm \"Lưu chấm công\" → thẻ chuyển trạng thái \"Nghỉ\".",
+   "10": "Menu: Thống kê & hệ thống › Phân ca & chấm công → tab \"Lịch tuần\" → bấm thẻ ca của Khoa ngày mai → bấm \"Gỡ ca\" → xác nhận \"Gỡ ca này khỏi lịch?\" → thẻ biến mất.",
+   "11": "Menu: Thống kê & hệ thống › Phân ca & chấm công → tab \"Bảng chấm công\" → ô tháng chọn 10/2026 → xem cột \"Số ca\", \"Giờ công\", \"Muộn\", \"Vắng\", \"P / KL\" của từng nhân viên.",
+   "12": "Menu: Thống kê & hệ thống › Phân ca & chấm công → tab \"Bảng chấm công\" → tháng 10/2026 → bấm \"Xuất Excel\" → tải file xlsx.",
+   "13": "Menu: Thống kê & hệ thống › Phân ca & chấm công → tab \"Ca mẫu\" → dòng \"Ca gãy trưa\" bấm \"Xóa\" → xác nhận \"Xóa ca mẫu?\" → dòng biến mất."
+  }
+ },
+ "34": {
+  "tables": [
+   "coffees",
+   "coffee_cost_snapshots",
+   "recipes",
+   "recipe_materials",
+   "materials",
+   "material_batches",
+   "material_components",
+   "categories"
+  ],
+  "steps": {
+   "1": "Menu: Thực đơn & kho › Giá vốn món → bấm \"Tính lại ngay\" (thay cho job mỗi giờ) → thông báo \"Đã tính lại giá vốn\".",
+   "2": "Menu: Thực đơn & kho › Giá vốn món → xem bảng cột \"Giá bán\", \"Giá vốn / ly\", \"Lãi gộp / ly\", \"Food cost\" (ví dụ Americano vốn 8.300đ, food cost 21,3%).",
+   "3": "Menu: Thực đơn & kho › Giá vốn món → dòng Cà phê muối bấm \"Đổi giá bán\" → trong cửa sổ \"Đổi giá bán · Cà phê muối\" nhập ô giá 42.000 → bấm \"Lưu giá bán\" → food cost còn 21,8%.",
+   "4": "Menu: Thực đơn & kho › Giá vốn món → bấm dòng Cà phê muối → ngăn \"Giá vốn · Cà phê muối\" → mục \"Lịch sử giá vốn & giá bán\" (biểu đồ 9.140đ/39.000đ → 9.140đ/42.000đ)."
+  }
+ },
+ "35": {
+  "tables": [
+   "notification_templates",
+   "notification_messages",
+   "orders"
+  ],
+  "steps": {
+   "1": "Menu: Thống kê & hệ thống › Tin nhắn khách hàng → tab \"Mẫu tin\" → xem 5 mẫu: xác nhận, sẵn sàng, đang giao, hoàn tất, hủy (mã ORDER_CONFIRMED… ghi dưới tên mẫu).",
+   "2": "Menu: Thống kê & hệ thống › Tin nhắn khách hàng → tab \"Mẫu tin\" → dòng ORDER_CONFIRMED bấm \"Sửa\" → \"ID mẫu ZNS (đã duyệt)\" 298765; bật \"Gửi SMS khi ZNS lỗi\" → bấm \"Lưu\" → thông báo \"Đã lưu mẫu tin\".",
+   "3": "Menu: Thống kê & hệ thống › Tin nhắn khách hàng → tab \"Nhật ký gửi\" → ô ngày chọn hôm nay → xem cột \"Mẫu\", \"SĐT\", \"Kênh\", \"Trạng thái\".",
+   "4": "Menu: Thống kê & hệ thống › Tin nhắn khách hàng → tab \"Nhật ký gửi\" → ô \"Số điện thoại\" gõ 0938456712 → bảng còn 3 tin (Hoàn tất SMS, Đang giao SMS, Xác nhận ZNS).",
+   "5": "Menu: Thống kê & hệ thống › Tin nhắn khách hàng → tab \"Nhật ký gửi\" → nút \"Gửi lại\" chỉ hiện ở tin \"Lỗi\", tin \"Đã gửi\" không có nút; gọi API gửi lại tin đã gửi báo lỗi \"Chỉ gửi lại tin lỗi\"."
+  }
+ },
+ "36": {
+  "tables": [
+   "audit_logs"
+  ],
+  "steps": {
+   "1": "Menu: Thống kê & hệ thống › Nhật ký thao tác → mở ô \"Người thao tác\" và ô \"Chức năng\" → xem danh sách người dùng (admin, khoa.tm, yen.lh…) và các chức năng (35 module).",
+   "2": "Menu: Thống kê & hệ thống › Nhật ký thao tác → ô ngày chọn hôm nay – hôm nay → \"Người thao tác\" chọn yen.lh → xem bảng thao tác (28 dòng), bấm mũi tên mở rộng dòng để xem đường dẫn API.",
+   "3": "Menu: Thống kê & hệ thống › Nhật ký thao tác → ô ngày chọn hôm nay – hôm nay → bấm \"Chỉ lỗi\" → cột \"Kết quả\" hiện thẻ \"Lỗi 4xx\" (16 thao tác).",
+   "4": "Menu: Thống kê & hệ thống › Nhật ký thao tác → ô ngày chọn hôm nay – hôm nay → ô \"Mã phiếu, nội dung…\" gõ purchase-orders → bảng còn 13 dòng.",
+   "5": "Menu: Thống kê & hệ thống › Nhật ký thao tác → chọn ngày hôm nay – hôm nay → bấm \"Xuất Excel\" → tải file xlsx."
+  }
+ }
+}
