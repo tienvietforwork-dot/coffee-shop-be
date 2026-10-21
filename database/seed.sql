@@ -194,10 +194,10 @@ JOIN materials m ON m.name = v.mat JOIN materials k ON k.name = v.comp;
 -- Lô đầu kỳ: nguyên liệu thô nhập mua; bán thành phẩm là tồn đầu kỳ đã chế biến sẵn (hạn dùng theo shelf_life_minutes)
 INSERT INTO material_batches (material_id, import_quantity, remaining_quantity, unit_cost, expiry_date)
 SELECT m.id, v.q, v.q, v.c, CURRENT_DATE + v.d FROM (VALUES
- ('Cà phê Robusta rang xay', 8000, 0.25, 60), ('Hạt Arabica', 5000, 0.45, 90), ('Sữa đặc', 6000, 0.06, 120),
- ('Sữa tươi', 8000, 0.035, 5), ('Đường', 5000, 0.025, 365), ('Trứng gà', 60, 3500, 10),
- ('Cốt dừa', 800, 0.09, 30), ('Cam vàng', 30, 9000, 7), ('Đá viên', 30000, 0.002, 2),
- ('Sả cây', 3000, 0.04, 7), ('Whipping cream', 4000, 0.12, 30), ('Muối', 1000, 0.01, 365)
+ ('Cà phê Robusta rang xay', 8000, 250, 60), ('Hạt Arabica', 5000, 450, 90), ('Sữa đặc', 6000, 60, 120),
+ ('Sữa tươi', 8000, 35, 5), ('Đường', 5000, 25, 365), ('Trứng gà', 60, 3500, 10),
+ ('Cốt dừa', 800, 90, 30), ('Cam vàng', 30, 9000, 7), ('Đá viên', 30000, 2, 2),
+ ('Sả cây', 3000, 40, 7), ('Whipping cream', 4000, 120, 30), ('Muối', 1000, 10, 365)
 ) AS v(name, q, c, d) JOIN materials m ON m.name = v.name;
 
 INSERT INTO material_batches (material_id, import_quantity, remaining_quantity, expiry_date, expires_at, ready_at)
@@ -225,12 +225,12 @@ INSERT INTO suppliers (name, contact_name, phone, email, address) VALUES
 
 INSERT INTO supplier_materials (supplier_id, material_id, unit_price)
 SELECT s.id, m.id, v.p FROM (VALUES
- ('Cà phê Cầu Đất Farm', 'Cà phê Robusta rang xay', 0.25), ('Cà phê Cầu Đất Farm', 'Hạt Arabica', 0.45),
- ('Sữa & nguyên liệu pha chế Minh Phát', 'Sữa đặc', 0.06), ('Sữa & nguyên liệu pha chế Minh Phát', 'Sữa tươi', 0.035),
- ('Sữa & nguyên liệu pha chế Minh Phát', 'Whipping cream', 0.12), ('Sữa & nguyên liệu pha chế Minh Phát', 'Cốt dừa', 0.09),
- ('Sữa & nguyên liệu pha chế Minh Phát', 'Đường', 0.025),
- ('Chợ đầu mối Bình Điền', 'Trứng gà', 3500), ('Chợ đầu mối Bình Điền', 'Cam vàng', 9000), ('Chợ đầu mối Bình Điền', 'Sả cây', 0.04),
- ('Chợ đầu mối Bình Điền', 'Muối', 0.01), ('Chợ đầu mối Bình Điền', 'Đá viên', 0.002)
+ ('Cà phê Cầu Đất Farm', 'Cà phê Robusta rang xay', 250), ('Cà phê Cầu Đất Farm', 'Hạt Arabica', 450),
+ ('Sữa & nguyên liệu pha chế Minh Phát', 'Sữa đặc', 60), ('Sữa & nguyên liệu pha chế Minh Phát', 'Sữa tươi', 35),
+ ('Sữa & nguyên liệu pha chế Minh Phát', 'Whipping cream', 120), ('Sữa & nguyên liệu pha chế Minh Phát', 'Cốt dừa', 90),
+ ('Sữa & nguyên liệu pha chế Minh Phát', 'Đường', 25),
+ ('Chợ đầu mối Bình Điền', 'Trứng gà', 3500), ('Chợ đầu mối Bình Điền', 'Cam vàng', 9000), ('Chợ đầu mối Bình Điền', 'Sả cây', 40),
+ ('Chợ đầu mối Bình Điền', 'Muối', 10), ('Chợ đầu mối Bình Điền', 'Đá viên', 2)
 ) AS v(sup, mat, p) JOIN suppliers s ON s.name = v.sup JOIN materials m ON m.name = v.mat;
 
 INSERT INTO recipes (coffee_id, brew_method, version, brew_time_min, description, is_active)
