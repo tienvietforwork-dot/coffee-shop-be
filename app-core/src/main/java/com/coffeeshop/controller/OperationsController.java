@@ -6,6 +6,7 @@ import com.coffeeshop.dto.response.CustomerLookupResponse;
 import com.coffeeshop.dto.response.DashboardResponse;
 import com.coffeeshop.dto.response.IncidentResponse;
 import com.coffeeshop.dto.response.ShipmentResponse;
+import com.coffeeshop.dto.response.VoucherOptionResponse;
 import com.coffeeshop.security.Perm;
 import com.coffeeshop.service.CustomerService;
 import com.coffeeshop.service.DashboardService;
@@ -44,6 +45,13 @@ public class OperationsController {
     @PreAuthorize(Perm.CAN_INCIDENTS)
     public List<IncidentResponse> incidents() {
         return incidentService.findAll();
+    }
+
+    /** Loại voucher đang phát được, kèm số lượt còn lại, để chọn khi đền bù sự cố. */
+    @GetMapping("/api/incidents/voucher-options")
+    @PreAuthorize(Perm.CAN_RESOLVE_INCIDENTS)
+    public List<VoucherOptionResponse> voucherOptions() {
+        return incidentService.voucherOptions();
     }
 
     @PostMapping("/api/incidents/{id}/resolve")

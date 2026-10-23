@@ -352,9 +352,15 @@ SELECT p.id, c.id, v.sale, v.maxq FROM (VALUES
 ) AS v(coffee, sale, maxq)
 JOIN coffees c ON c.name = v.coffee JOIN promotions p ON p.name = 'Giờ vàng Cold Brew';
 
-INSERT INTO vouchers (code, customer_id, discount_value, min_order_value, expires_at) VALUES
- ('WELCOME20K', NULL, 20000, 80000, now() + interval '90 day'),
- ('NAM50K', (SELECT id FROM customers WHERE phone = '0912345678'), 50000, 100000, now() + interval '30 day');
+INSERT INTO vouchers (name, discount_value, min_order_value, quantity, valid_days) VALUES
+ ('Chào mừng 20K', 20000, 80000, 100, 90),
+ ('Tri ân khách hàng 50K', 50000, 100000, 50, 30),
+ ('Đền bù sự cố 20K', 20000, 50000, 100, 30);
+
+INSERT INTO voucher_details (voucher_id, code, customer_id, expires_at) VALUES
+ ((SELECT id FROM vouchers WHERE name = 'Chào mừng 20K'), 'WELCOME20K', NULL, now() + interval '90 day'),
+ ((SELECT id FROM vouchers WHERE name = 'Tri ân khách hàng 50K'), 'NAM50K',
+  (SELECT id FROM customers WHERE phone = '0912345678'), now() + interval '30 day');
 
 COMMIT;
 

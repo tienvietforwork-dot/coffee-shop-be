@@ -4,14 +4,15 @@
 --   * Phân quyền user – role – permission (như MES/SMT): users, roles, permissions,
 --     user_roles, role_permissions. Chỉ 3 role: ADMIN (Quản lý), STAFF (Nhân viên), CUSTOMER (Khách hàng).
 --   * users liên kết staff (nhân viên) hoặc customers (khách có tài khoản).
---   * vouchers: chỉ có discount_value + min_order_value (bỏ conditions).
+--   * vouchers: loại voucher, chỉ có discount_value + min_order_value (bỏ conditions) + quantity (số lượt);
+--     voucher_details: từng voucher đã phát (mã, khách, phát / hết hạn lúc nào).
 --   * Không có nghiệp vụ phân công: orders.staff_id / incidents.handled_by / material_transactions.staff_id
 --     là nhân viên đã thao tác (tự lấy từ tài khoản đăng nhập).
 --   * MỌI bảng có 6 cột audit: created_by, created_at, updated_by, updated_at, del_flag, del_user.
 --     Xóa = xóa mềm (del_flag = TRUE, del_user = người xóa). Ràng buộc UNIQUE là unique index
 --     có điều kiện "WHERE NOT del_flag" để tạo lại được bản ghi đã xóa.
 --   * Bảng liên kết dùng khóa chính id + unique index (vì xóa mềm không xóa được dòng khỏi khóa ghép).
--- 44 bảng. Chạy trong 1 transaction.
+-- 45 bảng. Chạy trong 1 transaction.
 -- =====================================================================
 
 BEGIN;
@@ -927,14 +928,32 @@ CREATE TABLE order_status_history (
 );
 CREATE INDEX idx_order_status_history_order ON order_status_history (order_id);
 
+-- Loại voucher; quantity = số lượt được dùng tối đa. Voucher đã phát (ISSUED, còn hạn) giữ 1 lượt,
+-- USED chiếm luôn, EXPIRED / REVOKED / quá hạn trả lượt. Còn lại = quantity − (đang giữ + đã dùng).
 CREATE TABLE vouchers (
     id              BIGSERIAL PRIMARY KEY,
+    name            VARCHAR(100)  NOT NULL,
+    discount_value  NUMERIC(12,2) NOT NULL CHECK (discount_value > 0),
+    min_order_value NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (min_order_value >= 0),
+    quantity        INT           NOT NULL CHECK (quantity > 0),   -- số lượt được dùng tối đa
+    valid_days      INT           CHECK (valid_days > 0),          -- hạn mặc định khi phát (ngày)
+    status          VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'INACTIVE')),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+
+-- Từng voucher đã phát: mã riêng, phát lúc nào, hết hạn lúc nào.
+CREATE TABLE voucher_details (
+    id              BIGSERIAL PRIMARY KEY,
+    voucher_id      BIGINT        NOT NULL REFERENCES vouchers (id),
     code            VARCHAR(30)   NOT NULL,
     customer_id     BIGINT        REFERENCES customers (id),   -- null = voucher dùng chung
     order_id        BIGINT        REFERENCES orders (id),      -- đơn đã dùng voucher
     incident_id     BIGINT        REFERENCES incidents (id),   -- voucher đền bù sự cố
-    discount_value  NUMERIC(12,2) NOT NULL CHECK (discount_value > 0),
-    min_order_value NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (min_order_value >= 0),
     status          VARCHAR(20)   NOT NULL DEFAULT 'ISSUED' CHECK (status IN ('ISSUED', 'USED', 'EXPIRED', 'REVOKED')),
     issued_at       TIMESTAMP     NOT NULL DEFAULT now(),
     expires_at      TIMESTAMP,
@@ -946,10 +965,11 @@ CREATE TABLE vouchers (
     del_user   VARCHAR(50),
     CHECK (expires_at IS NULL OR expires_at > issued_at)
 );
-CREATE UNIQUE INDEX uq_vouchers_code ON vouchers (upper(code)) WHERE NOT del_flag;
-CREATE INDEX idx_vouchers_customer ON vouchers (customer_id);
-CREATE INDEX idx_vouchers_order ON vouchers (order_id);
-CREATE INDEX idx_vouchers_incident ON vouchers (incident_id);
+CREATE UNIQUE INDEX uq_voucher_details_code ON voucher_details (upper(code)) WHERE NOT del_flag;
+CREATE INDEX idx_voucher_details_voucher ON voucher_details (voucher_id);
+CREATE INDEX idx_voucher_details_customer ON voucher_details (customer_id);
+CREATE INDEX idx_voucher_details_order ON voucher_details (order_id);
+CREATE INDEX idx_voucher_details_incident ON voucher_details (incident_id);
 
 CREATE TABLE material_transactions (
     id            BIGSERIAL PRIMARY KEY,

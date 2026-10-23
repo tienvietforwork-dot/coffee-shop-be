@@ -54,13 +54,15 @@ Biến môi trường: `SPRING_DATASOURCE_URL/USERNAME/PASSWORD`, `JWT_SECRET` (
 - **Trừ kho** khi đơn chuyển sang `PREPARING`, theo công thức đang áp dụng của từng món; xuất theo lô
   hạn dùng gần nhất trước (FEFO); mỗi lô ghi 1 giao dịch `SALE` gắn `order_item_id`.
 - **Giá**: giá đợt giảm giá theo cà phê (rẻ nhất, còn suất) → giảm theo hóa đơn (đợt có mức giảm lớn nhất
-  đạt đơn tối thiểu) → voucher (chỉ có `discount_value` + `min_order_value`; đúng chủ sở hữu, còn hạn) → + phí giao.
+  đạt đơn tối thiểu) → voucher (mã trong `voucher_details`, giá trị lấy từ loại `vouchers`: `discount_value` + `min_order_value`; đúng chủ sở hữu, còn hạn) → + phí giao.
   `order_items.unit_price` là giá thực thu; `orders.discount_amount` = giảm hóa đơn + voucher.
 - **Thanh toán**: tiền mặt `PENDING` tới khi thu (hoặc tự thu khi hoàn tất); phương thức online đang
   **giả lập** thành công (`transaction_code = SIM-…`), chưa tích hợp cổng thanh toán.
 - **Hủy / từ chối**: hoàn tiền khoản đã thu, trả voucher về `ISSUED`, trả lại suất khuyến mãi, giải phóng bàn.
 - **Hoàn tất**: cộng điểm 1 điểm / 10.000đ, ghi `loyalty_point_history`.
-- **Sự cố**: xử lý xong có thể phát N voucher đền bù cho khách của đơn (`vouchers.incident_id`).
+- **Sự cố**: xử lý xong có thể chọn một loại voucher (`GET /api/incidents/voucher-options`) và phát N voucher
+  đền bù cho khách của đơn (`voucher_details.incident_id`). Mỗi voucher phát ra giữ 1 lượt trong `vouchers.quantity`;
+  hết lượt thì không phát được.
 - **Scheduler**: cảnh báo tồn thấp (5 phút), hủy lô hết hạn (00:05), đánh dấu giỏ bỏ dở sau 24h (mỗi giờ).
 
 ## API

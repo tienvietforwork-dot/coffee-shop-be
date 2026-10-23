@@ -49,7 +49,7 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
     private final ShipmentRepository shipmentRepository;
-    private final VoucherRepository voucherRepository;
+    private final VoucherDetailRepository voucherDetailRepository;
     private final LoyaltyPointHistoryRepository loyaltyRepository;
     private final OrderStatusHistoryRepository statusHistoryRepository;
     private final CartService cartService;
@@ -418,7 +418,7 @@ public class OrderService {
                 p.setStatus(PaymentStatus.FAILED);
             }
         }
-        voucherRepository.findByOrderId(order.getId()).forEach(v -> {
+        voucherDetailRepository.findByOrderId(order.getId()).forEach(v -> {
                     v.setOrder(null);
                     v.setStatus(VoucherStatus.ISSUED);
                 });
