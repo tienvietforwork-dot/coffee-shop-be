@@ -6,13 +6,14 @@ import com.coffeeshop.entity.Customer;
 import com.coffeeshop.entity.Promotion;
 import com.coffeeshop.entity.PromotionItem;
 import com.coffeeshop.entity.Voucher;
+import com.coffeeshop.entity.VoucherDetail;
 import com.coffeeshop.entity.enums.CoffeeStatus;
 import com.coffeeshop.entity.enums.OrderType;
 import com.coffeeshop.entity.enums.PromotionScope;
 import com.coffeeshop.entity.enums.PromotionStatus;
 import com.coffeeshop.entity.enums.VoucherStatus;
 import com.coffeeshop.repository.PromotionRepository;
-import com.coffeeshop.repository.VoucherRepository;
+import com.coffeeshop.repository.VoucherDetailRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,7 +37,7 @@ class PricingServiceTest {
     @Mock
     private PromotionRepository promotionRepository;
     @Mock
-    private VoucherRepository voucherRepository;
+    private VoucherDetailRepository voucherDetailRepository;
 
     private PricingService pricingService;
     private final LocalDateTime now = LocalDateTime.of(2026, 10, 6, 10, 0);
@@ -45,7 +46,7 @@ class PricingServiceTest {
 
     @BeforeEach
     void setUp() {
-        pricingService = new PricingService(promotionRepository, voucherRepository);
+        pricingService = new PricingService(promotionRepository, voucherDetailRepository);
         ReflectionTestUtils.setField(pricingService, "shippingFee", new BigDecimal("15000"));
         Category category = Category.builder().id(1L).name("Espresso").build();
         latte = Coffee.builder().id(1L).category(category).name("Latte").price(new BigDecimal("50000")).build();
@@ -76,9 +77,11 @@ class PricingServiceTest {
         when(promotionRepository.findRunningOrderPromotions(any()))
                 .thenReturn(List.of(promotion(PromotionScope.ORDER, "10", "150000")));
         Customer owner = Customer.builder().id(5L).phone("0912345678").build();
-        Voucher voucher = Voucher.builder().id(1L).code("NAM50K").customer(owner).discountValue(new BigDecimal("50000"))
-                .minOrderValue(new BigDecimal("100000")).status(VoucherStatus.ISSUED).expiresAt(now.plusDays(1)).build();
-        when(voucherRepository.findByCodeIgnoreCase("NAM50K")).thenReturn(Optional.of(voucher));
+        Voucher type = Voucher.builder().id(1L).name("Tri ân 50K").discountValue(new BigDecimal("50000"))
+                .minOrderValue(new BigDecimal("100000")).quantity(10).build();
+        VoucherDetail voucher = VoucherDetail.builder().id(1L).voucher(type).code("NAM50K").customer(owner)
+                .status(VoucherStatus.ISSUED).expiresAt(now.plusDays(1)).build();
+        when(voucherDetailRepository.findByCodeIgnoreCase("NAM50K")).thenReturn(Optional.of(voucher));
 
         var quote = pricingService.quote(List.of(new PricingService.InputLine(latte, 4, null)),
                 OrderType.DELIVERY, "0912345678", "NAM50K", now);
@@ -94,9 +97,10 @@ class PricingServiceTest {
     @Test
     void voucherOfAnotherCustomerIsRejected() {
         Customer owner = Customer.builder().id(5L).phone("0912345678").build();
-        Voucher voucher = Voucher.builder().id(1L).code("NAM50K").customer(owner).discountValue(new BigDecimal("50000"))
+        Voucher type = Voucher.builder().id(1L).name("Tri ân 50K").discountValue(new BigDecimal("50000")).quantity(10).build();
+        VoucherDetail voucher = VoucherDetail.builder().id(1L).voucher(type).code("NAM50K").customer(owner)
                 .status(VoucherStatus.ISSUED).build();
-        when(voucherRepository.findByCodeIgnoreCase("NAM50K")).thenReturn(Optional.of(voucher));
+        when(voucherDetailRepository.findByCodeIgnoreCase("NAM50K")).thenReturn(Optional.of(voucher));
 
         var quote = pricingService.quote(List.of(new PricingService.InputLine(latte, 2, null)),
                 OrderType.TAKE_AWAY, "0987654321", "NAM50K", now);

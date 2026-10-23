@@ -14,7 +14,7 @@ import com.coffeeshop.repository.CustomerRepository;
 import com.coffeeshop.repository.LoyaltyPointHistoryRepository;
 import com.coffeeshop.repository.OrderRepository;
 import com.coffeeshop.repository.UserRepository;
-import com.coffeeshop.repository.VoucherRepository;
+import com.coffeeshop.repository.VoucherDetailRepository;
 import com.coffeeshop.security.CurrentUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,7 +30,7 @@ public class AccountService {
 
     private final CustomerRepository customerRepository;
     private final OrderRepository orderRepository;
-    private final VoucherRepository voucherRepository;
+    private final VoucherDetailRepository voucherDetailRepository;
     private final LoyaltyPointHistoryRepository pointRepository;
     private final UserRepository userRepository;
 
@@ -63,7 +63,7 @@ public class AccountService {
 
     @Transactional(readOnly = true)
     public List<VoucherResponse> vouchers() {
-        return voucherRepository.findByCustomerIdOrderByIssuedAtDesc(me().getId()).stream().map(VoucherResponse::from).toList();
+        return voucherDetailRepository.findByCustomerIdOrderByIssuedAtDesc(me().getId()).stream().map(VoucherResponse::from).toList();
     }
 
     @Transactional(readOnly = true)
