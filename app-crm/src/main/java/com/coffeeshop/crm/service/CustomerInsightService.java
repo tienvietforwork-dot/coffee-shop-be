@@ -12,17 +12,13 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/** Kiểm tra tham số và phối hợp các truy vấn báo cáo hành vi/giá trị khách hàng. */
 @Service
 @RequiredArgsConstructor
 public class CustomerInsightService {
     private final CustomerInsightRepository insightRepository;
     private final CustomerAnalyticsRepository analyticsRepository;
     private final CustomerRepository customerRepository;
-
-    @Transactional(readOnly = true)
-    public List<CustomerInsightRepository.CustomerMetricRow> topCustomers(LocalDate from, LocalDate to, int limit) {
-        return topCustomers(from, to, limit, "spend");
-    }
 
     @Transactional(readOnly = true)
     public List<CustomerInsightRepository.CustomerMetricRow> topCustomers(LocalDate from, LocalDate to, int limit, String sortBy) {
@@ -42,16 +38,17 @@ public class CustomerInsightService {
     }
 
     @Transactional(readOnly = true)
+    public long countInactiveCustomers(int inactiveDays) {
+        if (inactiveDays < 1 || inactiveDays > 3650) throw new IllegalArgumentException("inactiveDays phải từ 1 đến 3650");
+        return insightRepository.countInactiveCustomers(inactiveDays);
+    }
+
+    @Transactional(readOnly = true)
     public CustomerInsightRepository.GroupMetricRow groupMetrics(Long groupId, LocalDate from, LocalDate to) {
         validatePeriod(from, to);
         CustomerInsightRepository.GroupMetricRow result = insightRepository.groupMetrics(groupId, start(from), end(to));
         if (result == null) throw new CrmNotFoundException("Không tìm thấy nhóm khách hàng ID " + groupId);
         return result;
-    }
-
-    @Transactional(readOnly = true)
-    public List<CustomerInsightRepository.MonthlyMetricRow> monthlySales(LocalDate from, LocalDate to) {
-        return monthlySales(from, to, "month");
     }
 
     @Transactional(readOnly = true)
@@ -67,6 +64,15 @@ public class CustomerInsightService {
     public List<CustomerInsightRepository.FeedbackMetricRow> feedbackSummary(LocalDate from, LocalDate to) {
         validatePeriod(from, to);
         return insightRepository.feedbackMetrics(start(from), end(to));
+    }
+
+    @Transactional(readOnly = true)
+    public List<CustomerInsightRepository.FeedbackTrendRow> feedbackTrends(LocalDate from, LocalDate to, String period) {
+        validatePeriod(from, to);
+        if (!List.of("day", "week", "month").contains(period)) {
+            throw new IllegalArgumentException("period chỉ nhận day, week hoặc month");
+        }
+        return insightRepository.feedbackTrends(start(from), end(to), period);
     }
 
     @Transactional(readOnly = true)

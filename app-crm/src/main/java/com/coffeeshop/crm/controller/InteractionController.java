@@ -4,6 +4,7 @@ import com.coffeeshop.crm.dto.request.InteractionRequest;
 import com.coffeeshop.crm.dto.request.InteractionCloseRequest;
 import com.coffeeshop.crm.dto.request.InteractionUpdateRequest;
 import com.coffeeshop.crm.dto.response.InteractionResponse;
+import com.coffeeshop.crm.dto.response.InteractionReminderNotificationResponse;
 import com.coffeeshop.crm.service.InteractionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,22 @@ public class InteractionController {
         validatePage(page, size);
         return ResponseEntity.ok(interactionService.dueReminders(until == null ? LocalDateTime.now() : until, page, size)
                 .map(InteractionResponse::from));
+    }
+
+    @GetMapping("/reminder-notifications")
+    @Operation(summary = "Danh sách thông báo nhắc chăm sóc do tác vụ nền tạo")
+    public ResponseEntity<Page<InteractionReminderNotificationResponse>> reminderNotifications(
+            @RequestParam(defaultValue = "true") boolean unreadOnly,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        validatePage(page, size);
+        return ResponseEntity.ok(interactionService.reminderNotifications(unreadOnly, page, size));
+    }
+
+    @PostMapping("/reminder-notifications/{notificationId}/read")
+    @Operation(summary = "Đánh dấu thông báo nhắc chăm sóc đã xem")
+    public ResponseEntity<InteractionReminderNotificationResponse> markReminderRead(@PathVariable Long notificationId) {
+        return ResponseEntity.ok(interactionService.markReminderRead(notificationId));
     }
 
     @PostMapping

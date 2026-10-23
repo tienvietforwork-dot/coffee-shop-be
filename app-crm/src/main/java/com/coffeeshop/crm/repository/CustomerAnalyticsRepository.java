@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Reads Core-owned order data from the shared PostgreSQL database. */
+/** Truy vấn dữ liệu mua hàng do app-core sở hữu trong database PostgreSQL dùng chung. */
 @Repository
 public class CustomerAnalyticsRepository {
     @PersistenceContext
@@ -152,7 +152,7 @@ public class CustomerAnalyticsRepository {
     }
 
     public List<Long> matchingCustomerIds(BigDecimal minSpend, BigDecimal maxSpend, Integer minOrders,
-                                           Integer lastOrderDays, Long favoriteCategoryId, Long favoriteCoffeeId) {
+                                           Integer inactiveDays, Long favoriteCategoryId, Long favoriteCoffeeId) {
         StringBuilder sql = new StringBuilder("select c.id from customers c where c.del_flag = false");
         if (minSpend != null || maxSpend != null) {
             sql.append(" and (select coalesce(sum(o.total_amount), 0) from orders o where o.customer_id = c.id and o.del_flag = false and o.status = 'COMPLETED')");
@@ -162,8 +162,8 @@ public class CustomerAnalyticsRepository {
         if (minOrders != null) {
             sql.append(" and (select count(o.id) from orders o where o.customer_id = c.id and o.del_flag = false and o.status = 'COMPLETED') >= :minOrders");
         }
-        if (lastOrderDays != null) {
-            sql.append(" and exists (select 1 from orders o where o.customer_id = c.id and o.del_flag = false and o.status = 'COMPLETED' and o.ordered_at >= :sinceDate)");
+        if (inactiveDays != null) {
+            sql.append(" and not exists (select 1 from orders o where o.customer_id = c.id and o.del_flag = false and o.status = 'COMPLETED' and o.ordered_at > :inactiveSince)");
         }
         if (favoriteCategoryId != null) {
             sql.append(" and (select co.category_id from orders o join order_items oi on oi.order_id = o.id and oi.del_flag = false join coffees co on co.id = oi.coffee_id and co.del_flag = false where o.customer_id = c.id and o.del_flag = false and o.status = 'COMPLETED' group by co.category_id order by sum(oi.quantity) desc, co.category_id asc limit 1) = :categoryId");
@@ -176,11 +176,36 @@ public class CustomerAnalyticsRepository {
         if (minSpend != null) query.setParameter("minSpend", minSpend);
         if (maxSpend != null) query.setParameter("maxSpend", maxSpend);
         if (minOrders != null) query.setParameter("minOrders", minOrders);
-        if (lastOrderDays != null) query.setParameter("sinceDate", LocalDateTime.now().minusDays(lastOrderDays));
+        if (inactiveDays != null) query.setParameter("inactiveSince", LocalDateTime.now().minusDays(inactiveDays));
         if (favoriteCategoryId != null) query.setParameter("categoryId", favoriteCategoryId);
         if (favoriteCoffeeId != null) query.setParameter("coffeeId", favoriteCoffeeId);
         List<?> rows = query.getResultList();
         return rows.stream().map(row -> ((Number) row).longValue()).toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<PointHistory> pointHistory(Long customerId, LocalDateTime from, LocalDateTime to, int limit) {
+        Query query = entityManager.createNativeQuery("""
+                select h.id, h.points_change, h.reason, o.order_code, h.created_at
+                from loyalty_point_history h
+                left join orders o on o.id = h.order_id
+                where h.customer_id = :customerId and h.del_flag = false
+                  and (cast(:fromDate as timestamp) is null or h.created_at >= :fromDate)
+                  and (cast(:toDate as timestamp) is null or h.created_at < :toDate)
+                order by h.created_at desc, h.id desc
+                limit :rowLimit
+                """);
+        query.setParameter("customerId", customerId);
+        query.setParameter("fromDate", from);
+        query.setParameter("toDate", to);
+        query.setParameter("rowLimit", limit);
+        List<PointHistory> result = new ArrayList<>();
+        for (Object item : query.getResultList()) {
+            Object[] row = (Object[]) item;
+            result.add(new PointHistory(((Number) row[0]).longValue(), ((Number) row[1]).intValue(),
+                    (String) row[2], (String) row[3], dateTime(row[4])));
+        }
+        return result;
     }
 
     private static BigDecimal decimal(Object value) {
@@ -199,6 +224,9 @@ public class CustomerAnalyticsRepository {
 
     public record Metrics(BigDecimal totalSpend, long totalOrders, BigDecimal averageOrderValue,
                           LocalDateTime lastOrderAt, long ordersLast30Days) { }
+
+    public record PointHistory(Long id, Integer pointsChange, String reason, String orderCode,
+                               LocalDateTime createdAt) { }
 
     public record OrderSummary(String orderCode, String status, BigDecimal totalAmount,
                                LocalDateTime orderedAt, String items) { }

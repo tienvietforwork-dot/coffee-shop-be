@@ -31,6 +31,10 @@ public final class CustomerInsightResponses {
     public record FeedbackSummaryResponse(String issueType, String category, String sentiment, String status,
                                           long feedbackCount, long customerCount) { }
 
+    public record FeedbackTrendResponse(LocalDateTime periodStart, long totalFeedback, long complaints,
+                                        long suggestions, long praises, long negativeFeedback,
+                                        long unresolvedFeedback, long customerCount) { }
+
     public record CustomerGrowthResponse(LocalDateTime month, long newProfiles, long activeCustomers,
                                          long firstTimeBuyers, long returningCustomers) { }
 

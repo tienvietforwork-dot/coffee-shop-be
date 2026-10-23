@@ -9,14 +9,10 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
+/** Các truy vấn tổng hợp cho dashboard CRM; không ánh xạ hay thay đổi bảng của app-core. */
 @Repository
 public class CustomerInsightRepository {
     @PersistenceContext private EntityManager entityManager;
-
-    @SuppressWarnings("unchecked")
-    public List<CustomerMetricRow> topCustomers(LocalDateTime from, LocalDateTime to, int limit) {
-        return topCustomers(from, to, limit, "spend");
-    }
 
     @SuppressWarnings("unchecked")
     public List<CustomerMetricRow> topCustomers(LocalDateTime from, LocalDateTime to, int limit, String sortBy) {
@@ -25,6 +21,10 @@ public class CustomerInsightRepository {
             case "average" -> "coalesce(avg(o.total_amount), 0) desc, count(o.id) desc";
             default -> "coalesce(sum(o.total_amount), 0) desc, count(o.id) desc";
         };
+        // Chỉ đưa hồ sơ thật sự có giao dịch phù hợp vào bảng xếp hạng.
+        String qualification = "spend".equals(sortBy)
+                ? "having coalesce(sum(o.total_amount), 0) > 0"
+                : "having count(o.id) > 0";
         String sql = """
                 select c.id, c.full_name, c.phone, coalesce(sum(o.total_amount), 0), count(o.id),
                        coalesce(avg(o.total_amount), 0), max(o.ordered_at),
@@ -35,9 +35,10 @@ public class CustomerInsightRepository {
                   and (cast(:toDate as timestamp) is null or o.ordered_at < :toDate)
                 where c.del_flag = false
                 group by c.id, c.full_name, c.phone
+                __QUALIFICATION__
                 order by __SORT__, c.id
                 limit :rowLimit
-                """.replace("__SORT__", sortExpression);
+                """.replace("__QUALIFICATION__", qualification).replace("__SORT__", sortExpression);
         Query query = entityManager.createNativeQuery(sql);
         query.setParameter("fromDate", from);
         query.setParameter("toDate", to);
@@ -55,13 +56,28 @@ public class CustomerInsightRepository {
                 left join orders o on o.customer_id = c.id and o.del_flag = false and o.status = 'COMPLETED'
                 where c.del_flag = false
                 group by c.id, c.full_name, c.phone
-                having max(o.ordered_at) is null or max(o.ordered_at) < :cutoff
+                having max(o.ordered_at) is null or max(o.ordered_at) <= :cutoff
                 order by max(o.ordered_at) asc nulls first
                 limit :rowLimit
                 """);
         query.setParameter("cutoff", LocalDateTime.now().minusDays(inactiveDays));
         query.setParameter("rowLimit", limit);
         return mapMetrics(query.getResultList());
+    }
+
+    public long countInactiveCustomers(int inactiveDays) {
+        Query query = entityManager.createNativeQuery("""
+                select count(*)
+                from customers c
+                where c.del_flag = false
+                  and not exists (
+                      select 1 from orders o
+                      where o.customer_id = c.id and o.del_flag = false and o.status = 'COMPLETED'
+                        and o.ordered_at > :cutoff
+                  )
+                """);
+        query.setParameter("cutoff", LocalDateTime.now().minusDays(inactiveDays));
+        return ((Number) query.getSingleResult()).longValue();
     }
 
     public GroupMetricRow groupMetrics(Long groupId, LocalDateTime from, LocalDateTime to) {
@@ -170,11 +186,6 @@ public class CustomerInsightRepository {
         return result;
     }
 
-    @SuppressWarnings("unchecked")
-    public List<MonthlyMetricRow> monthlySales(LocalDateTime from, LocalDateTime to) {
-        return salesTrends(from, to, "month");
-    }
-
     public List<MonthlyMetricRow> salesTrends(LocalDateTime from, LocalDateTime to, String period) {
         String bucket = "date_trunc('" + period + "', o.ordered_at)";
         Query query = entityManager.createNativeQuery("""
@@ -218,6 +229,41 @@ public class CustomerInsightRepository {
             Object[] row = (Object[]) value;
             result.add(new FeedbackMetricRow((String) row[0], (String) row[1], (String) row[2],
                     (String) row[3], number(row[4]), number(row[5])));
+        }
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<FeedbackTrendRow> feedbackTrends(LocalDateTime from, LocalDateTime to, String period) {
+        Query query = entityManager.createNativeQuery("""
+                with feedback_bucket as (
+                    select date_trunc(cast(:period as text), f.created_at) as period_start,
+                           f.category, f.sentiment, f.status, f.customer_id
+                    from feedbacks f
+                    where f.del_flag = false
+                      and (cast(:fromDate as timestamp) is null or f.created_at >= :fromDate)
+                      and (cast(:toDate as timestamp) is null or f.created_at < :toDate)
+                )
+                select period_start, count(*),
+                       count(*) filter (where category = 'COMPLAINT'),
+                       count(*) filter (where category = 'SUGGESTION'),
+                       count(*) filter (where category = 'PRAISE'),
+                       count(*) filter (where sentiment = 'NEGATIVE'),
+                       count(*) filter (where status not in ('CLOSED', 'RESOLVED')),
+                       count(distinct customer_id)
+                from feedback_bucket
+                group by period_start
+                order by period_start
+                """);
+        query.setParameter("period", period);
+        query.setParameter("fromDate", from);
+        query.setParameter("toDate", to);
+        List<?> rows = query.getResultList();
+        List<FeedbackTrendRow> result = new ArrayList<>(rows.size());
+        for (Object value : rows) {
+            Object[] row = (Object[]) value;
+            result.add(new FeedbackTrendRow(dateTime(row[0]), number(row[1]), number(row[2]), number(row[3]),
+                    number(row[4]), number(row[5]), number(row[6]), number(row[7])));
         }
         return result;
     }
@@ -339,6 +385,9 @@ public class CustomerInsightRepository {
                                    java.math.BigDecimal revenue) { }
     public record FeedbackMetricRow(String issueType, String category, String sentiment, String status,
                                     long feedbackCount, long customerCount) { }
+    public record FeedbackTrendRow(LocalDateTime periodStart, long totalFeedback, long complaints,
+                                   long suggestions, long praises, long negativeFeedback,
+                                   long unresolvedFeedback, long customerCount) { }
     public record MonthlyGrowthRow(LocalDateTime month, long newProfiles, long activeCustomers,
                                    long firstTimeBuyers, long returningCustomers) { }
     public record RepeatedFeedbackRow(String topic, long complaintCount, long customerCount) { }
