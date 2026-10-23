@@ -4,9 +4,12 @@ import com.coffeeshop.crm.dto.request.FeedbackRequest;
 import com.coffeeshop.crm.dto.request.FeedbackCloseRequest;
 import com.coffeeshop.crm.dto.request.FeedbackResponseRequest;
 import com.coffeeshop.crm.dto.request.FeedbackUpdateRequest;
+import com.coffeeshop.crm.dto.request.FeedbackApprovalRequest;
 import com.coffeeshop.crm.dto.request.PublicFeedbackRequest;
 import com.coffeeshop.crm.dto.response.FeedbackResponse;
 import com.coffeeshop.crm.dto.response.FeedbackResponseDto;
+import com.coffeeshop.crm.entity.Customer;
+import com.coffeeshop.crm.repository.CustomerRepository;
 import com.coffeeshop.crm.service.FeedbackService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
@@ -23,6 +27,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @Tag(name = "Phản hồi khách hàng", description = "Tiếp nhận, phân loại, giao xử lý, trả lời và phân tích phản hồi")
 public class FeedbackController {
     private final FeedbackService feedbackService;
+    private final CustomerRepository customerRepository;
 
     @PostMapping("/public")
     @Operation(summary = "Khách gửi góp ý công khai")
@@ -37,7 +42,12 @@ public class FeedbackController {
                                   @RequestParam(defaultValue = "0") int page,
                                   @RequestParam(defaultValue = "20") int size) {
         if (page < 0 || size < 1 || size > 100) throw new IllegalArgumentException("page phải >= 0, size phải từ 1 đến 100");
-        return ResponseEntity.ok(feedbackService.list(customerId, page, size).map(FeedbackResponse::from));
+        Page<com.coffeeshop.crm.entity.Feedback> feedbacks = feedbackService.list(customerId, page, size);
+        var customerById = customerRepository.findAllById(
+                        feedbacks.getContent().stream().map(com.coffeeshop.crm.entity.Feedback::getCustomerId).distinct().toList())
+                .stream().collect(java.util.stream.Collectors.toMap(Customer::getId, customer -> customer));
+        return ResponseEntity.ok(feedbacks.map(feedback -> FeedbackResponse.from(
+                feedback, customerById.get(feedback.getCustomerId()))));
     }
 
     @PostMapping
@@ -62,11 +72,15 @@ public class FeedbackController {
     @PostMapping("/{id}/escalate")
     @Operation(summary = "Chuyển cấp xử lý phản hồi")
     public ResponseEntity<FeedbackResponse> escalate(@PathVariable Long id, @RequestParam(required = false) Long staffId) {
-        FeedbackUpdateRequest request = new FeedbackUpdateRequest();
-        request.setEscalated(true);
-        request.setStatus("ESCALATED");
-        request.setStaffId(staffId);
-        return ResponseEntity.ok(FeedbackResponse.from(feedbackService.update(id, request)));
+        return ResponseEntity.ok(FeedbackResponse.from(feedbackService.requestEscalation(id, staffId)));
+    }
+
+    @PostMapping("/{id}/approval")
+    @Operation(summary = "Quản lý duyệt hoặc từ chối yêu cầu chuyển cấp")
+    public ResponseEntity<FeedbackResponse> decideEscalation(@PathVariable Long id,
+            @Valid @RequestBody FeedbackApprovalRequest request, Authentication authentication) {
+        String actor = authentication == null ? "system" : authentication.getName();
+        return ResponseEntity.ok(FeedbackResponse.from(feedbackService.decideEscalation(id, request, actor)));
     }
 
     @PostMapping("/{id}/close")

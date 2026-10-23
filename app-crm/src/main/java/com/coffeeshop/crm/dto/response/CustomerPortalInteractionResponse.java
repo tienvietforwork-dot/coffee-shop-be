@@ -11,10 +11,11 @@ public record CustomerPortalInteractionResponse(
         String content,
         LocalDateTime occurredAt,
         String status,
-        String outcome
+        String outcome,
+        LocalDateTime customerReadAt
 ) {
     public static CustomerPortalInteractionResponse from(Interaction interaction) {
         return new CustomerPortalInteractionResponse(interaction.getId(), interaction.getChannel(),
-                interaction.getContent(), interaction.getOccurredAt(), interaction.getStatus(), interaction.getOutcome());
+                interaction.getContent(), interaction.getOccurredAt(), interaction.getStatus(), interaction.getOutcome(), interaction.getCustomerReadAt());
     }
 }

@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/** Tạo nhóm khách, xem trước tiêu chí, tính lại thành viên và quản lý thành viên thủ công. */
 @Service
 @RequiredArgsConstructor
 public class CustomerGroupService {
@@ -163,7 +164,7 @@ public class CustomerGroupService {
 
     private List<Customer> findMatches(CriteriaRuleDTO rule) {
         List<Long> ids = analyticsRepository.matchingCustomerIds(rule.getMinSpend(), rule.getMaxSpend(),
-                rule.getMinOrders(), rule.getLastOrderDays(), rule.getFavoriteCategoryId(), rule.getFavoriteCoffeeId());
+                rule.getMinOrders(), rule.getInactiveDays(), rule.getFavoriteCategoryId(), rule.getFavoriteCoffeeId());
         if (ids.isEmpty()) return List.of();
         return customerRepository.findAllById(ids);
     }
@@ -181,7 +182,7 @@ public class CustomerGroupService {
         if ("AUTOMATIC".equals(groupType)) {
             if (rules == null) throw new IllegalArgumentException("Nhóm AUTOMATIC cần có ít nhất một tiêu chí");
             if (rules.getMinSpend() == null && rules.getMaxSpend() == null && rules.getMinOrders() == null &&
-                    rules.getLastOrderDays() == null && rules.getFavoriteCategoryId() == null &&
+                    rules.getInactiveDays() == null && rules.getFavoriteCategoryId() == null &&
                     rules.getFavoriteCoffeeId() == null) {
                 throw new IllegalArgumentException("Nhóm AUTOMATIC cần có ít nhất một tiêu chí");
             }
@@ -191,10 +192,10 @@ public class CustomerGroupService {
             if (rules.getMinSpend() != null && rules.getMinSpend().signum() < 0 ||
                     rules.getMaxSpend() != null && rules.getMaxSpend().signum() < 0 ||
                     rules.getMinOrders() != null && rules.getMinOrders() < 1 ||
-                    rules.getLastOrderDays() != null && rules.getLastOrderDays() < 1 ||
+                    rules.getInactiveDays() != null && rules.getInactiveDays() < 1 ||
                     rules.getFavoriteCategoryId() != null && rules.getFavoriteCategoryId() < 1 ||
                     rules.getFavoriteCoffeeId() != null && rules.getFavoriteCoffeeId() < 1) {
-                throw new IllegalArgumentException("Min/max spend phải không âm; số đơn, số ngày và ID phải lớn hơn 0");
+                throw new IllegalArgumentException("Min/max spend phải không âm; số đơn, số ngày chưa mua và ID phải lớn hơn 0");
             }
         } else if (rules != null) {
             throw new IllegalArgumentException("Nhóm MANUAL không nhận tiêu chí tự động");

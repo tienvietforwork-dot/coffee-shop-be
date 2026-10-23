@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 public interface InteractionRepository extends JpaRepository<Interaction, Long> {
     Page<Interaction> findAllByCustomerIdAndDelFlagFalseOrderByOccurredAtDesc(Long customerId, Pageable pageable);
     Page<Interaction> findAllByCustomerIdAndVisibleToCustomerTrueAndDelFlagFalseOrderByOccurredAtDesc(Long customerId, Pageable pageable);
+    java.util.Optional<Interaction> findByIdAndCustomerIdAndVisibleToCustomerTrueAndDelFlagFalse(Long id, Long customerId);
     Page<Interaction> findAllByDelFlagFalseOrderByOccurredAtDesc(Pageable pageable);
 
     @Query("select i from Interaction i where i.customerId = :customerId and i.delFlag = false and i.occurredAt >= :fromDate order by i.occurredAt desc")
@@ -33,6 +34,11 @@ public interface InteractionRepository extends JpaRepository<Interaction, Long> 
 
     @Query("select i from Interaction i where i.delFlag = false and i.status = 'FOLLOW_UP' and i.remindAt <= :until order by i.remindAt asc")
     Page<Interaction> findDueReminders(@Param("until") java.time.LocalDateTime until, Pageable pageable);
+
+    @Query("select i from Interaction i where i.delFlag = false and i.status = 'FOLLOW_UP' and i.remindAt <= :until " +
+            "and not exists (select n.id from InteractionReminderNotification n where n.interactionId = i.id " +
+            "and n.remindAt = i.remindAt and n.delFlag = false) order by i.remindAt asc")
+    Page<Interaction> findDueRemindersWithoutNotification(@Param("until") java.time.LocalDateTime until, Pageable pageable);
 
     @Modifying
     @Query("update Interaction i set i.customerId = :targetId where i.customerId = :sourceId and i.delFlag = false")

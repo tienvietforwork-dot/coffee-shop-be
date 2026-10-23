@@ -11,6 +11,7 @@ import com.coffeeshop.crm.exception.CrmConflictException;
 import com.coffeeshop.crm.exception.CrmNotFoundException;
 import com.coffeeshop.crm.repository.CustomerAddressRepository;
 import com.coffeeshop.crm.repository.CustomerAnalyticsRepository;
+import com.coffeeshop.crm.repository.CustomerGroupMemberRepository;
 import com.coffeeshop.crm.repository.CustomerRepository;
 import com.coffeeshop.crm.repository.FeedbackRepository;
 import com.coffeeshop.crm.repository.InteractionRepository;
@@ -29,12 +30,16 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
+/** Nghiệp vụ hồ sơ khách hàng: CRUD, tổng hợp Customer 360 và gộp hồ sơ trùng. */
 @Service
 @RequiredArgsConstructor
 public class Customer360Service {
     private final CustomerRepository customerRepository;
     private final CustomerAddressRepository addressRepository;
+    private final CustomerGroupMemberRepository groupMemberRepository;
     private final InteractionRepository interactionRepository;
     private final FeedbackRepository feedbackRepository;
     private final FeedbackResponseRepository feedbackResponseRepository;
@@ -48,6 +53,16 @@ public class Customer360Service {
         String normalized = query == null || query.isBlank() ? null : query.trim();
         if (normalized == null) return customerRepository.findAllByDelFlagFalseOrderByIdDesc(pageable);
         return customerRepository.search(normalized, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Map<Long, List<String>> customerGroupNames(List<Long> customerIds) {
+        if (customerIds == null || customerIds.isEmpty()) return Map.of();
+        return groupMemberRepository.findGroupNamesByCustomerIds(customerIds).stream()
+                .collect(Collectors.groupingBy(
+                        CustomerGroupMemberRepository.CustomerGroupNameProjection::getCustomerId,
+                        Collectors.mapping(CustomerGroupMemberRepository.CustomerGroupNameProjection::getGroupName,
+                                Collectors.toList())));
     }
 
     @Transactional
@@ -84,6 +99,7 @@ public class Customer360Service {
     @Transactional(readOnly = true)
     public Customer360Response getCustomer360(Long customerId, LocalDate fromDate, LocalDate toDate) {
         Customer customer = findCustomer(customerId);
+        List<String> customerGroups = customerGroupNames(List.of(customerId)).getOrDefault(customerId, List.of());
         if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
             throw new IllegalArgumentException("fromDate phải nhỏ hơn hoặc bằng toDate");
         }
@@ -144,12 +160,16 @@ public class Customer360Service {
         return new Customer360Response(
                 new Customer360Response.ProfileDto(customer.getId(), customer.getFullName(), customer.getPhone(),
                         customer.getEmail(), customer.getDateOfBirth(), customer.getGender(), customer.getDescription(),
-                        customer.getLoyaltyPoints(), customer.getRegisteredAt(), addresses),
+                        customer.getLoyaltyPoints(), customer.getRegisteredAt(), addresses, customerGroups),
                 new Customer360Response.MetricsDto(metrics.totalSpend(), metrics.totalOrders(),
                         metrics.averageOrderValue(), metrics.ordersLast30Days(), metrics.lastOrderAt(),
                         analyticsRepository.favoriteCoffee(customerId, from, toExclusive),
                         analyticsRepository.favoriteCategory(customerId, from, toExclusive)),
-                orderDtos, interactionDtos, feedbackDtos, timeline);
+                orderDtos, interactionDtos, feedbackDtos, timeline,
+                analyticsRepository.pointHistory(customerId, from, toExclusive, 100).stream()
+                        .map(p -> new Customer360Response.PointHistoryDto(p.id(), p.pointsChange(), p.reason(),
+                                p.orderCode(), p.createdAt()))
+                        .toList());
     }
 
     @Transactional
@@ -159,6 +179,10 @@ public class Customer360Service {
         }
         Customer primary = findCustomer(primaryCustomerId);
         Customer duplicate = findCustomer(duplicateCustomerId);
+
+        if (!isLikelyDuplicate(primary, duplicate)) {
+            throw new CrmConflictException("Không thể gộp: cần họ tên trùng cùng với số điện thoại hoặc email trùng. Hãy giữ riêng nếu chưa xác nhận đây là cùng một khách.");
+        }
 
         long primaryAccounts = count("select count(*) from users where customer_id = :id and del_flag = false", primaryCustomerId);
         long duplicateAccounts = count("select count(*) from users where customer_id = :id and del_flag = false", duplicateCustomerId);
@@ -200,6 +224,24 @@ public class Customer360Service {
 
     private long count(String sql, Long customerId) {
         return ((Number) entityManager.createNativeQuery(sql).setParameter("id", customerId).getSingleResult()).longValue();
+    }
+
+    private boolean isLikelyDuplicate(Customer first, Customer second) {
+        String firstName = normalize(first.getFullName());
+        String secondName = normalize(second.getFullName());
+        if (firstName.isEmpty() || !firstName.equals(secondName)) return false;
+
+        String firstPhone = normalize(first.getPhone());
+        String secondPhone = normalize(second.getPhone());
+        if (!firstPhone.isEmpty() && firstPhone.equals(secondPhone)) return true;
+
+        String firstEmail = normalize(first.getEmail());
+        String secondEmail = normalize(second.getEmail());
+        return !firstEmail.isEmpty() && firstEmail.equals(secondEmail);
+    }
+
+    private String normalize(String value) {
+        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toLowerCase(java.util.Locale.ROOT);
     }
 
     private void reassign(String table, Long sourceId, Long targetId) {

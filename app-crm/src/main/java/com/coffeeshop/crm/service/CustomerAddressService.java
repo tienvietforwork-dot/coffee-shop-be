@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
+/** Quản lý địa chỉ giao hàng gắn với một hồ sơ khách hàng. */
 @Service
 @RequiredArgsConstructor
 public class CustomerAddressService {
