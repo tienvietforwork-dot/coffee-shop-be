@@ -8,5 +8,6 @@ import jakarta.validation.constraints.Size;
 public record CartItemRequest(
         @NotNull Long coffeeId,
         @NotNull @Min(1) @Max(99) Integer quantity,
-        @Size(max = 255) String note) {
+        @Size(max = 255) String note, java.util.List<Long> optionIds) {
+    public CartItemRequest(Long coffeeId, Integer quantity, String note) { this(coffeeId, quantity, note, java.util.List.of()); }
 }

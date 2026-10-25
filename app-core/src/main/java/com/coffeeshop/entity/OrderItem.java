@@ -40,4 +40,6 @@ public class OrderItem extends BaseEntity {
     private BigDecimal lineTotal;
     @Column(length = 255)
     private String note;
+    @Column(name = "option_ids", length = 1000)
+    private String optionIds;
 }

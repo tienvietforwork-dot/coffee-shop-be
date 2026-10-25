@@ -60,6 +60,7 @@ public class OrderService {
     private final PricingService pricingService;
     private final InventoryService inventoryService;
     private final StockService stockService;
+    private final BundleCartService bundleCartService;
     private final NotificationService notificationService;
 
     /** Loyalty: 1 point per this many VND paid. */
@@ -98,8 +99,9 @@ public class OrderService {
     public PriceQuoteResponse previewCart(String sessionCode, OrderType orderType, String customerPhone,
                                           String voucherCode) {
         Cart cart = cartService.getOpen(sessionCode);
-        var lines = cart.getItems().stream()
-                .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote())).toList();
+        java.util.List<PricingService.InputLine> lines = new java.util.ArrayList<>(cart.getItems().stream()
+                .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote(), null, i.getOptionIds())).toList());
+        lines.addAll(bundleCartService.lines(cart));
         return pricingService.quote(lines, orderType, phoneOfCurrentCustomer(customerPhone), voucherCode,
                 LocalDateTime.now()).toResponse();
     }
@@ -116,12 +118,13 @@ public class OrderService {
     @Transactional
     public OrderResponse checkout(CheckoutRequest request) {
         Cart cart = cartService.getOpen(request.sessionCode());
-        if (cart.getItems().isEmpty()) throw new BadRequestException("Giỏ hàng đang trống");
+        if (cart.getItems().isEmpty() && bundleCartService.purchases(cart).isEmpty()) throw new BadRequestException("Giỏ hàng đang trống");
         if (request.orderType() == OrderType.DINE_IN && cart.getTable() == null) {
             throw new BadRequestException("Đơn tại bàn cần quét mã QR trên bàn");
         }
-        var lines = cart.getItems().stream()
-                .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote())).toList();
+        java.util.List<PricingService.InputLine> lines = new java.util.ArrayList<>(cart.getItems().stream()
+                .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote(), null, i.getOptionIds())).toList());
+        lines.addAll(bundleCartService.lines(cart));
         Draft draft = new Draft(lines, request.orderType(), cart.getTable() != null ? OrderChannel.QR : OrderChannel.ONLINE,
                 request.orderType() == OrderType.DINE_IN ? cart.getTable() : null, cart, request.customerPhone(),
                 request.customerName(), request.addressId(), request.delivery(), request.pickupTime(),
@@ -189,12 +192,13 @@ public class OrderService {
                 .build();
         for (var line : quote.lines()) {
             order.getItems().add(OrderItem.builder().order(order).coffee(line.coffee()).quantity(line.quantity())
-                    .unitPrice(line.unitPrice()).lineTotal(line.lineTotal()).note(line.note()).build());
+                    .unitPrice(line.unitPrice()).lineTotal(line.lineTotal()).note(line.note()).optionIds(line.optionIds()).build());
             if (line.promoItem() != null) {
                 line.promoItem().setSoldQuantity(line.promoItem().getSoldQuantity() + line.quantity());
             }
         }
         order = orderRepository.save(order);
+        if(d.cart()!=null) bundleCartService.saveSales(order.getId(),bundleCartService.purchases(d.cart()));
         record(order, null, order.getStatus(), null);
 
         if (quote.voucher() != null) {
@@ -379,9 +383,9 @@ public class OrderService {
             }
         }
         voucherRepository.findByOrderId(order.getId()).forEach(v -> {
-                    v.setOrder(null);
-                    v.setStatus(VoucherStatus.ISSUED);
-                });
+            v.setOrder(null);
+            v.setStatus(VoucherStatus.ISSUED);
+        });
         for (OrderItem item : order.getItems()) {
             pricingService.findPromotionItemUsed(item.getCoffee(), item.getUnitPrice(), order.getOrderedAt())
                     .ifPresent(pi -> pi.setSoldQuantity(Math.max(0, pi.getSoldQuantity() - item.getQuantity())));
