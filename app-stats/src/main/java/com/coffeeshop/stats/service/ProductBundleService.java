@@ -49,6 +49,18 @@ public class ProductBundleService {
     }
 
     @Transactional(readOnly = true)
+    public List<ProductBundleResponse> findPublicBundles() {
+        LocalDateTime now = LocalDateTime.now();
+        return bundleRepository.findAllByOrderByStatusAscNameAsc().stream()
+                .filter(bundle -> bundle.isAvailableNow(now))
+                .filter(bundle -> !bundle.getItems().isEmpty())
+                .filter(bundle -> bundle.getItems().stream()
+                        .filter(item -> !item.isOptional())
+                        .allMatch(item -> item.getCoffee().getStatus() == com.coffeeshop.stats.entity.enums.CoffeeStatus.AVAILABLE && !item.getCoffee().isAutoSoldOut()))
+                .map(bundle -> ProductBundleResponse.from(bundle, now)).toList();
+    }
+
+    @Transactional(readOnly = true)
     public ProductBundleResponse findById(Long id) {
         return ProductBundleResponse.from(getBundle(id), LocalDateTime.now());
     }
@@ -56,6 +68,7 @@ public class ProductBundleService {
     @Transactional
     public ProductBundleResponse create(ProductBundleRequest request) {
         validateSchedule(request.startsAt(), request.endsAt());
+        validateBundleRequest(request);
         if (bundleRepository.existsByNameIgnoreCase(request.name().trim())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Combo đã tồn tại: " + request.name());
         }
@@ -69,19 +82,27 @@ public class ProductBundleService {
     @Transactional
     public ProductBundleResponse update(Long id, ProductBundleRequest request) {
         validateSchedule(request.startsAt(), request.endsAt());
+        validateBundleRequest(request);
         ProductBundle bundle = getBundle(id);
         if (bundleRepository.existsByNameIgnoreCaseAndIdNot(request.name().trim(), id)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Combo đã tồn tại: " + request.name());
         }
 
+        if (bundle.getStatus() == ProductBundleStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Tạm dừng combo trước khi sửa");
+        }
         apply(bundle, request);
-        replaceItems(bundle, request.items());
+        // An omitted items field means metadata-only update, not remove every item.
+        if (request.items() != null) {
+            replaceItems(bundle, request.items());
+        }
         return ProductBundleResponse.from(bundle, LocalDateTime.now());
     }
 
     @Transactional
     public ProductBundleResponse addItem(Long bundleId, ProductBundleItemRequest request) {
         ProductBundle bundle = getBundle(bundleId);
+        requireEditable(bundle);
         if (bundleItemRepository.existsByBundle_IdAndCoffee_Id(bundleId, request.coffeeId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sản phẩm đã có trong combo");
         }
@@ -92,6 +113,7 @@ public class ProductBundleService {
     @Transactional
     public ProductBundleResponse updateItem(Long bundleId, Long itemId, ProductBundleItemRequest request) {
         ProductBundle bundle = getBundle(bundleId);
+        requireEditable(bundle);
         ProductBundleItem item = findItem(bundle, itemId);
         if (bundleItemRepository.existsByBundle_IdAndCoffee_IdAndIdNot(bundleId, request.coffeeId(), itemId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sản phẩm đã có trong combo");
@@ -103,6 +125,7 @@ public class ProductBundleService {
     @Transactional
     public ProductBundleResponse removeItem(Long bundleId, Long itemId) {
         ProductBundle bundle = getBundle(bundleId);
+        requireEditable(bundle);
         ProductBundleItem item = findItem(bundle, itemId);
         item.softDelete();
         bundle.getItems().remove(item);
@@ -112,9 +135,21 @@ public class ProductBundleService {
     @Transactional
     public ProductBundleResponse activate(Long id) {
         ProductBundle bundle = getBundle(id);
-        if (bundle.getItems().isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Combo cần ít nhất 1 sản phẩm");
+        if (bundle.getBundlePrice() == null || bundle.getBundlePrice().signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Giá combo phải lớn hơn 0");
         }
+        validateSchedule(bundle.getStartsAt(), bundle.getEndsAt());
+        if (bundle.getEndsAt() != null && !bundle.getEndsAt().isAfter(LocalDateTime.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể kích hoạt combo đã hết hạn");
+        }
+        if (bundle.getItems().isEmpty() || bundle.getItems().stream().noneMatch(item -> !item.isOptional())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Combo phải có ít nhất một sản phẩm bắt buộc");
+        }
+        if (bundle.getItems().stream().anyMatch(item ->
+                item.getCoffee().getStatus() != com.coffeeshop.stats.entity.enums.CoffeeStatus.AVAILABLE || item.getCoffee().isAutoSoldOut())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Combo chứa sản phẩm không được phép bán");
+        }
+        validateMandatoryPrice(bundle);
         bundle.setStatus(ProductBundleStatus.ACTIVE);
         return ProductBundleResponse.from(bundle, LocalDateTime.now());
     }
@@ -135,20 +170,46 @@ public class ProductBundleService {
 
     @Transactional(readOnly = true)
     public ProductBundleAnalyticsResponse analytics(Long id, LocalDateTime from, LocalDateTime to) {
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Khoảng thời gian thống kê không hợp lệ");
+        }
         ProductBundle bundle = getBundle(id);
         List<ProductBundleItem> items = bundle.getItems();
-        Map<Long, SalesSummary> sales = salesByCoffee(items.stream().map(i -> i.getCoffee().getId()).toList(), from, to);
+        // Component totals originate only from actual sold combo records, not independent item sales.
+        Map<Long, SalesSummary> sales = new HashMap<>();
+        StringBuilder componentSql = new StringBuilder("SELECT c.coffee_id,SUM(c.quantity),SUM(c.line_total) "
+                + "FROM order_bundle_components c JOIN order_bundle_sales s ON s.id=c.sale_id "
+                + "JOIN orders o ON o.id=s.order_id WHERE s.bundle_id=:bundleId "
+                + "AND o.status='COMPLETED' AND o.del_flag=false");
+        if(from!=null) componentSql.append(" AND o.ordered_at>=:fromTime");
+        if(to!=null) componentSql.append(" AND o.ordered_at<=:toTime");
+        componentSql.append(" GROUP BY c.coffee_id");
+        var componentQuery=entityManager.createNativeQuery(componentSql.toString()).setParameter("bundleId",id);
+        if(from!=null) componentQuery.setParameter("fromTime",from);
+        if(to!=null) componentQuery.setParameter("toTime",to);
+        for(Object raw:componentQuery.getResultList()) {
+            Object[] row=(Object[])raw;
+            sales.put(((Number)row[0]).longValue(),new SalesSummary(((Number)row[1]).intValue(),(BigDecimal)row[2]));
+        }
 
-        int estimatedSoldQuantity = items.stream()
-                .filter(item -> !item.isOptional())
-                .mapToInt(item -> sales.getOrDefault(item.getCoffee().getId(), SalesSummary.ZERO).quantity() / item.getQuantity())
-                .min()
-                .orElse(0);
+        // Real completed combo purchases only. Regular coffee orders must not be counted as combo sales.
+        StringBuilder realSql = new StringBuilder("SELECT COALESCE(SUM(s.quantity),0), COALESCE(SUM(s.quantity*s.unit_price+s.optional_total),0) "
+                + "FROM order_bundle_sales s JOIN orders o ON o.id=s.order_id "
+                + "WHERE s.bundle_id=:bundleId AND o.status='COMPLETED' AND o.del_flag=false");
+        if (from != null) realSql.append(" AND o.ordered_at >= :fromTime");
+        if (to != null) realSql.append(" AND o.ordered_at <= :toTime");
+        var query = entityManager.createNativeQuery(realSql.toString()).setParameter("bundleId", id);
+        if (from != null) query.setParameter("fromTime", from);
+        if (to != null) query.setParameter("toTime", to);
+        Object[] totals = (Object[]) query.getSingleResult();
+        int estimatedSoldQuantity = ((Number) totals[0]).intValue();
+        BigDecimal realRevenue = (BigDecimal) totals[1];
 
         BigDecimal standalonePrice = items.stream()
+                .filter(item -> !item.isOptional())
                 .map(item -> item.getCoffee().getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal estimatedRevenue = bundle.getBundlePrice().multiply(BigDecimal.valueOf(estimatedSoldQuantity));
+        BigDecimal estimatedRevenue = realRevenue;
         BigDecimal estimatedSavingGiven = standalonePrice.subtract(bundle.getBundlePrice())
                 .multiply(BigDecimal.valueOf(estimatedSoldQuantity));
 
@@ -171,10 +232,52 @@ public class ProductBundleService {
         bundle.setBundlePrice(request.bundlePrice());
         bundle.setStartsAt(request.startsAt());
         bundle.setEndsAt(request.endsAt());
-        bundle.setStatus(request.status() == null ? ProductBundleStatus.DRAFT : request.status());
+        // Status changes must pass through activate/pause APIs, never bypass activation validation.
+        if (bundle.getId() == null || request.status() == null || request.status() == ProductBundleStatus.DRAFT) {
+            bundle.setStatus(ProductBundleStatus.DRAFT);
+        } else if (request.status() != bundle.getStatus()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dùng API activate/pause để đổi trạng thái combo");
+        }
+    }
+
+    /** Optional products are excluded from the fixed bundle price and savings. */
+    private void validateMandatoryPrice(ProductBundle bundle) {
+        BigDecimal regularPrice = bundle.getItems().stream()
+                .filter(item -> !item.isOptional())
+                .map(item -> item.getCoffee().getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (bundle.getBundlePrice().compareTo(regularPrice) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Giá combo không được vượt tổng giá bán lẻ của các món bắt buộc");
+        }
+    }
+
+    private void requireEditable(ProductBundle bundle) {
+        if (bundle.getStatus() == ProductBundleStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Tạm dừng combo trước khi thay đổi món");
+        }
+    }
+
+    private void validateBundleRequest(ProductBundleRequest request) {
+        if (request.items() != null) {
+            Set<Long> ids = new LinkedHashSet<>();
+            for (ProductBundleItemRequest item : request.items()) {
+                if (item == null || item.coffeeId() == null || item.quantity() == null
+                        || item.quantity() < 1 || item.coffeeId() <= 0) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thành phần combo không hợp lệ");
+                }
+                if (!ids.add(item.coffeeId())) {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không được lặp sản phẩm trong combo");
+                }
+            }
+        }
+        if (request.status() == ProductBundleStatus.ACTIVE) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dùng API activate sau khi tạo combo DRAFT");
+        }
     }
 
     private void replaceItems(ProductBundle bundle, List<ProductBundleItemRequest> requests) {
+        // Soft deletion keeps audit history; avoid removing tracked entities from the persistence context.
         bundle.getItems().forEach(ProductBundleItem::softDelete);
         bundle.getItems().clear();
         if (requests == null) {
@@ -226,7 +329,7 @@ public class ProductBundleService {
     }
 
     private void validateSchedule(LocalDateTime startsAt, LocalDateTime endsAt) {
-        if (startsAt != null && endsAt != null && endsAt.isBefore(startsAt)) {
+        if (startsAt != null && endsAt != null && !endsAt.isAfter(startsAt)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Thời gian kết thúc phải sau thời gian bắt đầu");
         }

@@ -37,6 +37,7 @@ public class PricingService {
 
     private final PromotionRepository promotionRepository;
     private final VoucherRepository voucherRepository;
+    private final UpsellModifierService modifiers;
 
     @Value("${app.shipping.fee:15000}")
     private BigDecimal shippingFee;
@@ -44,10 +45,12 @@ public class PricingService {
     public record CoffeePrice(BigDecimal price, PromotionItem item) {
     }
 
-    public record InputLine(Coffee coffee, int quantity, String note) {
+    public record InputLine(Coffee coffee, int quantity, String note, BigDecimal fixedPrice, String optionIds) {
+        public InputLine(Coffee coffee, int quantity, String note) { this(coffee, quantity, note, null, null); }
+        public InputLine(Coffee coffee, int quantity, String note, BigDecimal fixedPrice) { this(coffee, quantity, note, fixedPrice, null); }
     }
 
-    public record PricedLine(Coffee coffee, int quantity, String note, BigDecimal unitPrice, PromotionItem promoItem) {
+    public record PricedLine(Coffee coffee, int quantity, String note, BigDecimal unitPrice, PromotionItem promoItem, String optionIds) {
         public BigDecimal lineTotal() {
             return unitPrice.multiply(BigDecimal.valueOf(quantity));
         }
@@ -117,10 +120,11 @@ public class PricingService {
             List<PromotionItem> candidates = coffeePromos.getOrDefault(coffee.getId(), List.of()).stream()
                     .filter(i -> i.hasRemaining(in.quantity() + promoUsage.getOrDefault(i.getId(), 0)))
                     .toList();
-            CoffeePrice best = bestCoffeePrice(coffee, in.quantity(), candidates);
+            CoffeePrice best = in.fixedPrice() == null ? bestCoffeePrice(coffee, in.quantity(), candidates) : null;
             if (best != null) promoUsage.merge(best.item().getId(), in.quantity(), Integer::sum);
             PricedLine line = new PricedLine(coffee, in.quantity(), in.note(),
-                    best == null ? coffee.getPrice() : best.price(), best == null ? null : best.item());
+                    (in.fixedPrice() != null ? in.fixedPrice() : (best == null ? coffee.getPrice() : best.price()))
+                            .add(modifiers.surcharge(coffee.getId(),in.optionIds())), best == null ? null : best.item(), in.optionIds());
             lines.add(line);
             subtotal = subtotal.add(line.lineTotal());
         }

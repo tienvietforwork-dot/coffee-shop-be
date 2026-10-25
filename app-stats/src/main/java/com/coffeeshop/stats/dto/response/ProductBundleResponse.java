@@ -17,6 +17,7 @@ public record ProductBundleResponse(Long id, String name, String description, Bi
                 .map(ProductBundleItemResponse::from)
                 .toList();
         BigDecimal standalonePrice = items.stream()
+                .filter(item -> !item.optional())
                 .map(ProductBundleItemResponse::linePrice)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal savingAmount = standalonePrice.subtract(bundle.getBundlePrice());
