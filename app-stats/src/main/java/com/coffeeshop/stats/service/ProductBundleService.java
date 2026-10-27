@@ -42,7 +42,7 @@ public class ProductBundleService {
 
     @Transactional(readOnly = true)
     public List<ProductBundleResponse> findAll() {
-        LocalDateTime now = ShopTime.now();
+        LocalDateTime now = LocalDateTime.now();
         return bundleRepository.findAllByOrderByStatusAscNameAsc()
                 .stream()
                 .map(bundle -> ProductBundleResponse.from(bundle, now))
@@ -130,7 +130,7 @@ public class ProductBundleService {
         ProductBundleItem item = findItem(bundle, itemId);
         item.softDelete();
         bundle.getItems().remove(item);
-        return ProductBundleResponse.from(bundle, ShopTime.now());
+        return ProductBundleResponse.from(bundle, LocalDateTime.now());
     }
 
     @Transactional
@@ -278,7 +278,6 @@ public class ProductBundleService {
     }
 
     private void replaceItems(ProductBundle bundle, List<ProductBundleItemRequest> requests) {
-        // Soft deletion keeps audit history; avoid removing tracked entities from the persistence context.
         bundle.getItems().forEach(ProductBundleItem::softDelete);
         bundle.getItems().clear();
         if (requests == null) {

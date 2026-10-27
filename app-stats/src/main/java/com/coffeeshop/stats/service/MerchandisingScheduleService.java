@@ -42,7 +42,15 @@ public class MerchandisingScheduleService {
         if(x.months()!=null&&x.months().stream().anyMatch(v->v==null||v<1||v>12))throw bad("Tháng phải từ 1 đến 12");
         if("WEEKEND".equals(x.slot())&&x.weekdays()!=null&&!x.weekdays().isEmpty()&&!Set.of(6,7).containsAll(x.weekdays()))throw bad("Lịch cuối tuần chỉ cho phép thứ Bảy và Chủ Nhật");
     }
-    private void apply(MerchandisingSchedule r,Input x){validate(x);r.setCoffee(coffees.findById(x.coffeeId()).orElseThrow(()->bad("Sản phẩm không tồn tại")));r.setName(x.name().trim());r.setSection(x.section());r.setSlot(x.slot());r.setPriority(x.priority()==null?0:x.priority());r.setStartsAt(x.startsAt());r.setEndsAt(x.endsAt());r.setWeekdays(encode(x.weekdays()));r.setMonths(encode(x.months()));r.setUpdatedAt(now());}
+
+    private void apply(MerchandisingSchedule r, Input x) {
+        validate(x);
+        r.setCoffee(
+                coffees.findById(x.coffeeId())
+                        .orElseThrow(() -> bad("Sản phẩm không tồn tại"))
+        );
+    }
+
     private boolean intersects(Set<Integer> x,Set<Integer> y){return !Collections.disjoint(x,y);}
     private void checkConflict(MerchandisingSchedule r){
         for(MerchandisingSchedule other:schedules.findAll()){

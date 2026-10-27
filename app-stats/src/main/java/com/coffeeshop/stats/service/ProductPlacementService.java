@@ -71,16 +71,6 @@ public class ProductPlacementService {
                 .toList();
     }
 
-    @Transactional(readOnly = true)
-    public List<ProductPlacementResponse> findPublicRules(ProductPlacementSection section) {
-        LocalDateTime now = ShopTime.now();
-        return placementRuleRepository.findAllByOrderBySectionAscDisplayOrderAscIdAsc().stream()
-                .filter(rule -> section == null || rule.getSection() == section)
-                .filter(rule -> rule.isVisibleNow(now))
-                .filter(rule -> rule.getCoffee().getStatus() == CoffeeStatus.AVAILABLE && !rule.getCoffee().isAutoSoldOut())
-                .map(rule -> ProductPlacementResponse.from(rule, now)).toList();
-    }
-
     @Transactional
     public ProductPlacementResponse create(ProductPlacementRequest request) {
         validateSchedule(request.startsAt(), request.endsAt());
