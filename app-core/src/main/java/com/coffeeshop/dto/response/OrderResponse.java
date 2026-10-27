@@ -19,7 +19,7 @@ public record OrderResponse(Long id, String orderCode, OrderStatus status, Order
                             ShipmentResponse shipment) {
 
     public record Item(Long id, Long coffeeId, String coffeeName, String imageUrl, Integer quantity,
-                       BigDecimal unitPrice, BigDecimal lineTotal, String note) {
+                       BigDecimal unitPrice, BigDecimal lineTotal, String note, String optionIds) {
     }
 
     public static OrderResponse from(Order o) {
@@ -44,7 +44,7 @@ public record OrderResponse(Long id, String orderCode, OrderStatus status, Order
                 o.getTotalAmount(), o.getNote(), o.getCancelReason(), o.getPickupTime(), o.getOrderedAt(), paid,
                 o.getItems().stream().map(i -> new Item(i.getId(), i.getCoffee().getId(), i.getCoffee().getName(),
                         i.getCoffee().imageSrc(), i.getQuantity(), i.getUnitPrice(), i.getLineTotal(),
-                        i.getNote())).toList(),
+                        i.getNote(),i.getOptionIds())).toList(),
                 o.getPayments().stream().map(PaymentResponse::from).toList(),
                 shipment == null ? null : ShipmentResponse.from(shipment));
     }

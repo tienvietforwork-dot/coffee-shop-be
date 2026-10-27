@@ -34,7 +34,10 @@ public class CartService {
     private final CoffeeService coffeeService;
     private final DiningTableService tableService;
     private final PricingService pricingService;
+    private final StockService stockService;
+    private final BundleCartService bundleCartService;
     private final CustomerRepository customerRepository;
+    private final UpsellModifierService modifiers;
 
     @Transactional
     public CartResponse create(CreateCartRequest request) {
@@ -66,16 +69,34 @@ public class CartService {
         Coffee coffee = coffeeService.get(request.coffeeId());
         if (coffee.getStatus() != CoffeeStatus.AVAILABLE) throw new BadRequestException(coffee.getName() + " hiện đã hết");
         String note = blankToNull(request.note());
+        String options = UpsellModifierService.serialize(request.optionIds());
+        modifiers.validated(coffee.getId(), UpsellModifierService.parse(options));
         CartItem existing = cart.getItems().stream()
-                .filter(i -> i.getCoffee().getId().equals(coffee.getId()) && Objects.equals(i.getNote(), note))
+                .filter(i -> i.getCoffee().getId().equals(coffee.getId()) && Objects.equals(i.getNote(), note) && Objects.equals(i.getOptionIds(),options))
                 .findFirst().orElse(null);
         if (existing != null) {
             existing.setQuantity(Math.min(99, existing.getQuantity() + request.quantity()));
         } else {
-            cart.getItems().add(CartItem.builder().cart(cart).coffee(coffee).quantity(request.quantity()).note(note)
+            cart.getItems().add(CartItem.builder().cart(cart).coffee(coffee).quantity(request.quantity()).note(note).optionIds(options)
                     .subtotal(BigDecimal.ZERO).build());
         }
+        requireCartStock(cart);
         refreshPrices(cart);
+        return toResponse(cart);
+    }
+
+    @Transactional
+    public CartResponse addBundle(String sessionCode, Long bundleId, int quantity, java.util.List<Long> optionIds) {
+        Cart cart=getOpen(sessionCode);
+        bundleCartService.add(cart,bundleId,quantity,optionIds);
+        requireCartStock(cart);
+        return toResponse(cart);
+    }
+
+    @Transactional
+    public CartResponse removeBundle(String sessionCode, Long lineId) {
+        Cart cart=getOpen(sessionCode);
+        bundleCartService.remove(cart,lineId);
         return toResponse(cart);
     }
 
@@ -85,6 +106,7 @@ public class CartService {
         CartItem item = findItem(cart, itemId);
         item.setQuantity(request.quantity());
         item.setNote(blankToNull(request.note()));
+        requireCartStock(cart);
         refreshPrices(cart);
         return toResponse(cart);
     }
@@ -115,11 +137,23 @@ public class CartService {
                 .orElseThrow(() -> new ResourceNotFoundException("Món không có trong giỏ"));
     }
 
+    /** Validate the entire cart, not just the most recently added drink.
+     * Shared ingredients across different coffees must not be oversold.
+     * Validation is repeated during checkout to account for concurrent orders.
+     */
+    private void requireCartStock(Cart cart) {
+        java.util.List<PricingService.InputLine> all = new java.util.ArrayList<>(cart.getItems().stream()
+                .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote(), null, i.getOptionIds())).toList());
+        all.addAll(bundleCartService.lines(cart));
+        stockService.requireStock(all);
+    }
+
     private void refreshPrices(Cart cart) {
         if (cart.getStatus() != CartStatus.OPEN) return;
         LocalDateTime now = LocalDateTime.now();
         for (CartItem item : cart.getItems()) {
             item.setSubtotal(pricingService.currentUnitPrice(item.getCoffee(), now)
+                    .add(modifiers.surcharge(item.getCoffee().getId(),item.getOptionIds()))
                     .multiply(BigDecimal.valueOf(item.getQuantity())));
         }
     }
@@ -128,11 +162,13 @@ public class CartService {
         var items = cart.getItems().stream().map(i -> new CartResponse.Item(i.getId(), i.getCoffee().getId(),
                 i.getCoffee().getName(), i.getCoffee().imageSrc(), i.getQuantity(),
                 i.getSubtotal().divide(BigDecimal.valueOf(i.getQuantity()), 2, java.math.RoundingMode.HALF_UP),
-                i.getNote(), i.getSubtotal(), i.getCoffee().getStatus() == CoffeeStatus.AVAILABLE)).toList();
+                i.getNote(), i.getSubtotal(), i.getCoffee().getStatus() == CoffeeStatus.AVAILABLE, modifiers.labels(i.getOptionIds()))).toList();
         BigDecimal subtotal = cart.getItems().stream().map(CartItem::getSubtotal).reduce(BigDecimal.ZERO, BigDecimal::add);
+        var bundles = bundleCartService.display(cart);
+        subtotal = subtotal.add(bundles.stream().map(BundleCartService.CartBundle::total).reduce(BigDecimal.ZERO,BigDecimal::add));
         return new CartResponse(cart.getSessionCode(), cart.getStatus(),
                 cart.getTable() == null ? null : cart.getTable().getId(),
-                cart.getTable() == null ? null : cart.getTable().getTableNo(), items, subtotal);
+                cart.getTable() == null ? null : cart.getTable().getTableNo(), items, subtotal, bundles);
     }
 
     private static String blankToNull(String s) {

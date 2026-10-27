@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import com.coffeeshop.stats.util.ShopTime;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,7 @@ public class ProductPlacementService {
 
     @Transactional(readOnly = true)
     public ProductPlacementOverviewResponse overview() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = ShopTime.now();
         Map<ProductPlacementSection, List<ProductPlacementResponse>> sections = placementRuleRepository
                 .findAllByOrderBySectionAscDisplayOrderAscIdAsc()
                 .stream()
@@ -61,13 +62,23 @@ public class ProductPlacementService {
 
     @Transactional(readOnly = true)
     public List<ProductPlacementResponse> findRules(ProductPlacementSection section, boolean visibleOnly) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = ShopTime.now();
         return placementRuleRepository.findAllByOrderBySectionAscDisplayOrderAscIdAsc()
                 .stream()
                 .filter(rule -> section == null || rule.getSection() == section)
                 .filter(rule -> !visibleOnly || rule.isVisibleNow(now))
                 .map(rule -> ProductPlacementResponse.from(rule, now))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ProductPlacementResponse> findPublicRules(ProductPlacementSection section) {
+        LocalDateTime now = ShopTime.now();
+        return placementRuleRepository.findAllByOrderBySectionAscDisplayOrderAscIdAsc().stream()
+                .filter(rule -> section == null || rule.getSection() == section)
+                .filter(rule -> rule.isVisibleNow(now))
+                .filter(rule -> rule.getCoffee().getStatus() == CoffeeStatus.AVAILABLE && !rule.getCoffee().isAutoSoldOut())
+                .map(rule -> ProductPlacementResponse.from(rule, now)).toList();
     }
 
     @Transactional
@@ -80,7 +91,7 @@ public class ProductPlacementService {
 
         ProductPlacementRule rule = new ProductPlacementRule();
         apply(rule, request);
-        return ProductPlacementResponse.from(placementRuleRepository.save(rule), LocalDateTime.now());
+        return ProductPlacementResponse.from(placementRuleRepository.save(rule), ShopTime.now());
     }
 
     @Transactional
@@ -92,16 +103,32 @@ public class ProductPlacementService {
                     "Sản phẩm đã có trong khu vực " + request.section());
         }
 
+        if (rule.getPublicationStatus() == PublicationStatus.PUBLISHED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cần thu hồi cấu hình đã công bố trước khi sửa");
+        }
         apply(rule, request);
-        return ProductPlacementResponse.from(rule, LocalDateTime.now());
+        return ProductPlacementResponse.from(rule, ShopTime.now());
     }
 
     @Transactional
     public ProductPlacementResponse publish(Long id) {
         ProductPlacementRule rule = getRule(id);
+        if (rule.getCoffee().getStatus() != CoffeeStatus.AVAILABLE || rule.getCoffee().isAutoSoldOut()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ công bố sản phẩm đang bán");
+        }
+        if (rule.getEndsAt() != null && !rule.getEndsAt().isAfter(ShopTime.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không công bố cấu hình đã hết hạn");
+        }
         rule.setPublicationStatus(PublicationStatus.PUBLISHED);
         rule.setActive(true);
-        return ProductPlacementResponse.from(rule, LocalDateTime.now());
+        return ProductPlacementResponse.from(rule, ShopTime.now());
+    }
+
+    @Transactional
+    public ProductPlacementResponse unpublish(Long id) {
+        ProductPlacementRule rule = getRule(id);
+        rule.setPublicationStatus(PublicationStatus.DRAFT);
+        return ProductPlacementResponse.from(rule, ShopTime.now());
     }
 
     @Transactional
@@ -118,7 +145,7 @@ public class ProductPlacementService {
                     "Product Placement chỉ dùng để ẩn/hiện sản phẩm, không ngừng bán vĩnh viễn");
         }
         coffee.setStatus(status);
-        coffee.setAutoSoldOut(false);
+        // Do not clear autoSoldOut: warehouse reconciliation owns that flag.
         return CoffeePlacementResponse.from(coffee);
     }
 
@@ -139,7 +166,10 @@ public class ProductPlacementService {
         rule.setStartsAt(request.startsAt());
         rule.setEndsAt(request.endsAt());
         rule.setActive(request.active() == null || request.active());
-        rule.setPublicationStatus(request.publicationStatus() == null ? PublicationStatus.DRAFT : request.publicationStatus());
+        if (request.publicationStatus() == PublicationStatus.PUBLISHED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dùng API publish để công bố cấu hình");
+        }
+        rule.setPublicationStatus(PublicationStatus.DRAFT);
     }
 
     private ProductPlacementRule getRule(Long id) {
@@ -155,7 +185,7 @@ public class ProductPlacementService {
     }
 
     private void validateSchedule(LocalDateTime startsAt, LocalDateTime endsAt) {
-        if (startsAt != null && endsAt != null && endsAt.isBefore(startsAt)) {
+        if (startsAt != null && endsAt != null && !endsAt.isAfter(startsAt)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Thời gian kết thúc phải sau thời gian bắt đầu");
         }

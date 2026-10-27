@@ -2,6 +2,7 @@ package com.coffeeshop.stats.config;
 
 import com.coffeeshop.stats.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpMethod;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -33,8 +34,12 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/actuator/health", "/actuator/health/**",
-                                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"
+                                "/v3/api-docs", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"
                         ).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/public/merchandising/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/public/merchandising/cross-sell/events",
+                                "/api/public/merchandising/upsell/events",
+                                "/api/public/merchandising/recommendation/events").permitAll()
                         .anyRequest().hasRole("ADMIN"))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
