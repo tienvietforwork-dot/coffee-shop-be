@@ -226,7 +226,7 @@ public class UpsellService {
 
         if (x.startsAt() != null
                 && x.endsAt() != null
-                && x.startsAt().isAfter(x.endsAt())) {
+                && !x.startsAt().isBefore(x.endsAt())) {
             throw bad(
                     "Thời gian không hợp lệ"
             );

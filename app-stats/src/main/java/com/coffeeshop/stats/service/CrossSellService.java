@@ -96,7 +96,7 @@ public class CrossSellService {
 
         if (r.startsAt() != null
                 && r.endsAt() != null
-                && r.startsAt().isAfter(r.endsAt())) {
+                && !r.startsAt().isBefore(r.endsAt())) {
             throw bad("Thời gian bắt đầu phải trước kết thúc");
         }
 

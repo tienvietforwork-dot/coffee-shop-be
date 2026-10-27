@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import com.coffeeshop.stats.util.ShopTime;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,7 @@ public class ProductPlacementService {
 
     @Transactional(readOnly = true)
     public ProductPlacementOverviewResponse overview() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = ShopTime.now();
         Map<ProductPlacementSection, List<ProductPlacementResponse>> sections = placementRuleRepository
                 .findAllByOrderBySectionAscDisplayOrderAscIdAsc()
                 .stream()
@@ -61,23 +62,13 @@ public class ProductPlacementService {
 
     @Transactional(readOnly = true)
     public List<ProductPlacementResponse> findRules(ProductPlacementSection section, boolean visibleOnly) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = ShopTime.now();
         return placementRuleRepository.findAllByOrderBySectionAscDisplayOrderAscIdAsc()
                 .stream()
                 .filter(rule -> section == null || rule.getSection() == section)
                 .filter(rule -> !visibleOnly || rule.isVisibleNow(now))
                 .map(rule -> ProductPlacementResponse.from(rule, now))
                 .toList();
-    }
-
-    @Transactional(readOnly = true)
-    public List<ProductPlacementResponse> findPublicRules(ProductPlacementSection section) {
-        LocalDateTime now = LocalDateTime.now();
-        return placementRuleRepository.findAllByOrderBySectionAscDisplayOrderAscIdAsc().stream()
-                .filter(rule -> section == null || rule.getSection() == section)
-                .filter(rule -> rule.isVisibleNow(now))
-                .filter(rule -> rule.getCoffee().getStatus() == CoffeeStatus.AVAILABLE && !rule.getCoffee().isAutoSoldOut())
-                .map(rule -> ProductPlacementResponse.from(rule, now)).toList();
     }
 
     @Transactional
@@ -90,7 +81,7 @@ public class ProductPlacementService {
 
         ProductPlacementRule rule = new ProductPlacementRule();
         apply(rule, request);
-        return ProductPlacementResponse.from(placementRuleRepository.save(rule), LocalDateTime.now());
+        return ProductPlacementResponse.from(placementRuleRepository.save(rule), ShopTime.now());
     }
 
     @Transactional
@@ -106,28 +97,28 @@ public class ProductPlacementService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Cần thu hồi cấu hình đã công bố trước khi sửa");
         }
         apply(rule, request);
-        return ProductPlacementResponse.from(rule, LocalDateTime.now());
+        return ProductPlacementResponse.from(rule, ShopTime.now());
     }
 
     @Transactional
     public ProductPlacementResponse publish(Long id) {
         ProductPlacementRule rule = getRule(id);
-        if (rule.getCoffee().getStatus() != CoffeeStatus.AVAILABLE) {
+        if (rule.getCoffee().getStatus() != CoffeeStatus.AVAILABLE || rule.getCoffee().isAutoSoldOut()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ công bố sản phẩm đang bán");
         }
-        if (rule.getEndsAt() != null && !rule.getEndsAt().isAfter(LocalDateTime.now())) {
+        if (rule.getEndsAt() != null && !rule.getEndsAt().isAfter(ShopTime.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không công bố cấu hình đã hết hạn");
         }
         rule.setPublicationStatus(PublicationStatus.PUBLISHED);
         rule.setActive(true);
-        return ProductPlacementResponse.from(rule, LocalDateTime.now());
+        return ProductPlacementResponse.from(rule, ShopTime.now());
     }
 
     @Transactional
     public ProductPlacementResponse unpublish(Long id) {
         ProductPlacementRule rule = getRule(id);
         rule.setPublicationStatus(PublicationStatus.DRAFT);
-        return ProductPlacementResponse.from(rule, LocalDateTime.now());
+        return ProductPlacementResponse.from(rule, ShopTime.now());
     }
 
     @Transactional

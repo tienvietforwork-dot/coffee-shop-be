@@ -22,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDateTime;
+import com.coffeeshop.stats.util.ShopTime;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -50,7 +51,7 @@ public class ProductBundleService {
 
     @Transactional(readOnly = true)
     public List<ProductBundleResponse> findPublicBundles() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = ShopTime.now();
         return bundleRepository.findAllByOrderByStatusAscNameAsc().stream()
                 .filter(bundle -> bundle.isAvailableNow(now))
                 .filter(bundle -> !bundle.getItems().isEmpty())
@@ -62,7 +63,7 @@ public class ProductBundleService {
 
     @Transactional(readOnly = true)
     public ProductBundleResponse findById(Long id) {
-        return ProductBundleResponse.from(getBundle(id), LocalDateTime.now());
+        return ProductBundleResponse.from(getBundle(id), ShopTime.now());
     }
 
     @Transactional
@@ -76,7 +77,7 @@ public class ProductBundleService {
         ProductBundle bundle = new ProductBundle();
         apply(bundle, request);
         replaceItems(bundle, request.items());
-        return ProductBundleResponse.from(bundleRepository.save(bundle), LocalDateTime.now());
+        return ProductBundleResponse.from(bundleRepository.save(bundle), ShopTime.now());
     }
 
     @Transactional
@@ -96,7 +97,7 @@ public class ProductBundleService {
         if (request.items() != null) {
             replaceItems(bundle, request.items());
         }
-        return ProductBundleResponse.from(bundle, LocalDateTime.now());
+        return ProductBundleResponse.from(bundle, ShopTime.now());
     }
 
     @Transactional
@@ -107,7 +108,7 @@ public class ProductBundleService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sản phẩm đã có trong combo");
         }
         bundle.getItems().add(toItem(bundle, request));
-        return ProductBundleResponse.from(bundle, LocalDateTime.now());
+        return ProductBundleResponse.from(bundle, ShopTime.now());
     }
 
     @Transactional
@@ -119,7 +120,7 @@ public class ProductBundleService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sản phẩm đã có trong combo");
         }
         applyItem(item, request);
-        return ProductBundleResponse.from(bundle, LocalDateTime.now());
+        return ProductBundleResponse.from(bundle, ShopTime.now());
     }
 
     @Transactional
@@ -139,7 +140,7 @@ public class ProductBundleService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Giá combo phải lớn hơn 0");
         }
         validateSchedule(bundle.getStartsAt(), bundle.getEndsAt());
-        if (bundle.getEndsAt() != null && !bundle.getEndsAt().isAfter(LocalDateTime.now())) {
+        if (bundle.getEndsAt() != null && !bundle.getEndsAt().isAfter(ShopTime.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể kích hoạt combo đã hết hạn");
         }
         if (bundle.getItems().isEmpty() || bundle.getItems().stream().noneMatch(item -> !item.isOptional())) {
@@ -151,14 +152,14 @@ public class ProductBundleService {
         }
         validateMandatoryPrice(bundle);
         bundle.setStatus(ProductBundleStatus.ACTIVE);
-        return ProductBundleResponse.from(bundle, LocalDateTime.now());
+        return ProductBundleResponse.from(bundle, ShopTime.now());
     }
 
     @Transactional
     public ProductBundleResponse pause(Long id) {
         ProductBundle bundle = getBundle(id);
         bundle.setStatus(ProductBundleStatus.PAUSED);
-        return ProductBundleResponse.from(bundle, LocalDateTime.now());
+        return ProductBundleResponse.from(bundle, ShopTime.now());
     }
 
     @Transactional
@@ -277,7 +278,6 @@ public class ProductBundleService {
     }
 
     private void replaceItems(ProductBundle bundle, List<ProductBundleItemRequest> requests) {
-        // Soft deletion keeps audit history; avoid removing tracked entities from the persistence context.
         bundle.getItems().forEach(ProductBundleItem::softDelete);
         bundle.getItems().clear();
         if (requests == null) {
