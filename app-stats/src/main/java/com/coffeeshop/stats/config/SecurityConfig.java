@@ -2,13 +2,15 @@ package com.coffeeshop.stats.config;
 
 import com.coffeeshop.stats.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpMethod;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -40,7 +42,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/public/merchandising/cross-sell/events",
                                 "/api/public/merchandising/upsell/events",
                                 "/api/public/merchandising/recommendation/events").permitAll()
+                        .requestMatchers("/api/product-placement/**")
+                        .hasAnyAuthority("ROLE_ADMIN", "menu")
                         .anyRequest().hasRole("ADMIN"))
+                .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

@@ -35,8 +35,6 @@ public class CartItem extends BaseEntity {
     private Integer quantity;
     @Column(length = 255)
     private String note;
-    @Column(name = "option_ids", length = 1000)
-    private String optionIds;
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotal;
 }

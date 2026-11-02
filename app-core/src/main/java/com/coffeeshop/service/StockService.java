@@ -29,7 +29,6 @@ public class StockService {
     private final RecipeRepository recipeRepository;
     private final CoffeeRepository coffeeRepository;
     private final NotificationService notificationService;
-    private final UpsellModifierService modifiers;
     private final com.coffeeshop.repository.MaterialRepository materialRepository;
 
     /** One material of a coffee's active recipe, with what the stock allows. */
@@ -111,11 +110,6 @@ public class StockService {
         for (var line : lines) {
             snap.perCup(line.coffee().getId()).forEach((materialId, perCup) ->
                     needed.merge(materialId, perCup.multiply(BigDecimal.valueOf(line.quantity())), BigDecimal::add));
-        }
-        for (var line : lines) for (var extra : modifiers.materials(line.optionIds())) {
-            needed.merge(extra.materialId(),extra.quantity().multiply(BigDecimal.valueOf(line.quantity())),BigDecimal::add);
-            stock.computeIfAbsent(extra.materialId(),id->materialRepository.findById(id)
-                    .orElseThrow(()->new BadRequestException("Nguyên liệu topping không tồn tại")).getStockQuantity());
         }
         Set<Long> lacking = needed.entrySet().stream()
                 .filter(e -> e.getValue().compareTo(stock.get(e.getKey())) > 0)

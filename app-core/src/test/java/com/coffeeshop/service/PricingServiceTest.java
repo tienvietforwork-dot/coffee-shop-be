@@ -29,9 +29,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -44,10 +41,6 @@ class PricingServiceTest {
     @Mock
     private VoucherRepository voucherRepository;
 
-    // NEW: Dependency added to PricingService for Upsell.
-    @Mock
-    private UpsellModifierService upsellModifierService;
-
     private PricingService pricingService;
 
     private final LocalDateTime now =
@@ -59,11 +52,9 @@ class PricingServiceTest {
     @BeforeEach
     void setUp() {
 
-        // FIX: PricingService now requires 3 dependencies.
         pricingService = new PricingService(
                 promotionRepository,
-                voucherRepository,
-                upsellModifierService
+                voucherRepository
         );
 
         ReflectionTestUtils.setField(
@@ -99,21 +90,6 @@ class PricingServiceTest {
                 .when(promotionRepository.findRunningOrderPromotions(any()))
                 .thenReturn(List.of());
 
-        // All existing tests use no Upsell options.
-        // Therefore the surcharge must be zero.
-        lenient()
-                .when(upsellModifierService.surcharge(
-                        any(),
-                        isNull()
-                ))
-                .thenReturn(BigDecimal.ZERO);
-
-        lenient()
-                .when(upsellModifierService.surcharge(
-                        any(),
-                        org.mockito.ArgumentMatchers.isNull()
-                ))
-                .thenReturn(BigDecimal.ZERO);
     }
 
     @Test

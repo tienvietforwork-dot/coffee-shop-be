@@ -47,7 +47,6 @@ public class InventoryService {
     private final StaffService staffService;
     private final NotificationService notificationService;
     private final CoffeeStatusBackgroundService coffeeStatusBackgroundService;
-    private final UpsellModifierService modifiers;
 
     @Value("${app.inventory.expiry-warning-days:7}")
     private int expiryWarningDays;
@@ -245,11 +244,6 @@ public class InventoryService {
         Map<Material, BigDecimal> needed = new LinkedHashMap<>();
         recipes.forEach((item, recipe) -> recipe.getMaterials().forEach(rm -> needed.merge(rm.getMaterial(),
                 rm.getQuantity().multiply(BigDecimal.valueOf(item.getQuantity())), BigDecimal::add)));
-        for (OrderItem item : order.getItems()) for(var extra : modifiers.materials(item.getOptionIds())) {
-            Material material=materialRepository.findById(extra.materialId())
-                    .orElseThrow(()->new BadRequestException("Nguyên liệu nâng cấp không tồn tại"));
-            needed.merge(material,extra.quantity().multiply(BigDecimal.valueOf(item.getQuantity())),BigDecimal::add);
-        }
         needed.forEach((material, qty) -> {
             if (material.getStockQuantity().compareTo(qty) < 0) {
                 throw new BadRequestException("Không đủ nguyên liệu '" + material.getName() + "' (cần "
@@ -259,12 +253,6 @@ public class InventoryService {
         recipes.forEach((item, recipe) -> recipe.getMaterials().forEach(rm -> consume(rm.getMaterial(),
                 rm.getQuantity().multiply(BigDecimal.valueOf(item.getQuantity())), MaterialTransactionType.SALE,
                 staff, item, "Đơn " + order.getOrderCode())));
-        for(OrderItem item:order.getItems()) for(var extra:modifiers.materials(item.getOptionIds())) {
-            Material material=materialRepository.findById(extra.materialId())
-                    .orElseThrow(()->new BadRequestException("Nguyên liệu nâng cấp không tồn tại"));
-            consume(material,extra.quantity().multiply(BigDecimal.valueOf(item.getQuantity())),
-                    MaterialTransactionType.SALE,staff,item,"Tùy chọn đơn "+order.getOrderCode());
-        }
         coffeeStatusBackgroundService.requestRun();
     }
 
