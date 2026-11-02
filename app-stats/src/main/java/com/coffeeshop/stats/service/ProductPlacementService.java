@@ -71,6 +71,16 @@ public class ProductPlacementService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<ProductPlacementResponse> findPublicRules(ProductPlacementSection section) {
+        LocalDateTime now = ShopTime.now();
+        return placementRuleRepository.findAllByOrderBySectionAscDisplayOrderAscIdAsc().stream()
+                .filter(rule -> section == null || rule.getSection() == section)
+                .filter(rule -> rule.isVisibleNow(now))
+                .filter(rule -> rule.getCoffee().getStatus() == CoffeeStatus.AVAILABLE && !rule.getCoffee().isAutoSoldOut())
+                .map(rule -> ProductPlacementResponse.from(rule, now)).toList();
+    }
+
     @Transactional
     public ProductPlacementResponse create(ProductPlacementRequest request) {
         validateSchedule(request.startsAt(), request.endsAt());
@@ -103,8 +113,22 @@ public class ProductPlacementService {
     @Transactional
     public ProductPlacementResponse publish(Long id) {
         ProductPlacementRule rule = getRule(id);
-        if (rule.getCoffee().getStatus() != CoffeeStatus.AVAILABLE || rule.getCoffee().isAutoSoldOut()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ công bố sản phẩm đang bán");
+        Coffee coffee = rule.getCoffee();
+        if (coffee.isAutoSoldOut() || coffee.getStatus() == CoffeeStatus.SOLD_OUT) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    coffee.getName() + " đã hết hàng. Hãy bổ sung nguyên liệu hoặc tồn kho rồi thử lại.");
+        }
+        if (coffee.getStatus() == CoffeeStatus.HIDDEN) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    coffee.getName() + " đang bị ẩn. Hãy chuyển sang trạng thái đang bán trước khi công bố.");
+        }
+        if (coffee.getStatus() == CoffeeStatus.DISCONTINUED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    coffee.getName() + " đã ngừng bán và không thể công bố.");
+        }
+        if (coffee.getStatus() != CoffeeStatus.AVAILABLE) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    coffee.getName() + " chưa ở trạng thái đang bán.");
         }
         if (rule.getEndsAt() != null && !rule.getEndsAt().isAfter(ShopTime.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không công bố cấu hình đã hết hạn");
@@ -129,10 +153,18 @@ public class ProductPlacementService {
     @Transactional
     public CoffeePlacementResponse updateCoffeeVisibility(Long coffeeId, CoffeeVisibilityRequest request) {
         Coffee coffee = getCoffee(coffeeId);
+        if (coffee.getStatus() == CoffeeStatus.DISCONTINUED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    coffee.getName() + " đã ngừng bán vĩnh viễn, không thể đổi trạng thái tại đây.");
+        }
         CoffeeStatus status = request.status();
         if (status == CoffeeStatus.DISCONTINUED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Product Placement chỉ dùng để ẩn/hiện sản phẩm, không ngừng bán vĩnh viễn");
+        }
+        if (status == CoffeeStatus.AVAILABLE && coffee.isAutoSoldOut()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    coffee.getName() + " đã hết nguyên liệu nên chưa thể chuyển sang đang bán.");
         }
         coffee.setStatus(status);
         // Do not clear autoSoldOut: warehouse reconciliation owns that flag.
@@ -149,7 +181,12 @@ public class ProductPlacementService {
     }
 
     private void apply(ProductPlacementRule rule, ProductPlacementRequest request) {
-        rule.setCoffee(getCoffee(request.coffeeId()));
+        Coffee coffee = getCoffee(request.coffeeId());
+        if (coffee.getStatus() == CoffeeStatus.DISCONTINUED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    coffee.getName() + " đã ngừng bán và không thể đưa vào khu vực trưng bày.");
+        }
+        rule.setCoffee(coffee);
         rule.setSection(request.section());
         rule.setTitle(blankToNull(request.title()));
         rule.setDisplayOrder(request.displayOrder() == null ? 0 : request.displayOrder());
@@ -178,6 +215,10 @@ public class ProductPlacementService {
         if (startsAt != null && endsAt != null && !endsAt.isAfter(startsAt)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Thời gian kết thúc phải sau thời gian bắt đầu");
+        }
+        if (endsAt != null && !endsAt.isAfter(ShopTime.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Thời gian kết thúc phải ở tương lai");
         }
     }
 

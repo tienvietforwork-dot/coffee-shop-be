@@ -37,7 +37,6 @@ public class CartService {
     private final StockService stockService;
     private final BundleCartService bundleCartService;
     private final CustomerRepository customerRepository;
-    private final UpsellModifierService modifiers;
 
     @Transactional
     public CartResponse create(CreateCartRequest request) {
@@ -69,15 +68,13 @@ public class CartService {
         Coffee coffee = coffeeService.get(request.coffeeId());
         if (coffee.getStatus() != CoffeeStatus.AVAILABLE) throw new BadRequestException(coffee.getName() + " hiện đã hết");
         String note = blankToNull(request.note());
-        String options = UpsellModifierService.serialize(request.optionIds());
-        modifiers.validated(coffee.getId(), UpsellModifierService.parse(options));
         CartItem existing = cart.getItems().stream()
-                .filter(i -> i.getCoffee().getId().equals(coffee.getId()) && Objects.equals(i.getNote(), note) && Objects.equals(i.getOptionIds(),options))
+                .filter(i -> i.getCoffee().getId().equals(coffee.getId()) && Objects.equals(i.getNote(), note))
                 .findFirst().orElse(null);
         if (existing != null) {
             existing.setQuantity(Math.min(99, existing.getQuantity() + request.quantity()));
         } else {
-            cart.getItems().add(CartItem.builder().cart(cart).coffee(coffee).quantity(request.quantity()).note(note).optionIds(options)
+            cart.getItems().add(CartItem.builder().cart(cart).coffee(coffee).quantity(request.quantity()).note(note)
                     .subtotal(BigDecimal.ZERO).build());
         }
         requireCartStock(cart);
@@ -86,9 +83,9 @@ public class CartService {
     }
 
     @Transactional
-    public CartResponse addBundle(String sessionCode, Long bundleId, int quantity, java.util.List<Long> optionIds) {
+    public CartResponse addBundle(String sessionCode, Long bundleId, int quantity, java.util.List<Long> optionalItemIds) {
         Cart cart=getOpen(sessionCode);
-        bundleCartService.add(cart,bundleId,quantity,optionIds);
+        bundleCartService.add(cart,bundleId,quantity,optionalItemIds);
         requireCartStock(cart);
         return toResponse(cart);
     }
@@ -143,7 +140,7 @@ public class CartService {
      */
     private void requireCartStock(Cart cart) {
         java.util.List<PricingService.InputLine> all = new java.util.ArrayList<>(cart.getItems().stream()
-                .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote(), null, i.getOptionIds())).toList());
+                .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote())).toList());
         all.addAll(bundleCartService.lines(cart));
         stockService.requireStock(all);
     }
@@ -153,7 +150,6 @@ public class CartService {
         LocalDateTime now = LocalDateTime.now();
         for (CartItem item : cart.getItems()) {
             item.setSubtotal(pricingService.currentUnitPrice(item.getCoffee(), now)
-                    .add(modifiers.surcharge(item.getCoffee().getId(),item.getOptionIds()))
                     .multiply(BigDecimal.valueOf(item.getQuantity())));
         }
     }
@@ -162,7 +158,7 @@ public class CartService {
         var items = cart.getItems().stream().map(i -> new CartResponse.Item(i.getId(), i.getCoffee().getId(),
                 i.getCoffee().getName(), i.getCoffee().imageSrc(), i.getQuantity(),
                 i.getSubtotal().divide(BigDecimal.valueOf(i.getQuantity()), 2, java.math.RoundingMode.HALF_UP),
-                i.getNote(), i.getSubtotal(), i.getCoffee().getStatus() == CoffeeStatus.AVAILABLE, modifiers.labels(i.getOptionIds()))).toList();
+                i.getNote(), i.getSubtotal(), i.getCoffee().getStatus() == CoffeeStatus.AVAILABLE)).toList();
         BigDecimal subtotal = cart.getItems().stream().map(CartItem::getSubtotal).reduce(BigDecimal.ZERO, BigDecimal::add);
         var bundles = bundleCartService.display(cart);
         subtotal = subtotal.add(bundles.stream().map(BundleCartService.CartBundle::total).reduce(BigDecimal.ZERO,BigDecimal::add));

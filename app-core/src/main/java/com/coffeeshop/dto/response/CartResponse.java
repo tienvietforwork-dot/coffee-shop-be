@@ -9,8 +9,6 @@ public record CartResponse(String sessionCode, CartStatus status, Long tableId, 
                            List<Item> items, BigDecimal subtotal, List<com.coffeeshop.service.BundleCartService.CartBundle> bundles) {
 
     public record Item(Long id, Long coffeeId, String coffeeName, String imageUrl, Integer quantity,
-                       BigDecimal unitPrice, String note, BigDecimal subtotal, boolean available,
-                       java.util.List<OptionLine> options) {
+                       BigDecimal unitPrice, String note, BigDecimal subtotal, boolean available) {
     }
-    public record OptionLine(Long id, String name, String kind, BigDecimal extraPrice) {}
 }

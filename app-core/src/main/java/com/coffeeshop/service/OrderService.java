@@ -100,7 +100,7 @@ public class OrderService {
                                           String voucherCode) {
         Cart cart = cartService.getOpen(sessionCode);
         java.util.List<PricingService.InputLine> lines = new java.util.ArrayList<>(cart.getItems().stream()
-                .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote(), null, i.getOptionIds())).toList());
+                .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote())).toList());
         lines.addAll(bundleCartService.lines(cart));
         return pricingService.quote(lines, orderType, phoneOfCurrentCustomer(customerPhone), voucherCode,
                 LocalDateTime.now()).toResponse();
@@ -123,7 +123,7 @@ public class OrderService {
             throw new BadRequestException("Đơn tại bàn cần quét mã QR trên bàn");
         }
         java.util.List<PricingService.InputLine> lines = new java.util.ArrayList<>(cart.getItems().stream()
-                .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote(), null, i.getOptionIds())).toList());
+                .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote())).toList());
         lines.addAll(bundleCartService.lines(cart));
         Draft draft = new Draft(lines, request.orderType(), cart.getTable() != null ? OrderChannel.QR : OrderChannel.ONLINE,
                 request.orderType() == OrderType.DINE_IN ? cart.getTable() : null, cart, request.customerPhone(),
@@ -192,7 +192,7 @@ public class OrderService {
                 .build();
         for (var line : quote.lines()) {
             order.getItems().add(OrderItem.builder().order(order).coffee(line.coffee()).quantity(line.quantity())
-                    .unitPrice(line.unitPrice()).lineTotal(line.lineTotal()).note(line.note()).optionIds(line.optionIds()).build());
+                    .unitPrice(line.unitPrice()).lineTotal(line.lineTotal()).note(line.note()).build());
             if (line.promoItem() != null) {
                 line.promoItem().setSoldQuantity(line.promoItem().getSoldQuantity() + line.quantity());
             }
