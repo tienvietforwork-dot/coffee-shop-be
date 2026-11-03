@@ -13,7 +13,8 @@ import java.util.List;
 public record BatchResponse(Long id, Long materialId, String materialName, String unit, BigDecimal importQuantity,
                             BigDecimal remainingQuantity, BigDecimal unitCost, LocalDate expiryDate,
                             BatchStatus status, LocalDateTime createdAt, LocalDateTime readyAt, LocalDateTime expiresAt,
-                            String packageName, BigDecimal packageSize, BigDecimal packageCount, List<Input> inputs) {
+                            String packageName, BigDecimal packageSize, BigDecimal packageCount, List<Input> inputs,
+                            String receiptCode, String supplierName, Long purchaseOrderItemId) {
 
     public record Input(Long batchId, String materialName, String unit, BigDecimal quantity) {
     }
@@ -28,6 +29,9 @@ public record BatchResponse(Long id, Long materialId, String materialName, Strin
                 b.getExpiryDate(), b.getStatus(), b.getCreatedAt(), b.getReadyAt(), b.getExpiresAt(),
                 b.getPackageName(), b.getPackageSize(), b.getPackageCount(),
                 uses == null ? null : uses.stream().map(t -> new Input(t.getBatch().getId(),
-                        t.getBatch().getMaterial().getName(), t.getBatch().getMaterial().getUnit(), t.getQuantity().negate())).toList());
+                        t.getBatch().getMaterial().getName(), t.getBatch().getMaterial().getUnit(), t.getQuantity().negate())).toList(),
+                b.getGoodsReceipt() == null ? null : b.getGoodsReceipt().getCode(),
+                b.getGoodsReceipt() == null ? null : b.getGoodsReceipt().getSupplier().getName(),
+                b.getPurchaseOrderItem() == null ? null : b.getPurchaseOrderItem().getId());
     }
 }

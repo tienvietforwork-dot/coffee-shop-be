@@ -107,7 +107,7 @@ public class CustomerAnalyticsRepository {
     public List<VoucherEvent> recentVouchers(Long customerId, LocalDateTime from, LocalDateTime to, int limit) {
         Query query = entityManager.createNativeQuery("""
                 select code, status, issued_at
-                from vouchers
+                from voucher_details
                 where customer_id = :customerId and del_flag = false
                   and (cast(:fromDate as timestamp) is null or issued_at >= :fromDate)
                   and (cast(:toDate as timestamp) is null or issued_at < :toDate)

@@ -187,7 +187,7 @@ public class Customer360Service {
         reassign("orders", duplicateCustomerId, primaryCustomerId);
         reassign("carts", duplicateCustomerId, primaryCustomerId);
         reassign("loyalty_point_history", duplicateCustomerId, primaryCustomerId);
-        reassign("vouchers", duplicateCustomerId, primaryCustomerId);
+        reassign("voucher_details", duplicateCustomerId, primaryCustomerId);
         if (primaryAccounts == 0 && duplicateAccounts > 0) reassign("users", duplicateCustomerId, primaryCustomerId);
 
         primary.setLoyaltyPoints((primary.getLoyaltyPoints() == null ? 0 : primary.getLoyaltyPoints()) +

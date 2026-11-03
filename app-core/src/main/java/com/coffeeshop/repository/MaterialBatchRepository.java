@@ -48,4 +48,16 @@ public interface MaterialBatchRepository extends JpaRepository<MaterialBatch, Lo
             group by b.material.id
             """)
     List<Object[]> findNextExpiryDates();
+
+    /** per material, over the lots in stock: [materialId, quantity, value = Σ remaining × unit cost] */
+    @Query("""
+            select b.material.id, sum(b.remainingQuantity), sum(b.remainingQuantity * coalesce(b.unitCost, 0)) from MaterialBatch b
+            where b.status = com.coffeeshop.entity.enums.BatchStatus.AVAILABLE and b.remainingQuantity > 0
+            group by b.material.id
+            """)
+    List<Object[]> stockValues();
+
+    /** lots with a known cost, newest first: the costing fallback when nothing is in stock */
+    @Query("select b from MaterialBatch b join fetch b.material where b.unitCost is not null order by b.id desc")
+    List<MaterialBatch> findCostedNewestFirst();
 }

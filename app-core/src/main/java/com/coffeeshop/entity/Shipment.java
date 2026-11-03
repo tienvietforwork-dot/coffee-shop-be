@@ -50,4 +50,28 @@ public class Shipment extends BaseEntity {
     private LocalDateTime deliveredAt;
     @Column(columnDefinition = "TEXT")
     private String note;
+    /** quận / phường giao tới and its khu vực giao hàng (phí ship) */
+    @Column(length = 60)
+    private String district;
+    @Column(name = "zone_name", length = 100)
+    private String zoneName;
+    /** AHAMOVE when booked through the partner API; null = gọi xe ngoài, cập nhật tay */
+    @Column(length = 20)
+    private String partner;
+    @Column(name = "partner_order_id", length = 60)
+    private String partnerOrderId;
+    /** the partner's own status (IDLE, ASSIGNING, ACCEPTED, IN PROCESS, COMPLETED, CANCELLED…) */
+    @Column(name = "partner_status", length = 30)
+    private String partnerStatus;
+    /** what the shop pays the partner (phí ship thực trả), to compare with what the customer paid */
+    @Column(name = "partner_fee", precision = 12, scale = 2)
+    private BigDecimal partnerFee;
+    @Column(name = "tracking_url", length = 255)
+    private String trackingUrl;
+    @Column(name = "driver_name", length = 100)
+    private String driverName;
+    @Column(name = "driver_phone", length = 20)
+    private String driverPhone;
+    @Column(name = "distance_km", precision = 6, scale = 2)
+    private BigDecimal distanceKm;
 }

@@ -18,6 +18,8 @@ public record CounterOrderRequest(
         @Size(max = 100) String customerName,
         @Pattern(regexp = "^0\\d{9,10}$", message = "invalid phone number") String customerPhone,
         @Valid DeliveryAddressRequest delivery,
+        /** quận / phường giao tới: chọn khu vực giao hàng → phí ship */
+        @Size(max = 60) String deliveryDistrict,
         @NotNull PaymentMethod paymentMethod,
         /** true = money collected right away at the counter. */
         Boolean paidNow,

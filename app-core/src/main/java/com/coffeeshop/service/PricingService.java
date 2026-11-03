@@ -4,12 +4,12 @@ import com.coffeeshop.dto.response.PriceQuoteResponse;
 import com.coffeeshop.entity.Coffee;
 import com.coffeeshop.entity.Promotion;
 import com.coffeeshop.entity.PromotionItem;
-import com.coffeeshop.entity.Voucher;
+import com.coffeeshop.entity.VoucherDetail;
 import com.coffeeshop.entity.enums.CoffeeStatus;
 import com.coffeeshop.entity.enums.OrderType;
 import com.coffeeshop.entity.enums.VoucherStatus;
 import com.coffeeshop.repository.PromotionRepository;
-import com.coffeeshop.repository.VoucherRepository;
+import com.coffeeshop.repository.VoucherDetailRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -36,7 +36,7 @@ public class PricingService {
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
     private final PromotionRepository promotionRepository;
-    private final VoucherRepository voucherRepository;
+    private final VoucherDetailRepository voucherDetailRepository;
 
     @Value("${app.shipping.fee:15000}")
     private BigDecimal shippingFee;
@@ -55,7 +55,7 @@ public class PricingService {
     }
 
     public record Quote(List<PricedLine> lines, BigDecimal subtotal, Promotion orderPromotion,
-                        BigDecimal promotionDiscount, Voucher voucher, String voucherCode,
+                        BigDecimal promotionDiscount, VoucherDetail voucher, String voucherCode,
                         BigDecimal voucherDiscount, String voucherMessage, BigDecimal shippingFee,
                         BigDecimal total, List<String> unavailable) {
 
@@ -106,6 +106,15 @@ public class PricingService {
 
     public Quote quote(List<InputLine> input, OrderType orderType, String customerPhone, String voucherCode,
                        LocalDateTime now) {
+        return quote(input, orderType, customerPhone, voucherCode, now, null);
+    }
+
+    /**
+     * {@code deliveryFee}: phí giao hàng from what is left to pay after discounts (khu vực, miễn phí từ … đ);
+     * null = the flat app.shipping.fee.
+     */
+    public Quote quote(List<InputLine> input, OrderType orderType, String customerPhone, String voucherCode,
+                       LocalDateTime now, java.util.function.Function<BigDecimal, BigDecimal> deliveryFee) {
         Map<Long, List<PromotionItem>> coffeePromos = runningCoffeePromotions(now);
         Map<Long, Integer> promoUsage = new HashMap<>();
         List<PricedLine> lines = new ArrayList<>();
@@ -140,20 +149,21 @@ public class PricingService {
         }
 
         BigDecimal afterPromotion = subtotal.subtract(promotionDiscount);
-        Voucher voucher = null;
+        VoucherDetail voucher = null;
         BigDecimal voucherDiscount = BigDecimal.ZERO;
         String voucherMessage = null;
         if (voucherCode != null && !voucherCode.isBlank()) {
-            voucher = voucherRepository.findByCodeIgnoreCase(voucherCode.trim()).orElse(null);
+            voucher = voucherDetailRepository.findByCodeIgnoreCase(voucherCode.trim()).orElse(null);
             voucherMessage = validateVoucher(voucher, customerPhone, subtotal, now);
             if (voucherMessage == null) {
-                voucherDiscount = voucher.getDiscountValue().min(afterPromotion);
+                voucherDiscount = voucher.getVoucher().getDiscountValue().min(afterPromotion);
             } else {
                 voucher = null;
             }
         }
 
-        BigDecimal fee = orderType == OrderType.DELIVERY ? shippingFee : BigDecimal.ZERO;
+        BigDecimal fee = orderType != OrderType.DELIVERY ? BigDecimal.ZERO
+                : deliveryFee == null ? shippingFee : deliveryFee.apply(afterPromotion.subtract(voucherDiscount));
         BigDecimal total = afterPromotion.subtract(voucherDiscount).add(fee);
         return new Quote(lines, subtotal, orderPromotion, promotionDiscount, voucher,
                 voucherCode == null ? null : voucherCode.trim(), voucherDiscount, voucherMessage, fee, total,
@@ -169,7 +179,7 @@ public class PricingService {
     }
 
     /** Returns null when the voucher can be used, otherwise the reason it is rejected. */
-    private String validateVoucher(Voucher voucher, String customerPhone, BigDecimal subtotal, LocalDateTime now) {
+    private String validateVoucher(VoucherDetail voucher, String customerPhone, BigDecimal subtotal, LocalDateTime now) {
         if (voucher == null) return "Mã voucher không tồn tại";
         if (voucher.getStatus() != VoucherStatus.ISSUED) return "Voucher đã được sử dụng hoặc không còn hiệu lực";
         if (voucher.getExpiresAt() != null && voucher.getExpiresAt().isBefore(now)) return "Voucher đã hết hạn";
@@ -177,7 +187,7 @@ public class PricingService {
                 && (customerPhone == null || !voucher.getCustomer().getPhone().equals(customerPhone.trim()))) {
             return "Voucher không thuộc về số điện thoại này";
         }
-        BigDecimal min = voucher.getMinOrderValue();
+        BigDecimal min = voucher.getVoucher().getMinOrderValue();
         if (min != null && subtotal.compareTo(min) < 0) {
             return "Đơn hàng chưa đạt giá trị tối thiểu " + min.stripTrailingZeros().toPlainString() + "đ";
         }

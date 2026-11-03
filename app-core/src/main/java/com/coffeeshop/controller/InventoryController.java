@@ -2,9 +2,7 @@ package com.coffeeshop.controller;
 
 import com.coffeeshop.dto.request.MaterialRequest;
 import com.coffeeshop.dto.request.ProduceRequest;
-import com.coffeeshop.dto.request.StockAdjustRequest;
 import com.coffeeshop.dto.request.StockOutRequest;
-import com.coffeeshop.dto.request.StockImportRequest;
 import com.coffeeshop.dto.response.BatchResponse;
 import com.coffeeshop.dto.response.InventoryAlertsResponse;
 import com.coffeeshop.dto.response.MaterialResponse;
@@ -71,13 +69,6 @@ public class InventoryController {
         return inventoryService.alerts();
     }
 
-    @PostMapping("/api/inventory/import")
-    @PreAuthorize(Perm.CAN_STOCK)
-    @ResponseStatus(HttpStatus.CREATED)
-    public BatchResponse importStock(@Valid @RequestBody StockImportRequest request) {
-        return inventoryService.importStock(request);
-    }
-
     /** Phiếu hủy: one lot, with a disposal reason. */
     @PostMapping("/api/inventory/dispose")
     @PreAuthorize(Perm.CAN_STOCK)
@@ -90,12 +81,6 @@ public class InventoryController {
     @PreAuthorize(Perm.CAN_STOCK)
     public MaterialTransactionResponse exportOther(@Valid @RequestBody StockOutRequest request) {
         return inventoryService.exportOther(request);
-    }
-
-    @PostMapping("/api/inventory/adjust")
-    @PreAuthorize(Perm.CAN_MATERIALS_EDIT)
-    public MaterialTransactionResponse adjust(@Valid @RequestBody StockAdjustRequest request) {
-        return inventoryService.adjust(request);
     }
 
     /** Record made batches of a prepared material (e.g. cold brew): inputs leave stock, the batch is in stock at once. */

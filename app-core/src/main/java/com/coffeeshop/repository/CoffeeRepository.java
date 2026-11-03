@@ -18,4 +18,6 @@ public interface CoffeeRepository extends JpaRepository<Coffee, Long> {
     List<Coffee> findByStatusInOrderByNameAsc(Collection<CoffeeStatus> statuses);
 
     boolean existsByCategoryId(Long categoryId);
+
+    boolean existsByNameIgnoreCase(String name);
 }

@@ -17,7 +17,7 @@ Các API nghiệp vụ yêu cầu JWT quyền ADMIN do `app-core` cấp. Hai d�
 
 Schema khởi tạo nằm ở [`../database/schema.sql`](../database/schema.sql). Với database hiện có, chạy [`../database/migrate_crm_backend.sql`](../database/migrate_crm_backend.sql) thủ công trước khi khởi động phiên bản backend mới. Migration thêm thời điểm/kết quả tương tác, bảng chủ đề feedback và bảng lịch sử phản hồi; không sửa dữ liệu đơn hàng của Core. Hibernate dùng `ddl-auto: none`, không tự thay đổi schema.
 
-CRM đọc các bảng do Core quản lý: `orders`, `order_items`, `coffees`, `categories`, `promotions` và `vouchers`. Chỉ số mua hàng và nhóm tự động chỉ tính đơn `COMPLETED`, `del_flag = false`.
+CRM đọc các bảng do Core quản lý: `orders`, `order_items`, `coffees`, `categories`, `promotions`, `vouchers` (loại voucher) và `voucher_details` (voucher đã phát cho khách). Chỉ số mua hàng và nhóm tự động chỉ tính đơn `COMPLETED`, `del_flag = false`.
 
 ## Run locally
 

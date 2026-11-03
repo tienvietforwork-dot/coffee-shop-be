@@ -49,7 +49,7 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
     private final ShipmentRepository shipmentRepository;
-    private final VoucherRepository voucherRepository;
+    private final VoucherDetailRepository voucherDetailRepository;
     private final LoyaltyPointHistoryRepository loyaltyRepository;
     private final OrderStatusHistoryRepository statusHistoryRepository;
     private final CartService cartService;
@@ -62,6 +62,11 @@ public class OrderService {
     private final StockService stockService;
     private final BundleCartService bundleCartService;
     private final NotificationService notificationService;
+    private final OnlinePaymentService onlinePaymentService;
+    private final DeliveryZoneService deliveryZoneService;
+    private final InvoiceService invoiceService;
+    private final CustomerNotificationService customerNotificationService;
+    private final CashShiftService cashShiftService;
 
     /** Loyalty: 1 point per this many VND paid. */
     @Value("${app.loyalty.vnd-per-point:10000}")
@@ -97,19 +102,24 @@ public class OrderService {
 
     @Transactional(readOnly = true)
     public PriceQuoteResponse previewCart(String sessionCode, OrderType orderType, String customerPhone,
-                                          String voucherCode) {
+                                          String voucherCode, String deliveryDistrict) {
         Cart cart = cartService.getOpen(sessionCode);
         java.util.List<PricingService.InputLine> lines = new java.util.ArrayList<>(cart.getItems().stream()
                 .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote())).toList());
         lines.addAll(bundleCartService.lines(cart));
         return pricingService.quote(lines, orderType, phoneOfCurrentCustomer(customerPhone), voucherCode,
-                LocalDateTime.now()).toResponse();
+                LocalDateTime.now(), feeRule(orderType, deliveryDistrict)).toResponse();
     }
 
     @Transactional(readOnly = true)
     public PriceQuoteResponse preview(PricePreviewRequest request) {
         return pricingService.quote(toLines(request.items()), request.orderType(), request.customerPhone(),
-                request.voucherCode(), LocalDateTime.now()).toResponse();
+                request.voucherCode(), LocalDateTime.now(), feeRule(request.orderType(), request.deliveryDistrict())).toResponse();
+    }
+
+    /** phí ship of the zone covering the district (none picked: the flat fee) */
+    private java.util.function.Function<BigDecimal, BigDecimal> feeRule(OrderType type, String district) {
+        return type == OrderType.DELIVERY ? deliveryZoneService.feeRule(district) : null;
     }
 
     // ---- creation --------------------------------------------------------
@@ -127,7 +137,7 @@ public class OrderService {
         lines.addAll(bundleCartService.lines(cart));
         Draft draft = new Draft(lines, request.orderType(), cart.getTable() != null ? OrderChannel.QR : OrderChannel.ONLINE,
                 request.orderType() == OrderType.DINE_IN ? cart.getTable() : null, cart, request.customerPhone(),
-                request.customerName(), request.addressId(), request.delivery(), request.pickupTime(),
+                request.customerName(), request.addressId(), request.delivery(), request.deliveryDistrict(), request.pickupTime(),
                 request.paymentMethod(), false, request.voucherCode(), request.note());
         Order order = place(draft);
         cart.setStatus(CartStatus.ORDERED);
@@ -142,7 +152,7 @@ public class OrderService {
             throw new BadRequestException("Đơn tại bàn cần chọn bàn");
         }
         Draft draft = new Draft(toLines(request.items()), request.orderType(), OrderChannel.COUNTER, table, null,
-                request.customerPhone(), request.customerName(), null, request.delivery(), null,
+                request.customerPhone(), request.customerName(), null, request.delivery(), request.deliveryDistrict(), null,
                 request.paymentMethod(), Boolean.TRUE.equals(request.paidNow()), request.voucherCode(), request.note());
         Order order = place(draft);
         inventoryService.consumeForOrder(order, staffService.current());
@@ -152,8 +162,8 @@ public class OrderService {
 
     private record Draft(List<PricingService.InputLine> lines, OrderType type, OrderChannel channel, DiningTable table,
                          Cart cart, String customerPhone, String customerName, Long addressId,
-                         DeliveryAddressRequest delivery, LocalDateTime pickupTime, PaymentMethod paymentMethod,
-                         boolean paidNow, String voucherCode, String note) {
+                         DeliveryAddressRequest delivery, String district, LocalDateTime pickupTime,
+                         PaymentMethod paymentMethod, boolean paidNow, String voucherCode, String note) {
     }
 
     private Order place(Draft d) {
@@ -161,7 +171,8 @@ public class OrderService {
         if (d.pickupTime() != null && d.pickupTime().isBefore(now.minusMinutes(1))) {
             throw new BadRequestException("Thời gian nhận hàng phải ở tương lai");
         }
-        var quote = pricingService.quote(d.lines(), d.type(), phoneOfCurrentCustomer(d.customerPhone()), d.voucherCode(), now);
+        var quote = pricingService.quote(d.lines(), d.type(), phoneOfCurrentCustomer(d.customerPhone()), d.voucherCode(), now,
+                feeRule(d.type(), d.district()));
         if (!quote.unavailable().isEmpty()) {
             throw new BadRequestException("Món đã hết: " + String.join(", ", quote.unavailable()));
         }
@@ -206,19 +217,23 @@ public class OrderService {
             quote.voucher().setOrder(order);
         }
 
-        // Cash is collected on hand-over; other methods are settled online (gateway simulated).
-        boolean paid = d.paidNow() || d.paymentMethod() != PaymentMethod.CASH;
+        // Cash is collected on hand-over. QR / online orders paid by QR, ATM or card go through VNPAY and stay
+        // unpaid until its IPN confirms (OnlinePaymentService); at the counter the staff takes card / transfer on the spot.
+        boolean online = d.channel() != OrderChannel.COUNTER && d.paymentMethod() != PaymentMethod.CASH;
+        boolean paid = !online && (d.paidNow() || d.paymentMethod() != PaymentMethod.CASH);
         Payment payment = paymentRepository.save(Payment.builder()
                 .order(order).method(d.paymentMethod()).amount(quote.total())
                 .status(paid ? PaymentStatus.PAID : PaymentStatus.PENDING)
                 .paidAt(paid ? now : null)
-                .transactionCode(paid && d.paymentMethod() != PaymentMethod.CASH ? "SIM-" + order.getOrderCode() : null)
                 .build());
         order.getPayments().add(payment);
 
         if (address != null) {
+            var zone = deliveryZoneService.zoneOf(d.district());
             Shipment shipment = shipmentRepository.save(Shipment.builder()
-                    .order(order).address(address).shippingFee(quote.shippingFee()).build());
+                    .order(order).address(address).shippingFee(quote.shippingFee())
+                    .district(d.district() == null || d.district().isBlank() ? null : d.district().trim())
+                    .zoneName(zone == null ? null : zone.getName()).build());
             order.setShipment(shipment);
         }
         if (d.table() != null) d.table().setStatus(TableStatus.OCCUPIED);
@@ -231,6 +246,9 @@ public class OrderService {
     public OrderResponse confirm(Long id) {
         Order order = get(id);
         expect(order, OrderStatus.PENDING);
+        if (order.getPayments().stream().anyMatch(p -> p.getStatus() == PaymentStatus.PENDING && OnlinePaymentService.isOnline(order, p))) {
+            throw new BadRequestException("Khách chưa thanh toán online — chờ VNPAY xác nhận");
+        }
         inventoryService.consumeForOrder(order, staffService.current());
         moveTo(order, OrderStatus.PREPARING, null);
         return publish(order);
@@ -262,6 +280,17 @@ public class OrderService {
         }
         close(order, OrderStatus.CANCELLED, reason);
         return publish(order);
+    }
+
+    /** Job: a QR / online order whose VNPAY link expired unpaid is cancelled (the drinks were never started). */
+    @Transactional
+    public void cancelUnpaidOnline(Long id) {
+        Order order = get(id);
+        if (order.getStatus() != OrderStatus.PENDING) return;
+        boolean unpaid = order.getPayments().stream().anyMatch(p -> p.getStatus() == PaymentStatus.PENDING && OnlinePaymentService.isOnline(order, p));
+        if (!unpaid) return;
+        close(order, OrderStatus.CANCELLED, "Quá hạn thanh toán online");
+        publish(order);
     }
 
     /** Older orders left CONFIRMED before confirming started the drinks. */
@@ -336,6 +365,7 @@ public class OrderService {
             }
         }
         releaseTable(order);
+        invoiceService.queueFor(order); // hóa đơn điện tử từ máy tính tiền: every completed order
     }
 
     // ---- payments --------------------------------------------------------
@@ -363,8 +393,14 @@ public class OrderService {
         }
         BigDecimal refunded = payment.getRefundAmount().add(amount);
         if (refunded.compareTo(payment.getAmount()) > 0) throw new BadRequestException("Số tiền hoàn vượt quá số đã thu");
+        onlinePaymentService.refundIfOnline(payment, amount); // paid through VNPAY: the money goes back the same way
+        if (payment.getMethod() == PaymentMethod.CASH) cashShiftService.recordCashRefund(payment.getOrder().getOrderCode(), amount);
         payment.setRefundAmount(refunded);
         if (refunded.compareTo(payment.getAmount()) == 0) payment.setStatus(PaymentStatus.REFUNDED);
+        // money back on an invoiced order: hóa đơn điều chỉnh giảm
+        if (payment.getOrder().getStatus() == OrderStatus.COMPLETED) {
+            invoiceService.adjustForRefund(payment.getOrder(), amount, "Hoàn tiền cho khách");
+        }
         return PaymentResponse.from(payment);
     }
 
@@ -372,17 +408,21 @@ public class OrderService {
 
     /** Reject / cancel: refund what was paid, give back the voucher and the promotion quota, free the table. */
     private void close(Order order, OrderStatus status, String reason) {
-        moveTo(order, status, reason);
         order.setCancelReason(reason);
+        moveTo(order, status, reason);
         for (Payment p : order.getPayments()) {
             if (p.getStatus() == PaymentStatus.PAID) {
+                BigDecimal back = p.getAmount().subtract(p.getRefundAmount());
+                onlinePaymentService.refundIfOnline(p, back);
+                if (p.getMethod() == PaymentMethod.CASH && back.signum() > 0) cashShiftService.recordCashRefund(order.getOrderCode(), back);
                 p.setRefundAmount(p.getAmount());
                 p.setStatus(PaymentStatus.REFUNDED);
             } else if (p.getStatus() == PaymentStatus.PENDING) {
+                onlinePaymentService.closePending(p);
                 p.setStatus(PaymentStatus.FAILED);
             }
         }
-        voucherRepository.findByOrderId(order.getId()).forEach(v -> {
+        voucherDetailRepository.findByOrderId(order.getId()).forEach(v -> {
             v.setOrder(null);
             v.setStatus(VoucherStatus.ISSUED);
         });
@@ -424,6 +464,7 @@ public class OrderService {
         OrderStatus from = order.getStatus();
         order.setStatus(to);
         record(order, from, to, note);
+        customerNotificationService.onOrderStatus(order, to); // ZNS / SMS to the customer (QR / online orders)
     }
 
     private void record(Order order, OrderStatus from, OrderStatus to, String note) {
