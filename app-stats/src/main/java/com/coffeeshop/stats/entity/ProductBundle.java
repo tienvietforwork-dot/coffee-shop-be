@@ -58,6 +58,6 @@ public class ProductBundle extends AuditableEntity {
     public boolean isAvailableNow(LocalDateTime now) {
         return status == ProductBundleStatus.ACTIVE
                 && (startsAt == null || !startsAt.isAfter(now))
-                && (endsAt == null || !endsAt.isBefore(now));
+                && (endsAt == null || now.isBefore(endsAt));
     }
 }

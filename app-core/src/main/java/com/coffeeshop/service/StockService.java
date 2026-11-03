@@ -29,6 +29,7 @@ public class StockService {
     private final RecipeRepository recipeRepository;
     private final CoffeeRepository coffeeRepository;
     private final NotificationService notificationService;
+    private final com.coffeeshop.repository.MaterialRepository materialRepository;
 
     /** One material of a coffee's active recipe, with what the stock allows. */
     public record StockLine(Long materialId, String materialName, String unit, BigDecimal stock, BigDecimal perCup, int cups) {
@@ -117,8 +118,7 @@ public class StockService {
 
         Map<Long, StockLine> info = new HashMap<>();
         snap.byCoffee().values().forEach(ls -> ls.forEach(l -> info.put(l.materialId(), l)));
-        String detail = lacking.stream().map(info::get).map(l -> l.materialName() + " (cần " + plain(needed.get(l.materialId()))
-                + " " + l.unit() + ", còn " + plain(l.stock()) + " " + l.unit() + ")").collect(Collectors.joining("; "));
+        String detail = lacking.stream().map(id -> materialRepository.findById(id).map(m -> m.getName()+" (cần "+plain(needed.get(id))+" "+m.getUnit()+", còn "+plain(stock.get(id))+" "+m.getUnit()+")").orElse("Nguyên liệu #"+id)).collect(Collectors.joining("; "));
         throw new BadRequestException("Không đủ nguyên liệu cho đơn này: " + detail);
     }
 
