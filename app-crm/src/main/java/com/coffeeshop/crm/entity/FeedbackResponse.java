@@ -11,7 +11,7 @@ import org.hibernate.annotations.SQLRestriction;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 @Entity
-@Schema(title = "Lịch sử trả lời khách hàng", description = "Nội dung nhân viên trả lời và thời điểm khách đánh dấu đã đọc")
+@Schema(title = "Tin nhắn trong hồ sơ phản hồi", description = "Trao đổi giữa khách hàng và nhân viên; có lưu thời điểm khách đọc trả lời")
 @Table(name = "feedback_responses")
 @SQLRestriction("del_flag = false")
 @SQLDelete(sql = "UPDATE feedback_responses SET del_flag = true WHERE id = ?")
@@ -23,6 +23,10 @@ public class FeedbackResponse extends BaseEntity {
 
     @Column(name = "staff_id")
     private Long staffId;
+
+    /** Author of this conversation message: STAFF or CUSTOMER. */
+    @Column(name = "sender_type", nullable = false, length = 20)
+    private String senderType = "STAFF";
 
     @Column(name = "message", nullable = false, columnDefinition = "TEXT")
     private String message;

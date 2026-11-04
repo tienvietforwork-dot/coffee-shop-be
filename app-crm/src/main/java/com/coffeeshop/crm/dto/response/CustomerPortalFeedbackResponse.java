@@ -18,13 +18,13 @@ public record CustomerPortalFeedbackResponse(
         LocalDateTime closedAt,
         List<Reply> replies
 ) {
-    public record Reply(Long id, String message, LocalDateTime sentAt, LocalDateTime readAt) { }
+    public record Reply(Long id, String senderType, String message, LocalDateTime sentAt, LocalDateTime readAt) { }
 
     public static CustomerPortalFeedbackResponse from(Feedback feedback, List<FeedbackResponse> replies) {
         return new CustomerPortalFeedbackResponse(
                 feedback.getId(), feedback.getTopic(), feedback.getIssueType(), feedback.getCategory(),
                 feedback.getContent(), feedback.getStatus(), feedback.getCreatedAt(), feedback.getClosedAt(),
-                replies.stream().map(reply -> new Reply(reply.getId(), reply.getMessage(),
+                replies.stream().map(reply -> new Reply(reply.getId(), reply.getSenderType(), reply.getMessage(),
                         reply.getSentAt(), reply.getReadAt())).toList());
     }
 }

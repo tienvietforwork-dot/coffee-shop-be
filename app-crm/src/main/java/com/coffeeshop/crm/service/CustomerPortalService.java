@@ -3,6 +3,9 @@ package com.coffeeshop.crm.service;
 import com.coffeeshop.crm.dto.response.CustomerPortalFeedbackResponse;
 import com.coffeeshop.crm.dto.response.CustomerPortalInteractionResponse;
 import com.coffeeshop.crm.dto.response.CustomerPortalReadReceiptResponse;
+import com.coffeeshop.crm.dto.response.CustomerPortalInteractionReadReceiptResponse;
+import com.coffeeshop.crm.dto.request.CustomerFeedbackReplyRequest;
+import com.coffeeshop.crm.dto.response.FeedbackResponseDto;
 import com.coffeeshop.crm.entity.Feedback;
 import com.coffeeshop.crm.entity.FeedbackResponse;
 import com.coffeeshop.crm.exception.CrmNotFoundException;
@@ -24,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/** Cung cấp dữ liệu CRM giới hạn theo khách đang đăng nhập, trao đổi về góp ý và ghi nhận đã đọc. */
 @Service
 @RequiredArgsConstructor
 public class CustomerPortalService {
@@ -31,6 +35,7 @@ public class CustomerPortalService {
     private final FeedbackRepository feedbackRepository;
     private final FeedbackResponseRepository feedbackResponseRepository;
     private final InteractionRepository interactionRepository;
+    private final FeedbackService feedbackService;
 
     @Transactional(readOnly = true)
     public Page<CustomerPortalFeedbackResponse> feedbacks(CrmPrincipal principal, int page, int size) {
@@ -72,6 +77,23 @@ public class CustomerPortalService {
             response = feedbackResponseRepository.save(response);
         }
         return new CustomerPortalReadReceiptResponse(feedback.getId(), response.getId(), response.getReadAt());
+    }
+
+    @Transactional
+    public CustomerPortalInteractionReadReceiptResponse markInteractionRead(CrmPrincipal principal, Long interactionId) {
+        Long customerId = resolveCustomerId(principal);
+        var interaction = interactionRepository.findByIdAndCustomerIdAndVisibleToCustomerTrueAndDelFlagFalse(interactionId, customerId)
+                .orElseThrow(() -> new CrmNotFoundException("Không tìm thấy nội dung chăm sóc được chia sẻ với bạn"));
+        if (interaction.getCustomerReadAt() == null) {
+            interaction.setCustomerReadAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS));
+            interaction = interactionRepository.save(interaction);
+        }
+        return new CustomerPortalInteractionReadReceiptResponse(interaction.getId(), interaction.getCustomerReadAt());
+    }
+
+    @Transactional
+    public FeedbackResponseDto customerRespond(CrmPrincipal principal, Long feedbackId, CustomerFeedbackReplyRequest request) {
+        return FeedbackResponseDto.from(feedbackService.customerRespond(principal, feedbackId, request));
     }
 
     private Long resolveCustomerId(CrmPrincipal principal) {

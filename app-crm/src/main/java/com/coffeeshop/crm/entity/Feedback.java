@@ -62,4 +62,16 @@ public class Feedback extends BaseEntity {
 
     @Column(name = "closed_at")
     private LocalDateTime closedAt;
+
+    @Column(name = "approval_status", length = 20, nullable = false)
+    private String approvalStatus = "NOT_REQUIRED";
+
+    @Column(name = "approval_note", columnDefinition = "TEXT")
+    private String approvalNote;
+
+    @Column(name = "approved_by", length = 50)
+    private String approvedBy;
+
+    @Column(name = "approved_at")
+    private LocalDateTime approvedAt;
 }

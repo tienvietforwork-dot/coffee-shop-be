@@ -5,7 +5,7 @@ import java.util.Locale;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 
-/** Lightweight, explainable keyword scoring. A supplied user classification always takes precedence. */
+/** Phân loại cảm xúc dựa trên từ khóa; dữ liệu nhân viên đã nhập luôn được ưu tiên. */
 @Component
 public class FeedbackSentimentAnalyzer {
     private static final Set<String> NEGATIVE = Set.of(

@@ -45,6 +45,91 @@ Direct service paths use `/api/v1/...`. Through `nginx-gateway`, call the same p
 
 Customer 360 và API phân tích nhận `fromDate`/`toDate` tùy chọn theo định dạng `YYYY-MM-DD`, tính cả hai ngày. Chỉ số số đơn 30 ngày là cửa sổ lăn. Các tiêu đề nhóm chức năng và mô tả API trong Swagger được trình bày bằng tiếng Việt; URL, tên thuộc tính JSON, bảng và entity giữ nguyên để không phá tương thích với app khác.
 
-API `/{feedbackId}/responses` ghi nhận nội dung trả lời để khách có thể đọc trong cổng khách hàng. Cổng khách hàng gồm `GET /api/v1/customer-portal/feedbacks`, `GET /api/v1/customer-portal/interactions` và `POST /api/v1/customer-portal/feedbacks/{feedbackId}/responses/{responseId}/read`; yêu cầu JWT role `CUSTOMER` và tài khoản phải được liên kết với `customers`. Frontend gọi endpoint `/read` khi khách mở câu trả lời; backend lưu thời điểm đọc đầu tiên và trả `readAt` cho phía nhân viên. Nhân viên chỉ cho hiển thị tương tác phù hợp cho khách bằng `visibleToCustomer: true`.
+API `/{feedbackId}/responses` ghi nhận nội dung nhân viên trả lời. Khách có thể tiếp tục trao đổi ngay trong cùng hồ sơ qua `POST /api/v1/customer-portal/feedbacks/{feedbackId}/responses`; lịch sử phân biệt người gửi `STAFF`/`CUSTOMER`. Khi khách nhắn vào hồ sơ mới hoặc đã đóng, hồ sơ chuyển sang `IN_PROGRESS` để nhân viên theo dõi. Cổng khách hàng gồm `GET /api/v1/customer-portal/feedbacks`, `GET /api/v1/customer-portal/interactions` và `POST /api/v1/customer-portal/feedbacks/{feedbackId}/responses/{responseId}/read`; yêu cầu JWT role `CUSTOMER` và tài khoản phải được liên kết với `customers`. Frontend gọi endpoint `/read` khi khách mở câu trả lời nhân viên; backend lưu thời điểm đọc đầu tiên và trả `readAt` cho phía nhân viên. Nhân viên chỉ cho hiển thị tương tác phù hợp cho khách bằng `visibleToCustomer: true`.
 
-Với database đã cài migration CRM trước đó, chạy thêm `../database/migrate_crm_customer_portal.sql` trong DBeaver. Tài khoản khách phải có `users.customer_id` liên kết tới đúng hồ sơ trong `customers`.
+Với database đã cài migration CRM trước đó, chạy thêm `../database/migrate_crm_customer_portal.sql` và `../database/migrate_crm_feedback_conversation.sql` trong DBeaver. Tài khoản khách phải có `users.customer_id` liên kết tới đúng hồ sơ trong `customers`.
+
+## Cấu trúc và vai trò các file
+
+### Luồng xử lý
+
+Thông thường, request đi theo luồng `Controller → Service → Repository → PostgreSQL`; controller nhận/kiểm tra HTTP, service áp dụng quy tắc CRM, repository đọc/ghi dữ liệu. Entity ánh xạ bảng; DTO định nghĩa dữ liệu nhận/trả API. `CustomerAnalyticsRepository` và `CustomerInsightRepository` dùng truy vấn SQL để đọc dữ liệu đơn hàng do Core quản lý trong database chung, không sở hữu hay sửa schema của các bảng đó.
+
+### File ở thư mục gốc và cấu hình
+
+| File | Vai trò |
+|---|---|
+| `pom.xml` | Khai báo Java 17, Spring Boot và các thư viện Maven. |
+| `src/main/java/com/coffeeshop/crm/CrmApplication.java` | Điểm khởi chạy dịch vụ Spring Boot. |
+| `src/main/resources/application.yml` | Cấu hình cổng, PostgreSQL, JWT, CORS, Hibernate và Actuator. Hibernate không tự tạo/sửa bảng (`ddl-auto: none`). |
+| `config/SecurityConfig.java` | Cấu hình stateless JWT, quyền truy cập từng nhóm API và CORS. |
+| `config/OpenApiConfig.java` | Cấu hình tài liệu Swagger/OpenAPI. |
+| `security/JwtAuthenticationFilter.java` | Đọc, xác thực JWT và tạo thông tin đăng nhập cho request. |
+| `security/JwtUtil.java` | Đọc claim và kiểm tra chữ ký/thời hạn token. |
+| `security/CrmPrincipal.java` | Định dạng danh tính người dùng lưu trong Security Context. |
+| `Dockerfile` | Đóng gói và chạy ứng dụng trong container. |
+| `.env.example` | Tên các biến môi trường cần cấu hình; không chứa mật khẩu dùng thật. |
+
+### Controller — các điểm vào HTTP
+
+| File | Vai trò |
+|---|---|
+| `controller/CustomerController.java` | Tìm kiếm, tạo/sửa hồ sơ, Customer 360, gộp hồ sơ và CRUD địa chỉ. |
+| `controller/CustomerGroupController.java` | CRUD nhóm khách, xem trước/tính lại nhóm tự động và quản lý thành viên. |
+| `controller/InteractionController.java` | Ghi/list/sửa/xóa tương tác, truy vấn lịch nhắc và đóng tương tác. |
+| `controller/FeedbackController.java` | Nhận góp ý công khai/nội bộ, phân công, chuyển cấp, đóng và quản lý câu trả lời. |
+| `controller/CustomerPortalController.java` | API phía khách đã đăng nhập để xem phản hồi/tương tác và ghi nhận đã đọc. |
+| `controller/CustomerInsightController.java` | API thống kê hành vi, nhóm, phản hồi, xu hướng và xuất CSV. |
+| `controller/PingController.java` | Endpoint chẩn đoán danh tính/quyền của request; không phải nghiệp vụ CRM. |
+
+### Service — quy tắc nghiệp vụ
+
+| File | Vai trò |
+|---|---|
+| `service/Customer360Service.java` | Hồ sơ khách, lịch sử 360 và gộp dữ liệu khách trùng. |
+| `service/CustomerAddressService.java` | Thêm/sửa/xóa và truy vấn địa chỉ thuộc khách hàng. |
+| `service/CustomerGroupService.java` | Kiểm tra tiêu chí, xem trước, tính lại nhóm tự động và quản lý thành viên thủ công. |
+| `service/InteractionService.java` | Vòng đời tương tác, trạng thái, kết quả, người phụ trách và nhắc chăm sóc. |
+| `service/FeedbackService.java` | Vòng đời góp ý/khiếu nại, phân công, chuyển cấp, đóng, lưu câu trả lời và xóa mềm. |
+| `service/FeedbackSentimentAnalyzer.java` | Đoán cảm xúc theo nội dung/điểm đánh giá khi request chưa cung cấp cảm xúc. Đây là phân loại từ khóa đơn giản, không phải mô hình AI. |
+| `service/CustomerPortalService.java` | Giới hạn dữ liệu theo hồ sơ gắn với tài khoản khách và ghi thời điểm đọc câu trả lời. |
+| `service/CustomerInsightService.java` | Kiểm tra tham số, phối hợp truy vấn cho các báo cáo và so sánh giai đoạn. |
+| `scheduler/CustomerGroupScheduler.java` | Lập lịch tính lại các nhóm tự động theo cấu hình của scheduler. |
+
+### Repository, Entity và DTO
+
+| Thư mục/file | Vai trò |
+|---|---|
+| `repository/CustomerRepository.java` | CRUD và tìm kiếm entity khách hàng. |
+| `repository/CustomerAddressRepository.java` | Truy vấn địa chỉ khách hàng. |
+| `repository/CustomerGroupRepository.java`, `CustomerGroupMemberRepository.java` | Truy vấn nhóm và thành viên nhóm. |
+| `repository/InteractionRepository.java`, `FeedbackRepository.java`, `FeedbackResponseRepository.java` | Truy vấn tương tác, phản hồi và nội dung trả lời. |
+| `repository/CustomerPortalRepository.java` | Truy vấn dữ liệu portal theo quan hệ tài khoản-khách. |
+| `repository/CustomerAnalyticsRepository.java` | SQL tổng hợp đơn hàng, sản phẩm yêu thích và lọc khách theo tiêu chí dùng cho Customer 360/nhóm. |
+| `repository/CustomerInsightRepository.java` | SQL cho xếp hạng, khách lâu chưa mua, xu hướng, tăng trưởng, giá trị, phản hồi và mức độ yêu thích. |
+| `entity/BaseEntity.java` | Trường audit và xóa mềm dùng chung. |
+| `entity/Customer.java`, `CustomerAddress.java` | Hồ sơ và địa chỉ khách CRM. |
+| `entity/CustomerGroup.java`, `CustomerGroupMember.java` | Nhóm và liên kết thành viên nhóm. |
+| `entity/Interaction.java` | Lịch sử chăm sóc/tương tác. |
+| `entity/Feedback.java`, `FeedbackResponse.java` | Góp ý/khiếu nại và từng câu trả lời có dấu thời gian đã đọc. |
+| `dto/request/*` | Các lớp `Customer*Request`, `CriteriaRuleDTO`, `Interaction*Request`, `Feedback*Request` mô tả đầu vào API và ràng buộc kiểm tra. `PublicFeedbackRequest` là đầu vào góp ý công khai. |
+| `dto/response/Customer360Response.java`, `CustomerInsightResponses.java` | Cấu trúc trả về Customer 360 và các báo cáo. |
+| `dto/response/CustomerResponse.java`, `CustomerAddressResponse.java`, `CustomerGroupResponse.java`, `CustomerGroupMemberResponse.java`, `InteractionResponse.java` | Dạng trả về hồ sơ, địa chỉ, nhóm, thành viên và tương tác. |
+| `dto/response/FeedbackResponse.java` | Dạng trả về **một hồ sơ góp ý**. |
+| `dto/response/FeedbackResponseDto.java` | Dạng trả về **một câu trả lời cho góp ý**. Hai tên gần nhau nhưng đại diện hai loại dữ liệu khác nhau; không phải hai API trùng nhau. |
+| `dto/response/CustomerPortal*Response.java` | Dạng dữ liệu đã giới hạn trường cho giao diện khách; `CustomerPortalReadReceiptResponse` là xác nhận đã đọc. |
+| `dto/response/CustomerMergeResponse.java`, `GroupEvaluationResponse.java`, `ApiErrorResponse.java`, `PingResponse.java` | Kết quả gộp khách, tính lại nhóm, lỗi API và endpoint chẩn đoán. |
+| `exception/CrmNotFoundException.java`, `CrmConflictException.java`, `GlobalExceptionHandler.java` | Lỗi nghiệp vụ và chuyển lỗi thành HTTP response thống nhất. |
+
+## Rà soát phần có thể thừa hoặc dễ nhầm
+
+- Đã bỏ bốn overload trung gian không có nơi gọi trong module: `CustomerInsightService.topCustomers(from,to,limit)`, `CustomerInsightService.monthlySales(from,to)`, `CustomerInsightRepository.topCustomers(from,to,limit)` và `CustomerInsightRepository.monthlySales(from,to)`. Các API hiện dùng overload có `sortBy`/`period`; chức năng HTTP không đổi.
+- Không nên gộp `POST /feedbacks/public` với `POST /feedbacks`: hai endpoint phục vụ khách chưa đăng nhập và nhân viên CRM, có quyền và DTO đầu vào khác nhau.
+- `/inactive-customers` và `/inactive-customers/count` có phần lọc giống nhau nhưng trả danh sách giới hạn và tổng số toàn bộ tương ứng; count phục vụ KPI nên không phải API trùng hoàn toàn.
+- `GET /feedbacks/{id}/responses` là API nội bộ cho nhân viên, còn phản hồi khách xem qua `/customer-portal/feedbacks`; chúng có phạm vi dữ liệu và quyền khác nhau.
+- `GET /top-customers/export` chỉ xuất bảng xếp hạng phía backend; nút xuất toàn bộ báo cáo của frontend tạo một file CSV tổng hợp khác. Nếu không có client nào dùng export top khách riêng thì có thể cân nhắc bỏ ở lần dọn API sau.
+- `PingController` chỉ cần nếu nhóm còn dùng để kiểm tra JWT/quyền; nếu không còn dùng, đây là endpoint chẩn đoán có thể bỏ. Nó không thay thế `/actuator/health`.
+- Bộ nhận diện sentiment hiện dựa vào từ khóa, có thể gán sai câu có phủ định/ngữ cảnh. Nhân viên vẫn có thể hiệu chỉnh thủ công; nếu cần độ chính xác cao hơn nên cải thiện bằng bộ quy tắc có kiểm thử hoặc dịch vụ phân tích riêng.
+- `application.yml` có giá trị mặc định cho mật khẩu DB và JWT để chạy local; khi deploy phải đặt biến môi trường bí mật riêng, không dùng giá trị mặc định.
+
+Không xóa các endpoint đang công khai hoặc các lớp DTO có khả năng ảnh hưởng contract frontend. Các mục “có thể bỏ” phía trên là điểm rà soát, không phải lỗi khiến CRM không chạy.

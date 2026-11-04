@@ -11,6 +11,7 @@ import com.coffeeshop.crm.service.CustomerAddressService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -35,8 +36,11 @@ public class CustomerController {
                                     @RequestParam(defaultValue = "0") int page,
                                     @RequestParam(defaultValue = "20") int size) {
         if (page < 0 || size < 1 || size > 100) throw new IllegalArgumentException("page phải >= 0, size phải từ 1 đến 100");
-        return ResponseEntity.ok(customer360Service.searchCustomers(q, PageRequest.of(page, size))
-                .map(CustomerResponse::from));
+        Page<com.coffeeshop.crm.entity.Customer> customers = customer360Service.searchCustomers(q, PageRequest.of(page, size));
+        Map<Long, List<String>> groupsByCustomer = customer360Service.customerGroupNames(
+                customers.getContent().stream().map(com.coffeeshop.crm.entity.Customer::getId).toList());
+        return ResponseEntity.ok(customers.map(customer -> CustomerResponse.from(
+                customer, groupsByCustomer.getOrDefault(customer.getId(), List.of()))));
     }
 
     @PostMapping
@@ -53,7 +57,7 @@ public class CustomerController {
     }
 
     @GetMapping("/{id}/360")
-    @Operation(summary = "Xem hồ sơ khách hàng 360 độ")
+    @Operation(summary = "Xem hồ sơ khách hàng 360")
     public ResponseEntity<Customer360Response> get360(@PathVariable Long id,
                                     @RequestParam(required = false) LocalDate fromDate,
                                     @RequestParam(required = false) LocalDate toDate) {

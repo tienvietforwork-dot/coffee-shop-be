@@ -10,12 +10,13 @@ public record Customer360Response(
         List<OrderDto> recentOrders,
         List<InteractionDto> recentInteractions,
         List<FeedbackDto> recentFeedbacks,
-        List<TimelineEventDto> timeline
+        List<TimelineEventDto> timeline,
+        List<PointHistoryDto> pointHistory
 ) {
     public record ProfileDto(Long id, String fullName, String phone, String email, java.time.LocalDate dateOfBirth,
                              String gender, String description,
                              Integer loyaltyPoints, LocalDateTime registeredAt,
-                             List<AddressDto> addresses) { }
+                             List<AddressDto> addresses, List<String> groups) { }
     public record AddressDto(Long id, String label, String recipientName, String recipientPhone,
                              String address, boolean isDefault) { }
     public record MetricsDto(BigDecimal totalSpend, long totalOrders, BigDecimal averageOrderValue,
@@ -32,4 +33,6 @@ public record Customer360Response(
                               List<String> topics, List<FeedbackReplyDto> responses, LocalDateTime createdAt) { }
     public record FeedbackReplyDto(Long id, String message, Long staffId, LocalDateTime sentAt, LocalDateTime readAt) { }
     public record TimelineEventDto(String eventType, String description, LocalDateTime eventTime) { }
+    public record PointHistoryDto(Long id, Integer pointsChange, String reason, String orderCode,
+                                  LocalDateTime createdAt) { }
 }
