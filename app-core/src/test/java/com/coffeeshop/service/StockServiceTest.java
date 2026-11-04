@@ -7,6 +7,7 @@ import com.coffeeshop.entity.RecipeMaterial;
 import com.coffeeshop.exception.BadRequestException;
 import com.coffeeshop.entity.enums.CoffeeStatus;
 import com.coffeeshop.repository.CoffeeRepository;
+import com.coffeeshop.repository.MaterialRepository;
 import com.coffeeshop.repository.RecipeRepository;
 import com.coffeeshop.websocket.NotificationService;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -32,6 +34,8 @@ class StockServiceTest {
     RecipeRepository recipeRepository;
     @Mock
     CoffeeRepository coffeeRepository;
+    @Mock
+    MaterialRepository materialRepository;
     @Mock
     NotificationService notificationService;
     @InjectMocks
@@ -64,6 +68,7 @@ class StockServiceTest {
 
     @Test
     void sharedMaterialIsCountedAcrossLines() {
+        when(materialRepository.findById(1L)).thenReturn(Optional.of(beans));
         // 5 lattes use 90g beans; 45 espressos need 810g more -> 900g total is fine, 46 is not
         stockService.requireStock(List.of(new PricingService.InputLine(latte, 5, null), new PricingService.InputLine(espresso, 45, null)));
         assertThatThrownBy(() -> stockService.requireStock(List.of(

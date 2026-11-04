@@ -14,7 +14,7 @@ import java.util.List;
 public record ProductBundleRequest(
         @NotBlank @Size(max = 150) String name,
         String description,
-        @NotNull @DecimalMin("0.0") BigDecimal bundlePrice,
+        @NotNull @DecimalMin("0.01") BigDecimal bundlePrice,
         LocalDateTime startsAt,
         LocalDateTime endsAt,
         ProductBundleStatus status,

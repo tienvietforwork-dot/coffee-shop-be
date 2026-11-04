@@ -32,6 +32,13 @@ import java.util.List;
 public class ProductPlacementController {
 
     private final ProductPlacementService productPlacementService;
+    private final com.coffeeshop.stats.service.ProductPlacementInsightsService insightsService;
+
+    @GetMapping("/suggestions")
+    public List<com.coffeeshop.stats.service.ProductPlacementInsightsService.Suggestion> suggestions(
+            @RequestParam ProductPlacementSection section, @RequestParam(defaultValue = "8") int limit) {
+        return insightsService.suggest(section, limit);
+    }
 
     @GetMapping("/overview")
     public ProductPlacementOverviewResponse overview() {
@@ -59,6 +66,11 @@ public class ProductPlacementController {
     @PostMapping("/rules/{id}/publish")
     public ProductPlacementResponse publish(@PathVariable Long id) {
         return productPlacementService.publish(id);
+    }
+
+    @PostMapping("/rules/{id}/unpublish")
+    public ProductPlacementResponse unpublish(@PathVariable Long id) {
+        return productPlacementService.unpublish(id);
     }
 
     @DeleteMapping("/rules/{id}")

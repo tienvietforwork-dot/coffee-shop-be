@@ -9,10 +9,10 @@ import jakarta.validation.constraints.Size;
 import java.time.LocalDateTime;
 
 public record ProductPlacementRequest(
-        @NotNull Long coffeeId,
-        @NotNull ProductPlacementSection section,
-        @Size(max = 150) String title,
-        @Min(0) Integer displayOrder,
+        @NotNull(message = "Chọn sản phẩm cần trưng bày") Long coffeeId,
+        @NotNull(message = "Chọn khu vực trưng bày") ProductPlacementSection section,
+        @Size(max = 150, message = "Tiêu đề không được quá 150 ký tự") String title,
+        @Min(value = 0, message = "Thứ tự ưu tiên phải là số nguyên không âm") Integer displayOrder,
         LocalDateTime startsAt,
         LocalDateTime endsAt,
         Boolean active,

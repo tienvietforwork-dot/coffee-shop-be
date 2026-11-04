@@ -44,7 +44,8 @@ public class PricingService {
     public record CoffeePrice(BigDecimal price, PromotionItem item) {
     }
 
-    public record InputLine(Coffee coffee, int quantity, String note) {
+    public record InputLine(Coffee coffee, int quantity, String note, BigDecimal fixedPrice) {
+        public InputLine(Coffee coffee, int quantity, String note) { this(coffee, quantity, note, null); }
     }
 
     public record PricedLine(Coffee coffee, int quantity, String note, BigDecimal unitPrice, PromotionItem promoItem) {
@@ -126,10 +127,11 @@ public class PricingService {
             List<PromotionItem> candidates = coffeePromos.getOrDefault(coffee.getId(), List.of()).stream()
                     .filter(i -> i.hasRemaining(in.quantity() + promoUsage.getOrDefault(i.getId(), 0)))
                     .toList();
-            CoffeePrice best = bestCoffeePrice(coffee, in.quantity(), candidates);
+            CoffeePrice best = in.fixedPrice() == null ? bestCoffeePrice(coffee, in.quantity(), candidates) : null;
             if (best != null) promoUsage.merge(best.item().getId(), in.quantity(), Integer::sum);
             PricedLine line = new PricedLine(coffee, in.quantity(), in.note(),
-                    best == null ? coffee.getPrice() : best.price(), best == null ? null : best.item());
+                    in.fixedPrice() != null ? in.fixedPrice() : (best == null ? coffee.getPrice() : best.price()),
+                    best == null ? null : best.item());
             lines.add(line);
             subtotal = subtotal.add(line.lineTotal());
         }
