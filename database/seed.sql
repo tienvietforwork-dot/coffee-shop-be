@@ -27,17 +27,8 @@ INSERT INTO permissions (code, name, path, module, description, sort_order) VALU
  ('menu',                 'Cà phê & công thức',            '/admin/coffees',              'core',       'Xem thực đơn, công thức; bật/tắt bán, còn/hết món', 60),
  ('menu.edit',            'Sửa thực đơn & công thức',      NULL,                          'core',       'Tạo/sửa cà phê, giá, danh mục, công thức', 61),
  ('categories',           'Danh mục',                      '/admin/categories',           'core',       NULL, 62),
- ('materials',            'Nguyên liệu & lô',              '/admin/materials',            'core',       NULL, 70),
- ('materials.edit',       'Sửa nguyên liệu & kiểm kê',     NULL,                          'core',       'Tạo/sửa nguyên liệu, mức tồn tối thiểu, kiểm kê', 71),
- ('stock',                'Nhập / xuất kho',               '/admin/stock',                'core',       NULL, 72),
- ('stock-history',        'Lịch sử kho',                   '/admin/stock-history',        'core',       NULL, 73),
- ('suppliers',            'Nhà cung cấp',                  '/admin/suppliers',            'core',       'Nhà cung cấp, nguyên liệu họ bán, giá tham khảo', 74),
- ('purchase-orders',      'Phiếu đặt hàng',                '/admin/purchase-orders',      'core',       'Lập, gửi, hủy, đóng phiếu đặt hàng nhà cung cấp; hủy phiếu nhập', 75),
- ('supplier-returns',     'Trả hàng nhập',                 '/admin/supplier-returns',     'core',       'Phiếu trả hàng nhà cung cấp', 76),
- ('supplier-debts',       'Công nợ nhà cung cấp',          '/admin/supplier-debts',       'core',       'Công nợ phải trả, sổ chi tiết, phiếu chi', 77),
- ('stocktakes',           'Kiểm kê kho',                   '/admin/stocktakes',           'core',       'Phiếu kiểm kê, cân bằng kho', 78),
- ('inventory-report',     'Báo cáo xuất nhập tồn',         '/admin/inventory-report',     'core',       'Báo cáo xuất – nhập – tồn, chốt tồn theo ngày', 79),
- ('coffee-costs',         'Giá vốn món',                   '/admin/coffee-costs',         'core',       'Giá vốn theo định lượng, tỷ lệ food cost', 69),
+ ('materials',            'Nguyên liệu',                   '/admin/materials',            'core',       NULL, 70),
+ ('materials.edit',       'Sửa nguyên liệu',               NULL,                          'core',       'Thêm/sửa/xóa nguyên liệu (tên, đơn vị)', 71),
  ('cash-shifts',          'Ca thu ngân',                   '/admin/cash-shifts',          'core',       'Mở / chốt ca, thu chi trong ca, bàn giao ca', 22),
  ('invoices',             'Hóa đơn điện tử',               '/admin/invoices',             'core',       'Hóa đơn từ máy tính tiền: tra cứu, thay thế, gửi lại', 23),
  ('payment-reconciliation','Đối soát thanh toán',          '/admin/payment-reconciliation','core',      'Giao dịch VNPAY, truy vấn lại, đánh dấu đã đối soát', 94),
@@ -68,9 +59,9 @@ SELECT r.id, p.id FROM roles r, permissions p WHERE r.code = 'ADMIN' AND p.modul
 -- Nhân viên: vận hành hằng ngày
 INSERT INTO role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM roles r JOIN permissions p ON p.code IN (
-    'dashboard', 'orders', 'pos', 'shipments', 'incidents', 'menu', 'categories', 'materials', 'stock',
-    'stock-history', 'tables', 'crm.customers', 'crm.interactions', 'crm.feedbacks',
-    'cash-shifts', 'stocktakes', 'invoices')
+    'dashboard', 'orders', 'pos', 'shipments', 'incidents', 'menu', 'categories', 'materials',
+    'tables', 'crm.customers', 'crm.interactions', 'crm.feedbacks',
+    'cash-shifts', 'invoices')
 WHERE r.code = 'STAFF';
 
 -- Khách hàng
@@ -128,110 +119,25 @@ SELECT c.id, v.name, v.img, v.price, v.descr, v.status FROM (VALUES
  ('Cà phê đặc biệt', 'Cà phê dừa', 'https://images.unsplash.com/photo-1525803377221-4f6ccdaa5133?w=800&q=80', 52000, 'Cốt dừa đá xay và cà phê phin', 'SOLD_OUT')
 ) AS v(cat, name, img, price, descr, status) JOIN categories c ON c.name = v.cat;
 
--- Nguyên liệu thô (RAW, nhập mua) và bán thành phẩm (PREPARED, tự chế biến theo định lượng chuẩn)
-INSERT INTO materials (name, unit, min_stock, kind, yield_quantity, prep_minutes, shelf_life_minutes, instructions) VALUES
- ('Kem muối', 'ml', 500, 'PREPARED', 900, 15, 2880, '1. Để whipping cream, âu và cây đánh trứng trong ngăn mát ít nhất 15 phút (càng lạnh càng dễ bông).
-2. Cho 500 ml whipping cream, 120 ml sữa đặc, 60 ml sữa tươi và 5 g muối vào âu.
-3. Đánh tốc độ vừa 3–5 phút đến khi kem sánh, chảy thành dải mềm (bông mềm) — không đánh cứng, sẽ không nổi đều trên ly.
-4. Nếm thử: vị béo, mặn nhẹ cuối lưỡi; thiếu mặn thêm 1 nhúm muối.
-5. Cho vào hộp kín, dán nhãn lô + hạn dùng, bảo quản ngăn mát 2–4 °C, dùng trong 2 ngày.
-6. Trước khi dùng khuấy nhẹ lại vài vòng nếu kem bị tách.'),
- ('Cốt cold brew', 'ml', 1000, 'PREPARED', 1000, 1080, 10080, '1. Cân 250 g hạt Arabica, xay cỡ thô (hạt như muối hột) ngay trước khi ủ.
-2. Cho bột vào túi lọc vải, đặt trong bình ủ sạch có nắp.
-3. Rót 1.500 ml nước lọc ở nhiệt độ phòng, khuấy nhẹ 10–15 giây để bột ngấm đều, không khuấy mạnh.
-4. Đậy kín, ủ ngăn mát 2–4 °C trong 16–18 giờ.
-5. Nhấc túi lọc ra, để ráo tự nhiên 5 phút, không vắt (vắt sẽ làm cốt đắng và đục).
-6. Lọc lại qua giấy lọc, đóng chai sạch.
-7. Dán nhãn số lô + hạn dùng, bảo quản ngăn mát 2–4 °C, dùng trong 7 ngày.
-Tỉ lệ cốt đậm 1:6 — bã giữ lại khoảng 2 ml nước/g nên thu khoảng 1.000 ml.'),
- ('Nước đường', 'ml', 500, 'PREPARED', 1300, 60, 20160, '1. Cho 1.000 g đường cát trắng và 700 ml nước lọc vào nồi inox.
-2. Đun lửa vừa, khuấy đều đến khi đường tan hết và nước trong (khoảng 5–7 phút), không để sôi lâu kẻo bị keo.
-3. Tắt bếp, để nguội hoàn toàn ở nhiệt độ phòng (khoảng 1 giờ).
-4. Rót vào chai sạch có nắp, dán nhãn số lô + hạn dùng.
-5. Bảo quản ngăn mát, dùng trong 14 ngày; bỏ đi nếu đục hoặc có mùi chua.
-Tỉ lệ 1 đường : 0,7 nước thu khoảng 1.300 ml.'),
- ('Cốt cà phê phin', 'ml', 500, 'PREPARED', 500, 30, 1440, '1. Tráng phin lớn / bình pha bằng nước sôi cho nóng đều.
-2. Cho 250 g bột Robusta, lắc phẳng mặt, nén nhẹ.
-3. Rót khoảng 100 ml nước 92–96 °C, ủ 30–45 giây cho bột nở.
-4. Rót tiếp 700 ml nước, đậy nắp, để nhỏ giọt hết (khoảng 20–25 phút).
-5. Để nguội bớt, rót vào bình thủy tinh sạch có nắp, dán nhãn lô + giờ pha.
-6. Bảo quản ngăn mát, dùng trong 24 giờ; lắc nhẹ trước khi rót.
-Tỉ lệ khoảng 1:3,2 — bã giữ khoảng 1,2 ml nước/g nên thu khoảng 500 ml cốt.'),
- ('Siro sả', 'ml', 300, 'PREPARED', 800, 60, 10080, '1. Rửa 200 g sả (khoảng 6–8 cây), bỏ lá già ngoài, cắt khúc 3 cm, đập dập.
-2. Cho sả, 500 g đường và 500 ml nước vào nồi, đun sôi.
-3. Hạ lửa nhỏ, đun liu riu 10 phút, khuấy thỉnh thoảng.
-4. Tắt bếp, ngâm sả trong siro đến khi nguội hẳn (khoảng 40 phút) để ra mùi.
-5. Lọc bỏ bã, rót vào chai sạch có nắp, dán nhãn lô + hạn dùng.
-6. Bảo quản ngăn mát, dùng trong 7 ngày; bỏ đi nếu siro đục.'),
- ('Cà phê Robusta rang xay', 'g', 2000, 'RAW', NULL, NULL, NULL, NULL),
- ('Hạt Arabica', 'g', 1500, 'RAW', NULL, NULL, NULL, NULL),
- ('Sữa đặc', 'ml', 2000, 'RAW', NULL, NULL, NULL, NULL),
- ('Sữa tươi', 'ml', 3000, 'RAW', NULL, NULL, NULL, NULL),
- ('Đường', 'g', 1000, 'RAW', NULL, NULL, NULL, NULL),
- ('Trứng gà', 'quả', 20, 'RAW', NULL, NULL, NULL, NULL),
- ('Cốt dừa', 'ml', 1000, 'RAW', NULL, NULL, NULL, NULL),
- ('Cam vàng', 'quả', 10, 'RAW', NULL, NULL, NULL, NULL),
- ('Đá viên', 'g', 5000, 'RAW', NULL, NULL, NULL, NULL),
- ('Sả cây', 'g', 500, 'RAW', NULL, NULL, NULL, NULL),
- ('Whipping cream', 'ml', 1000, 'RAW', NULL, NULL, NULL, NULL),
- ('Muối', 'g', 200, 'RAW', NULL, NULL, NULL, NULL);
-
--- Định lượng chuẩn của bán thành phẩm
-INSERT INTO material_components (material_id, component_id, quantity)
-SELECT m.id, k.id, v.q FROM (VALUES
- ('Cốt cold brew', 'Hạt Arabica', 250),
- ('Cốt cà phê phin', 'Cà phê Robusta rang xay', 250),
- ('Kem muối', 'Muối', 5),
- ('Kem muối', 'Sữa tươi', 60),
- ('Kem muối', 'Sữa đặc', 120),
- ('Kem muối', 'Whipping cream', 500),
- ('Nước đường', 'Đường', 1000),
- ('Siro sả', 'Sả cây', 200),
- ('Siro sả', 'Đường', 500)
-) AS v(mat, comp, q)
-JOIN materials m ON m.name = v.mat JOIN materials k ON k.name = v.comp;
-
--- Lô đầu kỳ: nguyên liệu thô nhập mua; bán thành phẩm là tồn đầu kỳ đã chế biến sẵn (hạn dùng theo shelf_life_minutes)
-INSERT INTO material_batches (material_id, import_quantity, remaining_quantity, unit_cost, expiry_date)
-SELECT m.id, v.q, v.q, v.c, CURRENT_DATE + v.d FROM (VALUES
- ('Cà phê Robusta rang xay', 8000, 250, 60), ('Hạt Arabica', 5000, 450, 90), ('Sữa đặc', 6000, 60, 120),
- ('Sữa tươi', 8000, 35, 5), ('Đường', 5000, 25, 365), ('Trứng gà', 60, 3500, 10),
- ('Cốt dừa', 800, 90, 30), ('Cam vàng', 30, 9000, 7), ('Đá viên', 30000, 2, 2),
- ('Sả cây', 3000, 40, 7), ('Whipping cream', 4000, 120, 30), ('Muối', 1000, 10, 365)
-) AS v(name, q, c, d) JOIN materials m ON m.name = v.name;
-
-INSERT INTO material_batches (material_id, import_quantity, remaining_quantity, expiry_date, expires_at, ready_at)
-SELECT m.id, v.q, v.q, (now() + m.shelf_life_minutes * interval '1 minute')::date,
-       now() + m.shelf_life_minutes * interval '1 minute', now()
-FROM (VALUES
- ('Cốt cold brew', 2000), ('Cốt cà phê phin', 1000), ('Kem muối', 900), ('Nước đường', 1300), ('Siro sả', 800)
-) AS v(name, q) JOIN materials m ON m.name = v.name;
-
-UPDATE materials m SET stock_quantity = b.total
-FROM (SELECT material_id, SUM(remaining_quantity) total FROM material_batches GROUP BY material_id) b
-WHERE b.material_id = m.id;
-
-INSERT INTO material_transactions (batch_id, staff_id, type, quantity, note)
-SELECT b.id, (SELECT id FROM staff WHERE phone = '0901000001'),
-       CASE m.kind WHEN 'PREPARED' THEN 'PRODUCE' ELSE 'IMPORT' END, b.import_quantity,
-       CASE m.kind WHEN 'PREPARED' THEN 'Tồn đầu kỳ (đã chế biến sẵn)' ELSE 'Nhập kho ban đầu' END
-FROM material_batches b JOIN materials m ON m.id = b.material_id;
-
--- Nhà cung cấp và nguyên liệu họ bán (giá tham khảo: đ / đơn vị gốc)
-INSERT INTO suppliers (name, contact_name, phone, email, address) VALUES
- ('Cà phê Cầu Đất Farm', 'Anh Hùng', '0912000001', 'sales@caudatfarm.vn', 'Cầu Đất, Đà Lạt, Lâm Đồng'),
- ('Sữa & nguyên liệu pha chế Minh Phát', 'Chị Lan', '0912000002', 'minhphat@gmail.com', 'Q.Tân Bình, TP.HCM'),
- ('Chợ đầu mối Bình Điền', 'Chú Tư', '0912000003', NULL, 'Q.8, TP.HCM');
-
-INSERT INTO supplier_materials (supplier_id, material_id, unit_price)
-SELECT s.id, m.id, v.p FROM (VALUES
- ('Cà phê Cầu Đất Farm', 'Cà phê Robusta rang xay', 250), ('Cà phê Cầu Đất Farm', 'Hạt Arabica', 450),
- ('Sữa & nguyên liệu pha chế Minh Phát', 'Sữa đặc', 60), ('Sữa & nguyên liệu pha chế Minh Phát', 'Sữa tươi', 35),
- ('Sữa & nguyên liệu pha chế Minh Phát', 'Whipping cream', 120), ('Sữa & nguyên liệu pha chế Minh Phát', 'Cốt dừa', 90),
- ('Sữa & nguyên liệu pha chế Minh Phát', 'Đường', 25),
- ('Chợ đầu mối Bình Điền', 'Trứng gà', 3500), ('Chợ đầu mối Bình Điền', 'Cam vàng', 9000), ('Chợ đầu mối Bình Điền', 'Sả cây', 40),
- ('Chợ đầu mối Bình Điền', 'Muối', 10), ('Chợ đầu mối Bình Điền', 'Đá viên', 2)
-) AS v(sup, mat, p) JOIN suppliers s ON s.name = v.sup JOIN materials m ON m.name = v.mat;
+-- Nguyên liệu: chỉ tên + đơn vị (không theo dõi tồn kho); định lượng nằm trong công thức
+INSERT INTO materials (name, unit) VALUES
+ ('Kem muối', 'ml'),
+ ('Cốt cold brew', 'ml'),
+ ('Nước đường', 'ml'),
+ ('Cốt cà phê phin', 'ml'),
+ ('Siro sả', 'ml'),
+ ('Cà phê Robusta rang xay', 'g'),
+ ('Hạt Arabica', 'g'),
+ ('Sữa đặc', 'ml'),
+ ('Sữa tươi', 'ml'),
+ ('Đường', 'g'),
+ ('Trứng gà', 'quả'),
+ ('Cốt dừa', 'ml'),
+ ('Cam vàng', 'quả'),
+ ('Đá viên', 'g'),
+ ('Sả cây', 'g'),
+ ('Whipping cream', 'ml'),
+ ('Muối', 'g');
 
 INSERT INTO recipes (coffee_id, brew_method, version, brew_time_min, description, is_active)
 SELECT c.id, v.bm, 1, v.t, v.d, TRUE FROM (VALUES

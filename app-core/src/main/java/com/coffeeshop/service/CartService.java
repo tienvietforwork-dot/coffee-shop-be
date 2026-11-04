@@ -34,7 +34,6 @@ public class CartService {
     private final CoffeeService coffeeService;
     private final DiningTableService tableService;
     private final PricingService pricingService;
-    private final StockService stockService;
     private final BundleCartService bundleCartService;
     private final CustomerRepository customerRepository;
 
@@ -77,7 +76,6 @@ public class CartService {
             cart.getItems().add(CartItem.builder().cart(cart).coffee(coffee).quantity(request.quantity()).note(note)
                     .subtotal(BigDecimal.ZERO).build());
         }
-        requireCartStock(cart);
         refreshPrices(cart);
         return toResponse(cart);
     }
@@ -86,7 +84,6 @@ public class CartService {
     public CartResponse addBundle(String sessionCode, Long bundleId, int quantity, java.util.List<Long> optionalItemIds) {
         Cart cart=getOpen(sessionCode);
         bundleCartService.add(cart,bundleId,quantity,optionalItemIds);
-        requireCartStock(cart);
         return toResponse(cart);
     }
 
@@ -103,7 +100,6 @@ public class CartService {
         CartItem item = findItem(cart, itemId);
         item.setQuantity(request.quantity());
         item.setNote(blankToNull(request.note()));
-        requireCartStock(cart);
         refreshPrices(cart);
         return toResponse(cart);
     }
@@ -132,17 +128,6 @@ public class CartService {
     private CartItem findItem(Cart cart, Long itemId) {
         return cart.getItems().stream().filter(i -> i.getId().equals(itemId)).findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Món không có trong giỏ"));
-    }
-
-    /** Validate the entire cart, not just the most recently added drink.
-     * Shared ingredients across different coffees must not be oversold.
-     * Validation is repeated during checkout to account for concurrent orders.
-     */
-    private void requireCartStock(Cart cart) {
-        java.util.List<PricingService.InputLine> all = new java.util.ArrayList<>(cart.getItems().stream()
-                .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote())).toList());
-        all.addAll(bundleCartService.lines(cart));
-        stockService.requireStock(all);
     }
 
     private void refreshPrices(Cart cart) {

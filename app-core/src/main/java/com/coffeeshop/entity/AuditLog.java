@@ -22,7 +22,7 @@ public class AuditLog {
     private Long id;
     @Column(length = 50)
     private String username;
-    /** first path segment after /api: orders, purchase-orders, cash-shifts… */
+    /** first path segment after /api: orders, cash-shifts, materials… */
     @Column(nullable = false, length = 50)
     private String module;
     /** CREATE, UPDATE, DELETE or the action word of the path (confirm, cancel, receipts…) */

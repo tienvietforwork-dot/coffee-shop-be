@@ -43,10 +43,6 @@ public class Coffee extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private CoffeeStatus status = CoffeeStatus.AVAILABLE;
-    /** true when SOLD_OUT was set by stock (StockService.syncCoffeeStatus), so it may reopen by itself; manual SOLD_OUT stays. */
-    @Builder.Default
-    @Column(name = "auto_sold_out", nullable = false)
-    private boolean autoSoldOut = false;
 
     /** Image source for clients: the uploaded photo when there is one, else the external link. */
     public String imageSrc() {
