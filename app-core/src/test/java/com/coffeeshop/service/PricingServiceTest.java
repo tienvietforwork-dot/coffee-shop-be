@@ -47,7 +47,6 @@ class PricingServiceTest {
     @BeforeEach
     void setUp() {
         pricingService = new PricingService(promotionRepository, voucherDetailRepository);
-        ReflectionTestUtils.setField(pricingService, "shippingFee", new BigDecimal("15000"));
         Category category = Category.builder().id(1L).name("Espresso").build();
         latte = Coffee.builder().id(1L).category(category).name("Latte").price(new BigDecimal("50000")).build();
         coldBrew = Coffee.builder().id(2L).category(category).name("Cold Brew").price(new BigDecimal("45000")).build();
@@ -84,7 +83,7 @@ class PricingServiceTest {
         when(voucherDetailRepository.findByCodeIgnoreCase("NAM50K")).thenReturn(Optional.of(voucher));
 
         var quote = pricingService.quote(List.of(new PricingService.InputLine(latte, 4, null)),
-                OrderType.DELIVERY, "0912345678", "NAM50K", now);
+                OrderType.DELIVERY, "0912345678", "NAM50K", now, amount -> new BigDecimal("15000")); // phí của bậc km
 
         assertThat(quote.subtotal()).isEqualByComparingTo("200000");
         assertThat(quote.promotionDiscount()).isEqualByComparingTo("20000");

@@ -12,5 +12,6 @@ public record PricePreviewRequest(
         @NotNull OrderType orderType,
         String customerPhone,
         String voucherCode,
-        String deliveryDistrict) {
+        String deliveryAddress,
+        java.time.LocalDateTime deliveryTime) {
 }

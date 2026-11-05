@@ -11,7 +11,6 @@ import com.coffeeshop.entity.enums.VoucherStatus;
 import com.coffeeshop.repository.PromotionRepository;
 import com.coffeeshop.repository.VoucherDetailRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -27,7 +26,7 @@ import java.util.stream.Collectors;
  *  - order promotion: the running ORDER promotion giving the biggest discount whose minimum is met;
  *  - voucher: discount_value once the subtotal reaches min_order_value, on top of the order promotion,
  *    capped at what is left to pay;
- *  - delivery orders pay a flat shipping fee (app.shipping.fee).
+ *  - delivery orders pay the phí ship of their distance tier (DeliveryFeeService).
  */
 @Service
 @RequiredArgsConstructor
@@ -37,9 +36,6 @@ public class PricingService {
 
     private final PromotionRepository promotionRepository;
     private final VoucherDetailRepository voucherDetailRepository;
-
-    @Value("${app.shipping.fee:15000}")
-    private BigDecimal shippingFee;
 
     public record CoffeePrice(BigDecimal price, PromotionItem item) {
     }
@@ -78,7 +74,7 @@ public class PricingService {
                             l.lineTotal(), l.note())).toList(),
                     subtotal, orderPromotion == null ? null : orderPromotion.getName(), promotionDiscount,
                     voucher == null ? null : voucher.getCode(), voucherDiscount, voucherMessage, shippingFee, total,
-                    unavailable);
+                    unavailable, null, null, null);
         }
     }
 
@@ -110,8 +106,8 @@ public class PricingService {
     }
 
     /**
-     * {@code deliveryFee}: phí giao hàng from what is left to pay after discounts (khu vực, miễn phí từ … đ);
-     * null = the flat app.shipping.fee.
+     * {@code deliveryFee}: phí giao hàng from what is left to pay after discounts (theo km, miễn phí từ … đ);
+     * null = no address yet: no fee shown.
      */
     public Quote quote(List<InputLine> input, OrderType orderType, String customerPhone, String voucherCode,
                        LocalDateTime now, java.util.function.Function<BigDecimal, BigDecimal> deliveryFee) {
@@ -163,7 +159,7 @@ public class PricingService {
         }
 
         BigDecimal fee = orderType != OrderType.DELIVERY ? BigDecimal.ZERO
-                : deliveryFee == null ? shippingFee : deliveryFee.apply(afterPromotion.subtract(voucherDiscount));
+                : deliveryFee == null ? BigDecimal.ZERO : deliveryFee.apply(afterPromotion.subtract(voucherDiscount));
         BigDecimal total = afterPromotion.subtract(voucherDiscount).add(fee);
         return new Quote(lines, subtotal, orderPromotion, promotionDiscount, voucher,
                 voucherCode == null ? null : voucherCode.trim(), voucherDiscount, voucherMessage, fee, total,

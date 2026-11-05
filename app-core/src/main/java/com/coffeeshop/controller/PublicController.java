@@ -105,7 +105,7 @@ public class PublicController {
     @PostMapping("/carts/{sessionCode}/quote")
     public PriceQuoteResponse quote(@PathVariable String sessionCode, @Valid @RequestBody CartQuoteRequest request) {
         return orderService.previewCart(sessionCode, request.orderType(), request.customerPhone(), request.voucherCode(),
-                request.deliveryDistrict());
+                request.deliveryAddress(), request.deliveryTime());
     }
 
     @PostMapping("/checkout")

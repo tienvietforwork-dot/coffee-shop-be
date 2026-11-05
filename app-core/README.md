@@ -45,7 +45,7 @@ cp ../.env.example ../.env   # file .env chung ở gốc repo: Neon + JWT_SECRET
 Swagger UI: `http://localhost:8080/swagger-ui.html`. Test: `mvn test` (H2 in-memory).
 
 Biến môi trường: `SPRING_DATASOURCE_URL/USERNAME/PASSWORD`, `JWT_SECRET` (giống hệt 3 app còn lại),
-`JWT_EXPIRATION_MS`, `CORS_ALLOWED_ORIGIN`, `PORT`, `SHIPPING_FEE` (mặc định 15000).
+`JWT_EXPIRATION_MS`, `CORS_ALLOWED_ORIGIN`, `PORT`, `GOONG_API_KEY` (tuỳ chọn — đo km giao hàng; không có thì dùng OpenStreetMap).
 
 ## Nghiệp vụ chính
 

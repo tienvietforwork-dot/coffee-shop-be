@@ -61,7 +61,8 @@ public class OrderService {
     private final BundleCartService bundleCartService;
     private final NotificationService notificationService;
     private final OnlinePaymentService onlinePaymentService;
-    private final DeliveryZoneService deliveryZoneService;
+    private final DeliveryFeeService deliveryFeeService;
+    private final ShipmentEventRepository shipmentEventRepository;
     private final InvoiceService invoiceService;
     private final CustomerNotificationService customerNotificationService;
     private final CashShiftService cashShiftService;
@@ -100,24 +101,31 @@ public class OrderService {
 
     @Transactional(readOnly = true)
     public PriceQuoteResponse previewCart(String sessionCode, OrderType orderType, String customerPhone,
-                                          String voucherCode, String deliveryDistrict) {
+                                          String voucherCode, String deliveryAddress,
+                                          LocalDateTime deliveryTime) {
         Cart cart = cartService.getOpen(sessionCode);
         java.util.List<PricingService.InputLine> lines = new java.util.ArrayList<>(cart.getItems().stream()
                 .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote())).toList());
         lines.addAll(bundleCartService.lines(cart));
-        return pricingService.quote(lines, orderType, phoneOfCurrentCustomer(customerPhone), voucherCode,
-                LocalDateTime.now(), feeRule(orderType, deliveryDistrict)).toResponse();
+        var rule = feeRule(orderType, deliveryAddress, deliveryTime);
+        return withDelivery(pricingService.quote(lines, orderType, phoneOfCurrentCustomer(customerPhone), voucherCode,
+                LocalDateTime.now(), rule == null ? null : rule.fee()).toResponse(), rule);
     }
 
     @Transactional(readOnly = true)
     public PriceQuoteResponse preview(PricePreviewRequest request) {
-        return pricingService.quote(toLines(request.items()), request.orderType(), request.customerPhone(),
-                request.voucherCode(), LocalDateTime.now(), feeRule(request.orderType(), request.deliveryDistrict())).toResponse();
+        var rule = feeRule(request.orderType(), request.deliveryAddress(), request.deliveryTime());
+        return withDelivery(pricingService.quote(toLines(request.items()), request.orderType(), request.customerPhone(),
+                request.voucherCode(), LocalDateTime.now(), rule == null ? null : rule.fee()).toResponse(), rule);
     }
 
-    /** phí ship of the zone covering the district (none picked: the flat fee) */
-    private java.util.function.Function<BigDecimal, BigDecimal> feeRule(OrderType type, String district) {
-        return type == OrderType.DELIVERY ? deliveryZoneService.feeRule(district) : null;
+    /** phí ship theo km từ quán tới địa chỉ giao (chưa có địa chỉ: null) */
+    private DeliveryFeeService.Rule feeRule(OrderType type, String address, LocalDateTime at) {
+        return type == OrderType.DELIVERY ? deliveryFeeService.rule(address, at) : null;
+    }
+
+    private static PriceQuoteResponse withDelivery(PriceQuoteResponse q, DeliveryFeeService.Rule rule) {
+        return rule == null ? q : q.withDelivery(rule.distanceKm(), rule.tierLabel(), rule.planName());
     }
 
     // ---- creation --------------------------------------------------------
@@ -135,7 +143,7 @@ public class OrderService {
         lines.addAll(bundleCartService.lines(cart));
         Draft draft = new Draft(lines, request.orderType(), cart.getTable() != null ? OrderChannel.QR : OrderChannel.ONLINE,
                 request.orderType() == OrderType.DINE_IN ? cart.getTable() : null, cart, request.customerPhone(),
-                request.customerName(), request.addressId(), request.delivery(), request.deliveryDistrict(), request.pickupTime(),
+                request.customerName(), request.addressId(), request.delivery(), request.pickupTime(),
                 request.paymentMethod(), false, request.voucherCode(), request.note());
         Order order = place(draft);
         cart.setStatus(CartStatus.ORDERED);
@@ -150,7 +158,7 @@ public class OrderService {
             throw new BadRequestException("Đơn tại bàn cần chọn bàn");
         }
         Draft draft = new Draft(toLines(request.items()), request.orderType(), OrderChannel.COUNTER, table, null,
-                request.customerPhone(), request.customerName(), null, request.delivery(), request.deliveryDistrict(), null,
+                request.customerPhone(), request.customerName(), null, request.delivery(), null,
                 request.paymentMethod(), Boolean.TRUE.equals(request.paidNow()), request.voucherCode(), request.note());
         Order order = place(draft);
         moveTo(order, OrderStatus.PREPARING, null);
@@ -159,7 +167,7 @@ public class OrderService {
 
     private record Draft(List<PricingService.InputLine> lines, OrderType type, OrderChannel channel, DiningTable table,
                          Cart cart, String customerPhone, String customerName, Long addressId,
-                         DeliveryAddressRequest delivery, String district, LocalDateTime pickupTime,
+                         DeliveryAddressRequest delivery, LocalDateTime pickupTime,
                          PaymentMethod paymentMethod, boolean paidNow, String voucherCode, String note) {
     }
 
@@ -168,19 +176,23 @@ public class OrderService {
         if (d.pickupTime() != null && d.pickupTime().isBefore(now.minusMinutes(1))) {
             throw new BadRequestException("Thời gian nhận hàng phải ở tương lai");
         }
-        var quote = pricingService.quote(d.lines(), d.type(), phoneOfCurrentCustomer(d.customerPhone()), d.voucherCode(), now,
-                feeRule(d.type(), d.district()));
-        if (!quote.unavailable().isEmpty()) {
-            throw new BadRequestException("Món đã hết: " + String.join(", ", quote.unavailable()));
-        }
-        if (quote.voucherMessage() != null) throw new BadRequestException(quote.voucherMessage());
-
+        // khách tự đặt (QR / online): trong giờ mở cửa, hoặc hẹn giờ nhận trong giờ mở cửa
+        if (d.channel() != OrderChannel.COUNTER) deliveryFeeService.checkOpen(d.pickupTime());
         // a logged-in customer orders as themselves; guests are identified by the phone they type
         Customer customer = CurrentUser.customerId() != null
                 ? customerService.byId(CurrentUser.customerId())
                 : customerService.findOrCreate(d.customerPhone(), d.customerName());
         CustomerAddress address = d.type() == OrderType.DELIVERY
                 ? customerService.resolveAddress(customer, d.addressId(), d.delivery()) : null;
+        // phí ship: km from the shop to the address the order really goes to
+        DeliveryFeeService.Rule rule = address == null ? null : deliveryFeeService.rule(address.getAddress(), d.pickupTime());
+
+        var quote = pricingService.quote(d.lines(), d.type(), phoneOfCurrentCustomer(d.customerPhone()), d.voucherCode(), now,
+                rule == null ? null : rule.fee());
+        if (!quote.unavailable().isEmpty()) {
+            throw new BadRequestException("Món đã hết: " + String.join(", ", quote.unavailable()));
+        }
+        if (quote.voucherMessage() != null) throw new BadRequestException(quote.voucherMessage());
 
         Order order = Order.builder()
                 .orderCode(newOrderCode())
@@ -225,11 +237,10 @@ public class OrderService {
         order.getPayments().add(payment);
 
         if (address != null) {
-            var zone = deliveryZoneService.zoneOf(d.district());
             Shipment shipment = shipmentRepository.save(Shipment.builder()
                     .order(order).address(address).shippingFee(quote.shippingFee())
-                    .district(d.district() == null || d.district().isBlank() ? null : d.district().trim())
-                    .zoneName(zone == null ? null : zone.getName()).build());
+                    .distanceKm(rule == null ? null : rule.distanceKm())
+                    .zoneName(rule == null ? null : rule.label()).build());
             order.setShipment(shipment);
         }
         if (d.table() != null) d.table().setStatus(TableStatus.OCCUPIED);
@@ -305,19 +316,22 @@ public class OrderService {
         return publish(order);
     }
 
-    /** Hand a delivery order to the driver. */
+    /** Quán tự giao: nhân viên mang đơn đã pha xong đi giao. */
     @Transactional
     public OrderResponse dispatch(Long id) {
         Order order = get(id);
         expect(order, OrderStatus.READY);
-        if (order.getOrderType() != OrderType.DELIVERY) throw new BadRequestException("Chỉ đơn giao hàng mới bàn giao tài xế");
+        if (order.getOrderType() != OrderType.DELIVERY) throw new BadRequestException("Chỉ đơn giao hàng mới đi giao");
         Shipment shipment = order.getShipment();
-        if (shipment.getStatus() == ShipmentStatus.PENDING) {
-            throw new BadRequestException("Chưa đặt xe cho đơn này");
-        }
         shipment.setStatus(ShipmentStatus.DELIVERING);
+        shipmentEvent(shipment, ShipmentStatus.DELIVERING, "Bắt đầu giao");
         moveTo(order, OrderStatus.DELIVERING, null);
         return publish(order);
+    }
+
+    private void shipmentEvent(Shipment s, ShipmentStatus status, String note) {
+        shipmentEventRepository.save(ShipmentEvent.builder().shipment(s).source("STAFF").status(status).note(note)
+                .createdBy(CurrentUser.username()).createdAt(LocalDateTime.now()).build());
     }
 
     @Transactional
@@ -327,14 +341,6 @@ public class OrderService {
         else expect(order, OrderStatus.READY);
         completeInternal(order);
         return publish(order);
-    }
-
-    /** Called when the carrier reports the delivery done. */
-    void completeDelivered(Order order) {
-        if (order.getStatus() == OrderStatus.DELIVERING) {
-            completeInternal(order);
-            publish(order);
-        }
     }
 
     private void completeInternal(Order order) {
@@ -347,6 +353,7 @@ public class OrderService {
         if (order.getShipment() != null && order.getShipment().getDeliveredAt() == null) {
             order.getShipment().setStatus(ShipmentStatus.DELIVERED);
             order.getShipment().setDeliveredAt(now);
+            shipmentEvent(order.getShipment(), ShipmentStatus.DELIVERED, "Đã giao");
         }
         moveTo(order, OrderStatus.COMPLETED, null);
         Customer customer = order.getCustomer();

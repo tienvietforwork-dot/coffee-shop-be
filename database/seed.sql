@@ -21,7 +21,7 @@ INSERT INTO permissions (code, name, path, module, description, sort_order) VALU
  ('orders',               'Điều phối đơn hàng',            '/admin/orders',               'core',       'Xác nhận, từ chối, hủy, pha chế, hoàn tất, thu tiền', 20),
  ('orders.refund',        'Hoàn tiền',                     NULL,                          'core',       'Hoàn tiền khoản đã thanh toán', 21),
  ('pos',                  'Order tại quầy',                '/admin/pos',                  'core',       NULL, 30),
- ('shipments',            'Giao hàng',                     '/admin/shipments',            'core',       'Đặt xe, cập nhật trạng thái giao', 40),
+ ('shipments',            'Giao hàng',                     '/admin/shipments',            'core',       'Đơn giao do quán tự giao: bắt đầu giao, đã giao, giao không thành công', 40),
  ('incidents',            'Sự cố đơn hàng',                '/admin/incidents',            'core',       'Xem và ghi nhận sự cố', 50),
  ('incidents.resolve',    'Xử lý sự cố & đền bù voucher',  NULL,                          'core',       NULL, 51),
  ('menu',                 'Cà phê & công thức',            '/admin/coffees',              'core',       'Xem thực đơn, công thức; bật/tắt bán, còn/hết món', 60),
@@ -32,7 +32,7 @@ INSERT INTO permissions (code, name, path, module, description, sort_order) VALU
  ('cash-shifts',          'Ca thu ngân',                   '/admin/cash-shifts',          'core',       'Mở / chốt ca, thu chi trong ca, bàn giao ca', 22),
  ('invoices',             'Hóa đơn điện tử',               '/admin/invoices',             'core',       'Hóa đơn từ máy tính tiền: tra cứu, thay thế, gửi lại', 23),
  ('payment-reconciliation','Đối soát thanh toán',          '/admin/payment-reconciliation','core',      'Giao dịch VNPAY, truy vấn lại, đánh dấu đã đối soát', 94),
- ('delivery-zones',       'Khu vực giao hàng',             '/admin/delivery-zones',       'core',       'Quận giao được, phí ship, miễn phí từ, đơn tối thiểu', 33),
+ ('delivery-zones',       'Phí giao hàng',                 '/admin/shipments',            'core',       'Phí ship theo km, miễn phí từ, đơn tối thiểu, địa chỉ quán', 33),
  ('work-shifts',          'Phân ca & chấm công',           '/admin/work-shifts',          'core',       'Ca mẫu, xếp ca, sửa chấm công, bảng chấm công', 92),
  ('notifications',        'Tin nhắn khách hàng',           '/admin/notifications',        'core',       'Mẫu tin ZNS / SMS theo đơn, nhật ký gửi', 95),
  ('audit-logs',           'Nhật ký thao tác',              '/admin/audit-logs',           'core',       'Ai làm gì, lúc nào (chỉ xem)', 96),
@@ -270,10 +270,16 @@ INSERT INTO voucher_details (voucher_id, code, customer_id, expires_at) VALUES
 
 COMMIT;
 
--- Khu vực giao hàng và ca làm việc mẫu
-INSERT INTO delivery_zones (name, districts, fee, free_ship_threshold, min_order_amount, estimated_minutes, sort_order) VALUES
- ('Nội thành gần', 'Quận 1, Quận 3, Phú Nhuận',                 15000, 150000, 50000, 25, 1),
- ('Nội thành xa',  'Quận 4, Quận 5, Quận 10, Bình Thạnh, Tân Bình', 25000, 250000, 80000, 40, 2);
+-- Phí giao hàng theo km và ca làm việc mẫu
+INSERT INTO delivery_settings (id, shop_address, shop_lat, shop_lng, free_ship_threshold, min_order_amount) VALUES
+ (1, 'Chợ Bến Thành, Quận 1, TP. Hồ Chí Minh', 10.7725, 106.6981, 200000, 50000);
+UPDATE delivery_settings SET open_time = '06:00', close_time = '22:00' WHERE id = 1;
+INSERT INTO delivery_fee_plans (name, is_default) VALUES ('Mặc định', TRUE), ('Cao điểm', FALSE);
+INSERT INTO delivery_fee_tiers (plan_id, from_km, to_km, fee)
+SELECT p.id, v.f, v.t, CASE WHEN p.is_default THEN v.fee ELSE v.peak END FROM delivery_fee_plans p,
+ (VALUES (0, 3, 15000, 20000), (3, 5, 20000, 25000), (5, 8, 30000, 35000), (8, 12, 40000, 45000)) AS v(f, t, fee, peak);
+INSERT INTO delivery_time_slots (start_time, end_time, plan_id)
+SELECT v.s, v.e, p.id FROM delivery_fee_plans p, (VALUES ('06:00', '08:00'), ('17:00', '20:00')) AS v(s, e) WHERE p.name = 'Cao điểm';
 
 INSERT INTO work_shifts (name, start_time, end_time, grace_minutes, color) VALUES
  ('Ca sáng', '06:30', '12:30', 5, 'blue'),
