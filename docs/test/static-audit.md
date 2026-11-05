@@ -61,7 +61,7 @@ Date 2026-10-21. Read-only audit. UI complexity was not audited (subjective). Me
 | CoffeeStatusBackgroundService.runOnSchedule | fixedDelay 5 min (`app.inventory.status-scan-ms`) | Sync AVAILABLE/SOLD_OUT with stock; also an async worker triggered by requestRun() from stock/recipe/coffee changes; logs to background_service_logs |
 | CustomerNotificationService.sendQueued | fixedDelay 10 s | Send queued ZNS/SMS messages via eSMS (retry up to MAX_ATTEMPTS) |
 | InventoryReportService.closeDay | cron `0 55 23 * * *` | Daily closing stock snapshot |
-| InvoiceService.issueQueued | fixedDelay 20 s | Issue queued e-invoices via EinvoiceProvider |
+| InvoiceService.issueQueued | fixedDelay 20 s | Retry e-invoices the provider could not issue (each invoice is issued right after it is made) |
 | ShipmentService.simulateTrips | fixedDelay 15 s (only when Ahamove simulated) | Simulated driver accept / deliver |
 
 ## Integrations (all default to `simulated`)
