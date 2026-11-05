@@ -31,7 +31,7 @@ public class VoucherController {
     }
 
     @PutMapping("{id}")
-    public ResponseEntity<VoucherResponse> update(@Valid @PathVariable Long id, @RequestBody VoucherRequest request){
+    public ResponseEntity<VoucherResponse> update(@PathVariable Long id, @Valid @RequestBody VoucherRequest request){
         VoucherResponse response = voucherService.update(id, request);
         return ResponseEntity.ok(response);
     }
@@ -40,10 +40,5 @@ public class VoucherController {
     public ResponseEntity<Void> delete(@PathVariable Long id){
         voucherService.delete(id);
         return ResponseEntity.noContent().build();
-    }
-
-    @PutMapping("{id}")
-    public  ResponseEntity<VoucherResponse> createVoucherDetail(){
-
     }
 }
