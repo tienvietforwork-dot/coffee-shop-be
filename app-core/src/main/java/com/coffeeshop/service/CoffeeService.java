@@ -10,6 +10,7 @@ import com.coffeeshop.exception.ResourceNotFoundException;
 import com.coffeeshop.repository.CategoryRepository;
 import com.coffeeshop.repository.CoffeeRepository;
 import com.coffeeshop.repository.PromotionRepository;
+import com.coffeeshop.repository.RecipeRepository;
 import com.coffeeshop.security.CurrentUser;
 import com.coffeeshop.security.Perm;
 import org.springframework.security.access.AccessDeniedException;
@@ -21,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,13 +35,14 @@ public class CoffeeService {
     private final PromotionRepository promotionRepository;
     private final PricingService pricingService;
     private final ImageService imageService;
-    private final StockService stockService;
-    private final CoffeeStatusBackgroundService coffeeStatusBackgroundService;
+    private final RecipeRepository recipeRepository;
 
     @Transactional(readOnly = true)
     public List<CoffeeResponse> findAll() {
-        StockService.Snapshot stock = stockService.snapshot();
-        return coffeeRepository.findAllByOrderByNameAsc().stream().map(c -> CoffeeResponse.from(c, stock)).toList();
+        Set<Long> withRecipe = recipeRepository.findAllActiveWithMaterials().stream()
+                .map(r -> r.getCoffee().getId()).collect(Collectors.toSet());
+        return coffeeRepository.findAllByOrderByNameAsc().stream()
+                .map(c -> CoffeeResponse.from(c, withRecipe.contains(c.getId()))).toList();
     }
 
     @Transactional(readOnly = true)
@@ -58,7 +61,6 @@ public class CoffeeService {
     public CoffeeResponse update(Long id, CoffeeRequest request) {
         Coffee coffee = get(id);
         apply(coffee, request);
-        coffeeStatusBackgroundService.requestRun();
         return toResponse(coffee);
     }
 
@@ -70,8 +72,6 @@ public class CoffeeService {
             throw new AccessDeniedException("Cần quyền sửa thực đơn để ngừng bán / bán lại món");
         }
         coffee.setStatus(status);
-        coffee.setAutoSoldOut(false); // a status picked by hand is never reopened by stock
-        coffeeStatusBackgroundService.requestRun(); // ...but AVAILABLE with 0 cups is switched back to SOLD_OUT by the scan
         return toResponse(coffee);
     }
 
@@ -88,7 +88,6 @@ public class CoffeeService {
                 .findByStatusInOrderByNameAsc(List.of(CoffeeStatus.AVAILABLE, CoffeeStatus.SOLD_OUT)).stream()
                 .collect(Collectors.groupingBy(c -> c.getCategory().getId()));
         var coffeePromos = pricingService.runningCoffeePromotions(now);
-        StockService.Snapshot stock = stockService.snapshot();
 
         List<MenuResponse.MenuCategory> categories = new ArrayList<>();
         for (var category : categoryRepository.findAllByOrderByDisplayOrderAscNameAsc()) {
@@ -100,15 +99,14 @@ public class CoffeeService {
                         return new MenuResponse.MenuCoffee(c.getId(), c.getName(), c.imageSrc(), c.getDescription(),
                                 c.getPrice(), best == null ? null : best.price(),
                                 best == null ? null : best.item().getPromotion().getName(),
-                                c.getStatus() == CoffeeStatus.AVAILABLE && !Integer.valueOf(0).equals(stock.servings(c.getId())),
-                                stock.servings(c.getId()), stock.perCup(c.getId()));
+                                c.getStatus() == CoffeeStatus.AVAILABLE);
                     }).toList()));
         }
         var orderPromos = promotionRepository.findRunningOrderPromotions(now).stream()
                 .map(p -> new MenuResponse.OrderPromotion(p.getId(), p.getName(), p.getDescription(),
                         p.getDiscountPercent(), p.getMinOrderAmount(), p.getEndDate()))
                 .toList();
-        return new MenuResponse(categories, orderPromos, stock.stock());
+        return new MenuResponse(categories, orderPromos);
     }
 
     Coffee get(Long id) {
@@ -117,7 +115,7 @@ public class CoffeeService {
     }
 
     private CoffeeResponse toResponse(Coffee coffee) {
-        return CoffeeResponse.from(coffee, stockService.snapshot());
+        return CoffeeResponse.from(coffee, coffee.getId() != null && recipeRepository.existsByCoffeeIdAndActiveTrue(coffee.getId()));
     }
 
     private void apply(Coffee coffee, CoffeeRequest request) {
@@ -136,7 +134,6 @@ public class CoffeeService {
         coffee.setDescription(request.description());
         if (request.status() != null && request.status() != coffee.getStatus()) {
             coffee.setStatus(request.status());
-            coffee.setAutoSoldOut(false);
         }
     }
 }

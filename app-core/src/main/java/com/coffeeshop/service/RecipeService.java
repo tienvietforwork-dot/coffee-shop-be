@@ -28,7 +28,6 @@ public class RecipeService {
     private final RecipeRepository recipeRepository;
     private final MaterialRepository materialRepository;
     private final CoffeeService coffeeService;
-    private final CoffeeStatusBackgroundService coffeeStatusBackgroundService;
 
     @Transactional(readOnly = true)
     public List<RecipeResponse> findByCoffee(Long coffeeId) {
@@ -56,7 +55,6 @@ public class RecipeService {
                 .build();
         apply(recipe, request);
         RecipeResponse saved = RecipeResponse.from(recipeRepository.save(recipe));
-        coffeeStatusBackgroundService.requestRun();
         return saved;
     }
 
@@ -72,7 +70,6 @@ public class RecipeService {
         if (Boolean.TRUE.equals(request.activate()) && !recipe.isActive()) {
             return activate(recipeId);
         }
-        coffeeStatusBackgroundService.requestRun();
         return RecipeResponse.from(recipe);
     }
 
@@ -81,7 +78,6 @@ public class RecipeService {
         Recipe recipe = get(recipeId);
         deactivateCurrent(recipe.getCoffee().getId());
         recipe.setActive(true);
-        coffeeStatusBackgroundService.requestRun();
         return RecipeResponse.from(recipe);
     }
 

@@ -58,8 +58,6 @@ public class OrderService {
     private final DiningTableService tableService;
     private final StaffService staffService;
     private final PricingService pricingService;
-    private final InventoryService inventoryService;
-    private final StockService stockService;
     private final BundleCartService bundleCartService;
     private final NotificationService notificationService;
     private final OnlinePaymentService onlinePaymentService;
@@ -155,7 +153,6 @@ public class OrderService {
                 request.customerPhone(), request.customerName(), null, request.delivery(), request.deliveryDistrict(), null,
                 request.paymentMethod(), Boolean.TRUE.equals(request.paidNow()), request.voucherCode(), request.note());
         Order order = place(draft);
-        inventoryService.consumeForOrder(order, staffService.current());
         moveTo(order, OrderStatus.PREPARING, null);
         return publish(order);
     }
@@ -176,7 +173,6 @@ public class OrderService {
         if (!quote.unavailable().isEmpty()) {
             throw new BadRequestException("Món đã hết: " + String.join(", ", quote.unavailable()));
         }
-        stockService.requireStock(d.lines());
         if (quote.voucherMessage() != null) throw new BadRequestException(quote.voucherMessage());
 
         // a logged-in customer orders as themselves; guests are identified by the phone they type
@@ -249,7 +245,6 @@ public class OrderService {
         if (order.getPayments().stream().anyMatch(p -> p.getStatus() == PaymentStatus.PENDING && OnlinePaymentService.isOnline(order, p))) {
             throw new BadRequestException("Khách chưa thanh toán online — chờ VNPAY xác nhận");
         }
-        inventoryService.consumeForOrder(order, staffService.current());
         moveTo(order, OrderStatus.PREPARING, null);
         return publish(order);
     }
@@ -298,7 +293,6 @@ public class OrderService {
     public OrderResponse startPreparing(Long id) {
         Order order = get(id);
         expect(order, OrderStatus.CONFIRMED);
-        inventoryService.consumeForOrder(order, staffService.current());
         moveTo(order, OrderStatus.PREPARING, null);
         return publish(order);
     }

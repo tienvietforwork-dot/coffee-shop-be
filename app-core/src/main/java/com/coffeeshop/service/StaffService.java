@@ -45,13 +45,13 @@ public class StaffService {
         return StaffResponse.from(staff);
     }
 
-    /** Staff referenced by orders / stock history are kept; mark them RESIGNED instead of deleting. */
+    /** Staff referenced by orders / history are kept; mark them RESIGNED instead of deleting. */
     @Transactional
     public void delete(Long id) {
         get(id).setWorkStatus(WorkStatus.RESIGNED);
     }
 
-    /** Employee record of the logged-in account – recorded on orders, stock movements, incidents (null if none). */
+    /** Employee record of the logged-in account – recorded on orders, incidents (null if none). */
     Staff current() {
         Long id = CurrentUser.staffId();
         return id == null ? null : staffRepository.findById(id).orElse(null);

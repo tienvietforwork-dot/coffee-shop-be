@@ -29,7 +29,7 @@ public class PublicController {
         if(customer == null) return jdbc.query("""
             SELECT c.id FROM coffees c LEFT JOIN order_items oi ON oi.coffee_id=c.id AND oi.del_flag=false
             LEFT JOIN orders o ON o.id=oi.order_id AND o.status='COMPLETED' AND o.del_flag=false
-            WHERE c.del_flag=false AND c.status='AVAILABLE' AND c.auto_sold_out=false
+            WHERE c.del_flag=false AND c.status='AVAILABLE'
             GROUP BY c.id ORDER BY COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity ELSE 0 END),0) DESC,c.id LIMIT 8
         """,(r,n)->r.getLong(1));
         // Customer identity is read from verified JWT, not a client-supplied customer id.
@@ -48,7 +48,7 @@ public class PublicController {
             SELECT c.id FROM coffees c
             LEFT JOIN favorites f ON f.category_id=c.category_id
             LEFT JOIN trend t ON t.coffee_id=c.id
-            WHERE c.del_flag=false AND c.status='AVAILABLE' AND c.auto_sold_out=false
+            WHERE c.del_flag=false AND c.status='AVAILABLE'
             ORDER BY COALESCE(f.weight,0)*1000+COALESCE(t.units,0) DESC,c.id LIMIT 8
         """,(r,n)->r.getLong(1),customer);
     }
