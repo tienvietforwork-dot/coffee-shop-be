@@ -4,6 +4,7 @@ import com.coffeeshop.entity.*;
 import com.coffeeshop.entity.enums.*;
 import com.coffeeshop.repository.*;
 import com.coffeeshop.service.CustomerNotificationService;
+import com.coffeeshop.service.InvoiceService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,6 +45,7 @@ class InvoiceNotificationFlowTest {
     @Autowired NotificationTemplateRepository templateRepository;
     @Autowired NotificationMessageRepository messageRepository;
     @Autowired CustomerNotificationService notificationService;
+    @Autowired InvoiceService invoiceService;
 
     Order order;
     Payment payment;
@@ -88,7 +90,7 @@ class InvoiceNotificationFlowTest {
         assertThat(inv.at("/lines/1/amount").decimalValue()).isEqualByComparingTo("-8000");
         assertThat(inv.get("totalAmount").decimalValue()).isEqualByComparingTo("100000");
 
-        call(post("/api/invoices/issue-now"), null);
+        invoiceService.issueQueued(); // job phát hành (bình thường chạy mỗi ~20 s)
         inv = call(get("/api/invoices/" + inv.get("id").asLong()), null);
         assertThat(inv.get("status").asText()).isEqualTo("ISSUED");
         assertThat(inv.get("invoiceNo").asText()).hasSize(8);
@@ -102,7 +104,7 @@ class InvoiceNotificationFlowTest {
         JsonNode repl = call(post("/api/public/orders/" + order.getOrderCode() + "/invoice-request"),
                 Map.of("buyerCompany", "Công ty TNHH ABC", "buyerTaxCode", "0101234567", "buyerAddress", "Hà Nội", "buyerEmail", "kt@abc.vn"));
         assertThat(repl.get("kind").asText()).isEqualTo("REPLACEMENT");
-        call(post("/api/invoices/issue-now"), null);
+        invoiceService.issueQueued(); // job phát hành (bình thường chạy mỗi ~20 s)
         assertThat(call(get("/api/invoices/" + originalId), null).get("status").asText()).isEqualTo("REPLACED");
         assertThat(call(get("/api/invoices/" + repl.get("id").asLong()), null).get("status").asText()).isEqualTo("ISSUED");
 

@@ -469,7 +469,7 @@ uc(27, 'Hóa đơn điện tử')
 await step('Khách online yêu cầu xuất hóa đơn công ty', 'POST', `/public/orders/${oOnline?.orderCode}/invoice-request`,
   { buyerTaxCode: '0316789012', buyerCompany: 'Công ty TNHH Giải pháp Số Thu Hà', buyerAddress: '58 Võ Văn Tần, P. Võ Thị Sáu, Q.3, TP.HCM', buyerName: 'Nguyễn Thị Thu Hà', buyerEmail: 'ketoan@thuha-digital.vn' },
   { token: null, expect: (d) => `${d.status} · ${d.buyerCompany}` })
-await step('Phát hành ngay (job phát hành chạy tay)', 'POST', '/invoices/issue-now', undefined, { expect: (d) => `${d.issued} hóa đơn` })
+await new Promise((r) => setTimeout(r, 25_000)) // chờ job phát hành (chạy mỗi ~20 s)
 const invs = await step('Tìm hóa đơn hôm nay', 'GET', `/invoices?from=${TODAY}&to=${TODAY}`, undefined, { expect: (d) => d.map((i) => `${i.series}-${i.invoiceNo}/${i.kind}/${i.status}/${money(i.totalAmount)}`).join('; ') })
 const invOnline = invs?.find((i) => i.orderCode === oOnline?.orderCode && i.kind === 'ORIGINAL')
 await step('Tìm theo MST', 'GET', `/invoices?from=${TODAY}&to=${TODAY}&keyword=0316789012`, undefined, { expect: (d) => `${d.length} kết quả` })
@@ -477,7 +477,7 @@ await step('Xem chi tiết hóa đơn', 'GET', `/invoices/${invOnline?.id}`, und
 await step('Sai tên công ty → lập hóa đơn thay thế', 'POST', `/invoices/${invOnline?.id}/replace`,
   { buyer: { buyerTaxCode: '0316789012', buyerCompany: 'Công ty TNHH Giải pháp Số Thu Hà Việt Nam', buyerAddress: '58 Võ Văn Tần, P. Võ Thị Sáu, Q.3, TP.HCM' }, reason: 'Sai tên đơn vị' },
   { expect: (d) => `${d.kind} · ${d.status}` })
-await step('Phát hành hóa đơn thay thế', 'POST', '/invoices/issue-now', undefined, { expect: (d) => `${d.issued}` })
+await new Promise((r) => setTimeout(r, 25_000)) // chờ job phát hành hóa đơn thay thế
 await step('Hóa đơn gốc chuyển "Đã bị thay thế", hóa đơn hoàn tiền là "Điều chỉnh"', 'GET', `/invoices?from=${TODAY}&to=${TODAY}`, undefined,
   { expect: (d) => d.map((i) => `${i.orderCode}:${i.kind}/${i.status}`).join('; ') })
 await step('Khách tra cứu hóa đơn của đơn', 'GET', `/public/orders/${oOnline?.orderCode}/invoices`, undefined, { token: null, expect: (d) => d.map((i) => `${i.kind}/${i.status}/${i.invoiceNo}`).join(', ') })
