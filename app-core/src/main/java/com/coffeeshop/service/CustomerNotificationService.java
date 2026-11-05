@@ -167,11 +167,7 @@ public class CustomerNotificationService {
             default -> "Da huy";
         });
         p.put("link", siteUrl + "/order/" + o.getOrderCode());
-        if (o.getShipment() != null && o.getShipment().getDriverName() != null) {
-            p.put("driver", o.getShipment().getDriverName() + " " + (o.getShipment().getDriverPhone() == null ? "" : o.getShipment().getDriverPhone()));
-        } else {
-            p.put("driver", "");
-        }
+        p.put("driver", ""); // quán tự giao: không có tài xế đối tác
         p.put("reason", o.getCancelReason() == null ? "" : o.getCancelReason());
         return p;
     }

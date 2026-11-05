@@ -43,8 +43,6 @@ app:
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
   cors:
     allowed-origin: ${CORS_ALLOWED_ORIGIN:http://localhost:5173}
-  shipping:
-    fee: ${SHIPPING_FEE:15000}
   loyalty:
     vnd-per-point: 10000
   # FE address used in links sent to customers (ZNS / SMS)
@@ -61,14 +59,11 @@ app:
       public-api-base: ${PUBLIC_API_BASE:http://localhost:8080}
       expire-minutes: 15
   delivery:
-    ahamove:
-      mode: ${AHAMOVE_MODE:simulated}
-      base-url: ${AHAMOVE_BASE_URL:https://partner-apistg.ahamove.com/v3}
-      token: ${AHAMOVE_TOKEN:}
-      service-id: ${AHAMOVE_SERVICE:SGN-BIKE}
-      webhook-token: ${AHAMOVE_WEBHOOK_TOKEN:coffeeholic-webhook}
-      shop-address: ${SHOP_ADDRESS:Coffeeholic, Quận 1, TP. Hồ Chí Minh}
-      shop-phone: ${SHOP_PHONE:0900000000}
+    # gợi ý địa chỉ + đo km: auto = Google (GOOGLE_MAPS_API_KEY) → Goong (GOONG_API_KEY) → OpenStreetMap miễn phí
+    distance:
+      mode: ${DISTANCE_MODE:auto}
+      google-api-key: ${GOOGLE_MAPS_API_KEY:}
+      goong-api-key: ${GOONG_API_KEY:}
   einvoice:
     mode: ${EINVOICE_MODE:simulated}
     seller-name: ${SELLER_NAME:HỘ KINH DOANH COFFEEHOLIC}

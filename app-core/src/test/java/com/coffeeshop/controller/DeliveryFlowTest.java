@@ -2,6 +2,7 @@ package com.coffeeshop.controller;
 
 import com.coffeeshop.entity.*;
 import com.coffeeshop.entity.enums.*;
+import com.coffeeshop.integration.distance.DistanceGateway;
 import com.coffeeshop.repository.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
@@ -23,16 +25,23 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Phí ship theo khu vực (miễn phí từ, đơn tối thiểu, ngoài vùng); đặt xe Ahamove → webhook → đơn hoàn tất; hủy chuyến. */
+/** Phí ship theo km (bậc phí, miễn phí từ, đơn tối thiểu, ngoài phạm vi); quán tự giao: bắt đầu giao → đã giao. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @WithMockUser(authorities = {"delivery-zones", "pos", "shipments", "orders"})
 class DeliveryFlowTest {
+
+    static final DistanceGateway.Point SHOP = new DistanceGateway.Point(10.0, 106.0);
+    static final DistanceGateway.Point NEAR = new DistanceGateway.Point(10.01, 106.0);
+    static final DistanceGateway.Point MID = new DistanceGateway.Point(10.04, 106.0);
+    static final DistanceGateway.Point FAR = new DistanceGateway.Point(10.2, 106.0);
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
@@ -42,17 +51,35 @@ class DeliveryFlowTest {
     @Autowired CustomerAddressRepository addressRepository;
     @Autowired OrderRepository orderRepository;
     @Autowired ShipmentRepository shipmentRepository;
-    @Autowired DeliveryZoneRepository zoneRepository;
+    @Autowired DeliveryTimeSlotRepository slotRepository;
+    @Autowired DeliveryFeePlanRepository planRepository;
+    @MockBean DistanceGateway distance;
 
     Coffee latte;
 
     @BeforeEach
     void setUp() throws Exception {
-        zoneRepository.deleteAll();
+        when(distance.provider()).thenReturn("test");
+        when(distance.geocode(eq("Quán"), any())).thenReturn(SHOP);
+        when(distance.geocode(eq("Gần"), any())).thenReturn(NEAR);
+        when(distance.geocode(eq("Vừa"), any())).thenReturn(MID);
+        when(distance.geocode(eq("Xa"), any())).thenReturn(FAR);
+        when(distance.route(any(), eq(NEAR))).thenReturn(new DistanceGateway.Route(2.4, 8));
+        when(distance.route(any(), eq(MID))).thenReturn(new DistanceGateway.Route(4.2, 15));
+        when(distance.route(any(), eq(FAR))).thenReturn(new DistanceGateway.Route(22, 60));
         Category c = categoryRepository.save(Category.builder().name("Cat " + UUID.randomUUID()).build());
         latte = coffeeRepository.save(Coffee.builder().category(c).name("Latte " + UUID.randomUUID()).price(new BigDecimal("40000")).build());
-        mvc.perform(body(post("/api/delivery-zones"), Map.of("name", "Nội thành gần", "districts", List.of("Quận 1", "Quận 3"),
-                "fee", 15000, "freeShipThreshold", 150000, "minOrderAmount", 50000, "estimatedMinutes", 25))).andExpect(status().isCreated());
+        slotRepository.deleteAll();
+        planRepository.deleteAll();
+        call(body(put("/api/delivery-settings"), Map.of("shopAddress", "Quán", "freeShipThreshold", 150000,
+                "minOrderAmount", 50000, "openTime", "06:00", "closeTime", "22:00")));
+        // the first option is the default one
+        JsonNode def = call(body(post("/api/delivery-fee-plans"), plan("Mặc định", 15000, 25000)));
+        assertThat(def.get("isDefault").asBoolean()).isTrue();
+    }
+
+    private Map<String, Object> plan(String name, int upTo3, int upTo7) {
+        return Map.of("name", name, "tiers", List.of(Map.of("fromKm", 0, "toKm", 3, "fee", upTo3), Map.of("fromKm", 3, "toKm", 7, "fee", upTo7)));
     }
 
     private MockHttpServletRequestBuilder body(MockHttpServletRequestBuilder b, Object o) throws Exception {
@@ -65,23 +92,76 @@ class DeliveryFlowTest {
         return json.readTree(res.getContentAsString(StandardCharsets.UTF_8));
     }
 
-    private Map<String, Object> quote(int cups, String district) {
+    private Map<String, Object> quote(int cups, String address) {
         return Map.of("items", List.of(Map.of("coffeeId", latte.getId(), "quantity", cups)), "orderType", "DELIVERY",
-                "deliveryDistrict", district);
+                "deliveryAddress", address);
     }
 
     @Test
-    void shippingFeeFollowsTheZone() throws Exception {
-        assertThat(call(body(post("/api/orders/quote"), quote(2, "quận 1"))).get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
+    void shippingFeeFollowsTheDistanceTier() throws Exception {
+        JsonNode near = call(body(post("/api/orders/quote"), quote(2, "Gần")));
+        assertThat(near.get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
+        assertThat(near.get("deliveryDistanceKm").decimalValue()).isEqualByComparingTo("2.4");
+        assertThat(near.get("deliveryTier").asText()).isEqualTo("0–3 km");
+        assertThat(call(body(post("/api/orders/quote"), quote(2, "Vừa"))).get("shippingFee").decimalValue()).isEqualByComparingTo("25000");
         // 4 × 40.000 = 160.000 ≥ 150.000: miễn phí ship
-        assertThat(call(body(post("/api/orders/quote"), quote(4, "Quận 3"))).get("shippingFee").decimalValue()).isEqualByComparingTo("0");
-        // below the zone's minimum, and outside every zone
-        mvc.perform(body(post("/api/orders/quote"), quote(1, "Quận 1"))).andExpect(status().isBadRequest());
-        mvc.perform(body(post("/api/orders/quote"), quote(2, "Quận 9"))).andExpect(status().isBadRequest());
-        // a district belongs to one zone only
-        mvc.perform(body(post("/api/delivery-zones"), Map.of("name", "Khác", "districts", List.of("quan 1"), "fee", 20000)))
-                .andExpect(status().isBadRequest());
-        assertThat(call(get("/api/public/delivery-zones")).get(0).get("districts").size()).isEqualTo(2);
+        assertThat(call(body(post("/api/orders/quote"), quote(4, "Vừa"))).get("shippingFee").decimalValue()).isEqualByComparingTo("0");
+        // below the minimum, and beyond the last tier
+        mvc.perform(body(post("/api/orders/quote"), quote(1, "Gần"))).andExpect(status().isBadRequest());
+        mvc.perform(body(post("/api/orders/quote"), quote(2, "Xa"))).andExpect(status().isBadRequest());
+        // overlapping km ranges are refused
+        mvc.perform(body(post("/api/delivery-fee-plans"), Map.of("name", "X", "tiers",
+                List.of(Map.of("fromKm", 0, "toKm", 5, "fee", 1), Map.of("fromKm", 3, "toKm", 7, "fee", 2))))).andExpect(status().isBadRequest());
+    }
+
+    private Map<String, Object> quoteAt(int cups, String address, String time) {
+        return Map.of("items", List.of(Map.of("coffeeId", latte.getId(), "quantity", cups)), "orderType", "DELIVERY",
+                "deliveryAddress", address, "deliveryTime", "2030-01-07T" + time + ":00"); // a Monday
+    }
+
+    private Map<String, Object> slot(String from, String to, long planId, List<Integer> days) {
+        return Map.of("startTime", from, "endTime", to, "planId", planId, "days", days);
+    }
+
+    @Test
+    void eachTimeSlotUsesItsOptionAndTheDefaultCoversTheRest() throws Exception {
+        long peak = call(body(post("/api/delivery-fee-plans"), plan("Cao điểm", 20000, 30000))).get("id").asLong();
+        long early = call(body(post("/api/delivery-fee-plans"), Map.of("name", "Sáng sớm",
+                "tiers", List.of(Map.of("fromKm", 0, "toKm", 3, "fee", 18000))))).get("id").asLong();
+        call(body(post("/api/delivery-time-slots"), slot("17:00", "20:00", peak, List.of())));
+        call(body(post("/api/delivery-time-slots"), slot("06:00", "08:00", early, List.of(1, 2, 3, 4, 5))));
+        // an option is reusable in several slots
+        call(body(post("/api/delivery-time-slots"), slot("11:00", "13:00", peak, List.of(6, 7))));
+
+        // outside every slot: option mặc định
+        JsonNode noon = call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00")));
+        assertThat(noon.get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
+        assertThat(noon.has("deliveryOption")).isFalse();
+        JsonNode evening = call(body(post("/api/orders/quote"), quoteAt(2, "Vừa", "18:30")));
+        assertThat(evening.get("shippingFee").decimalValue()).isEqualByComparingTo("30000");
+        assertThat(evening.get("deliveryOption").asText()).isEqualTo("Cao điểm");
+        // 6–8h on a Monday: Sáng sớm; its only range stops at 3 km, so 4.2 km is out of range then
+        assertThat(call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "07:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("18000");
+        mvc.perform(body(post("/api/orders/quote"), quoteAt(2, "Vừa", "07:00"))).andExpect(status().isBadRequest());
+
+        // overlapping slots are refused; an option in use, or the default one, cannot be deleted
+        mvc.perform(body(post("/api/delivery-time-slots"), slot("19:00", "21:00", early, List.of()))).andExpect(status().isBadRequest());
+        mvc.perform(delete("/api/delivery-fee-plans/" + peak)).andExpect(status().isBadRequest());
+        long def = planRepository.findFirstByDefaultPlanTrue().orElseThrow().getId();
+        mvc.perform(delete("/api/delivery-fee-plans/" + def)).andExpect(status().isBadRequest());
+        assertThat(call(get("/api/delivery-time-slots")).size()).isEqualTo(3);
+        assertThat(call(get("/api/public/delivery-settings")).get("openTime").asText()).startsWith("06:00");
+    }
+
+    @Test
+    void theCounterOrderIsPricedByTheAddressItGoesTo() throws Exception {
+        JsonNode order = call(body(post("/api/orders"), Map.of("items", List.of(Map.of("coffeeId", latte.getId(), "quantity", 2)),
+                "orderType", "DELIVERY", "customerPhone", "0912345678", "paymentMethod", "CASH",
+                "delivery", Map.of("recipientName", "Lan", "recipientPhone", "0912345678", "address", "Vừa"))));
+        Shipment s = shipmentRepository.findAll().stream().filter(x -> x.getOrder().getId().equals(order.get("id").asLong())).findFirst().orElseThrow();
+        assertThat(s.getShippingFee()).isEqualByComparingTo("25000");
+        assertThat(s.getDistanceKm()).isEqualByComparingTo("4.2");
+        assertThat(s.getZoneName()).isEqualTo("3–7 km");
     }
 
     private Shipment deliveryOrder(OrderStatus status) {
@@ -91,66 +171,32 @@ class DeliveryFlowTest {
         Order o = orderRepository.save(Order.builder().orderCode("CH" + UUID.randomUUID().toString().substring(0, 8).toUpperCase())
                 .customer(cus).orderType(OrderType.DELIVERY).channel(OrderChannel.ONLINE).status(status)
                 .subtotal(new BigDecimal("80000")).totalAmount(new BigDecimal("95000")).build());
-        Shipment s = shipmentRepository.save(Shipment.builder().order(o).address(addr).shippingFee(new BigDecimal("15000")).district("Quận 1").build());
+        Shipment s = shipmentRepository.save(Shipment.builder().order(o).address(addr).shippingFee(new BigDecimal("15000")).build());
         o.setShipment(s);
+        orderRepository.save(o);
         return s;
     }
 
-    private void webhook(String orderId, String status, String token) throws Exception {
-        mvc.perform(body(post("/api/public/delivery/ahamove/webhook").param("token", token),
-                Map.of("_id", orderId, "status", status, "supplier_name", "Anh Tú", "supplier_id", "0909000111",
-                        "path", List.of(Map.of("status", "COMPLETED"), Map.of("status", "COMPLETED")))));
-    }
-
     @Test
-    void bookedWithAhamoveAndDrivenToCompletionByTheWebhook() throws Exception {
-        Shipment s = deliveryOrder(OrderStatus.PREPARING);
-        JsonNode estimate = call(get("/api/shipments/" + s.getId() + "/ahamove/estimate"));
-        assertThat(estimate.get("fee").decimalValue()).isPositive();
+    void theShopDeliversTheReadyOrderItself() throws Exception {
+        Shipment early = deliveryOrder(OrderStatus.PREPARING);
+        mvc.perform(body(patch("/api/shipments/" + early.getId()), Map.of("status", "DELIVERING"))).andExpect(status().isBadRequest());
 
-        JsonNode booked = call(post("/api/shipments/" + s.getId() + "/ahamove/book"));
-        assertThat(booked.get("status").asText()).isEqualTo("BOOKED");
-        assertThat(booked.get("partner").asText()).isEqualTo("AHAMOVE");
-        String partnerId = booked.get("partnerOrderId").asText();
-
-        // wrong token: refused
-        mvc.perform(body(post("/api/public/delivery/ahamove/webhook").param("token", "x"), Map.of("_id", partnerId, "status", "ACCEPTED")))
-                .andExpect(status().isUnauthorized());
-        webhook(partnerId, "ACCEPTED", "coffeeholic-webhook");
-        assertThat(shipmentRepository.findById(s.getId()).orElseThrow().getStatus()).isEqualTo(ShipmentStatus.DRIVER_ACCEPTED);
-        assertThat(shipmentRepository.findById(s.getId()).orElseThrow().getDriverName()).isEqualTo("Anh Tú");
-
-        Order o = orderRepository.findById(s.getOrder().getId()).orElseThrow();
-        o.setStatus(OrderStatus.READY);
-        orderRepository.saveAndFlush(o);
-        webhook(partnerId, "IN PROCESS", "coffeeholic-webhook");
-        assertThat(orderRepository.findById(o.getId()).orElseThrow().getStatus()).isEqualTo(OrderStatus.DELIVERING);
-        webhook(partnerId, "COMPLETED", "coffeeholic-webhook");
-        assertThat(shipmentRepository.findById(s.getId()).orElseThrow().getStatus()).isEqualTo(ShipmentStatus.DELIVERED);
-        assertThat(orderRepository.findById(o.getId()).orElseThrow().getStatus()).isEqualTo(OrderStatus.COMPLETED);
-        assertThat(call(get("/api/shipments/" + s.getId() + "/events")).size()).isGreaterThanOrEqualTo(4);
-    }
-
-    @Test
-    void aBookingIsCancelledBeforePickUpAndCanBeBookedAgain() throws Exception {
-        Shipment s = deliveryOrder(OrderStatus.PREPARING);
-        call(post("/api/shipments/" + s.getId() + "/ahamove/book"));
-        JsonNode cancelled = call(body(post("/api/shipments/" + s.getId() + "/ahamove/cancel"), Map.of("reason", "Khách đổi giờ")));
-        assertThat(cancelled.get("status").asText()).isEqualTo("PENDING");
-        assertThat(call(post("/api/shipments/" + s.getId() + "/ahamove/book")).get("status").asText()).isEqualTo("BOOKED");
-        // manual updates are refused while Ahamove drives the trip
-        mvc.perform(body(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/shipments/" + s.getId()),
-                Map.of("status", "DELIVERED"))).andExpect(status().isBadRequest());
-    }
-
-    @Test
-    void anOutsideDriverTakesTheReadyOrderAndDeliversIt() throws Exception {
         Shipment s = deliveryOrder(OrderStatus.READY);
-        var patch = org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/shipments/" + s.getId());
-        call(body(patch, Map.of("status", "DELIVERING", "carrier", "GrabExpress", "trackingCode", "GRAB-1")));
+        call(body(patch("/api/shipments/" + s.getId()), Map.of("status", "DELIVERING")));
         assertThat(orderRepository.findById(s.getOrder().getId()).orElseThrow().getStatus()).isEqualTo(OrderStatus.DELIVERING);
-        call(body(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/shipments/" + s.getId()),
-                Map.of("status", "DELIVERED")));
+        call(body(patch("/api/shipments/" + s.getId()), Map.of("status", "DELIVERED")));
         assertThat(orderRepository.findById(s.getOrder().getId()).orElseThrow().getStatus()).isEqualTo(OrderStatus.COMPLETED);
+        assertThat(shipmentRepository.findById(s.getId()).orElseThrow().getStatus()).isEqualTo(ShipmentStatus.DELIVERED);
+        assertThat(call(get("/api/shipments/" + s.getId() + "/events")).size()).isEqualTo(2);
+    }
+
+    @Test
+    void aFailedDeliveryNeedsAReason() throws Exception {
+        Shipment s = deliveryOrder(OrderStatus.READY);
+        call(body(patch("/api/shipments/" + s.getId()), Map.of("status", "DELIVERING")));
+        mvc.perform(body(patch("/api/shipments/" + s.getId()), Map.of("status", "FAILED"))).andExpect(status().isBadRequest());
+        call(body(patch("/api/shipments/" + s.getId()), Map.of("status", "FAILED", "note", "Khách không nghe máy")));
+        assertThat(shipmentRepository.findById(s.getId()).orElseThrow().getStatus()).isEqualTo(ShipmentStatus.FAILED);
     }
 }

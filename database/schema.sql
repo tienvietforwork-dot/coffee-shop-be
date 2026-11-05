@@ -974,3 +974,52 @@ CREATE TABLE IF NOT EXISTS notification_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_notification_messages_created ON notification_messages (created_at);
 
+
+-- Phí giao hàng theo km (quán tự giao) — xem delivery_fee_by_distance.sql
+CREATE TABLE IF NOT EXISTS delivery_settings (
+    id                  BIGINT PRIMARY KEY CHECK (id = 1),     -- 1 dòng duy nhất
+    enabled             BOOLEAN       NOT NULL DEFAULT TRUE,   -- false = tạm ngưng nhận đơn giao
+    shop_address        VARCHAR(255)  NOT NULL,                -- điểm xuất phát để đo km
+    shop_lat            DOUBLE PRECISION,
+    shop_lng            DOUBLE PRECISION,
+    free_ship_threshold NUMERIC(12,2) CHECK (free_ship_threshold >= 0), -- miễn phí ship từ
+    min_order_amount    NUMERIC(12,2) CHECK (min_order_amount >= 0),    -- đơn tối thiểu để giao
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+
+-- bậc phí: quãng đường trong (from_km, to_km] → phí; xa hơn bậc cuối = ngoài phạm vi giao
+CREATE TABLE IF NOT EXISTS delivery_fee_tiers (
+    id      BIGSERIAL PRIMARY KEY,
+    from_km NUMERIC(6,2)  NOT NULL CHECK (from_km >= 0),
+    to_km   NUMERIC(6,2)  NOT NULL,
+    fee     NUMERIC(12,2) NOT NULL CHECK (fee >= 0),
+    CHECK (to_km > from_km)
+);
+
+-- Giờ mở cửa — xem delivery_time_slots.sql
+ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS open_time  VARCHAR(5);   -- 'HH:mm' giờ VN; NULL = mở cả ngày
+ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS close_time VARCHAR(5);   -- < open_time = đóng sau nửa đêm
+
+-- Option giá + khung giờ — xem delivery_fee_options.sql
+CREATE TABLE IF NOT EXISTS delivery_fee_plans (
+    id         BIGSERIAL PRIMARY KEY,
+    name       VARCHAR(60) NOT NULL,
+    is_default BOOLEAN     NOT NULL DEFAULT FALSE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_delivery_fee_plans_default ON delivery_fee_plans (is_default) WHERE is_default;
+ALTER TABLE delivery_fee_tiers ADD COLUMN IF NOT EXISTS plan_id BIGINT REFERENCES delivery_fee_plans (id);
+CREATE INDEX IF NOT EXISTS idx_delivery_fee_tiers_plan ON delivery_fee_tiers (plan_id);
+
+CREATE TABLE IF NOT EXISTS delivery_time_slots (
+    id         BIGSERIAL PRIMARY KEY,
+    start_time VARCHAR(5)  NOT NULL,                         -- 'HH:mm' giờ VN
+    end_time   VARCHAR(5)  NOT NULL,                         -- < start_time = qua nửa đêm
+    days       VARCHAR(20),                                  -- 1 (thứ 2) … 7 (CN), dấu phẩy; NULL = mọi ngày
+    plan_id    BIGINT      NOT NULL REFERENCES delivery_fee_plans (id),
+    CHECK (start_time <> end_time)
+);
