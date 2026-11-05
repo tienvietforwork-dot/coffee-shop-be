@@ -4,6 +4,7 @@ import com.coffeeshop.entity.*;
 import com.coffeeshop.entity.enums.*;
 import com.coffeeshop.repository.*;
 import com.coffeeshop.service.CustomerNotificationService;
+import com.coffeeshop.service.InvoiceService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,6 +45,7 @@ class InvoiceNotificationFlowTest {
     @Autowired NotificationTemplateRepository templateRepository;
     @Autowired NotificationMessageRepository messageRepository;
     @Autowired CustomerNotificationService notificationService;
+    @Autowired InvoiceService invoiceService;
 
     Order order;
     Payment payment;
@@ -81,16 +83,14 @@ class InvoiceNotificationFlowTest {
         JsonNode invoices = call(get("/api/public/orders/" + order.getOrderCode() + "/invoices"), null);
         assertThat(invoices.size()).isEqualTo(1);
         JsonNode inv = invoices.get(0);
-        assertThat(inv.get("status").asText()).isEqualTo("PENDING");
+        // issued as soon as the order is completed: the number is there to print for the customer, no job needed
+        assertThat(inv.get("status").asText()).isEqualTo("ISSUED");
         assertThat(inv.get("series").asText()).startsWith("2C26M"); // hóa đơn bán hàng từ máy tính tiền
         // each drink on its own line, then the discount
         assertThat(inv.at("/lines/0/name").asText()).contains("Bạc xỉu");
         assertThat(inv.at("/lines/1/amount").decimalValue()).isEqualByComparingTo("-8000");
         assertThat(inv.get("totalAmount").decimalValue()).isEqualByComparingTo("100000");
-
-        call(post("/api/invoices/issue-now"), null);
-        inv = call(get("/api/invoices/" + inv.get("id").asLong()), null);
-        assertThat(inv.get("status").asText()).isEqualTo("ISSUED");
+        assertThat(invoiceService.issueQueued()).isZero(); // nothing left for the retry job
         assertThat(inv.get("invoiceNo").asText()).hasSize(8);
         assertThat(inv.get("taxAuthorityCode").asText()).isNotBlank();
         long originalId = inv.get("id").asLong();
@@ -102,7 +102,6 @@ class InvoiceNotificationFlowTest {
         JsonNode repl = call(post("/api/public/orders/" + order.getOrderCode() + "/invoice-request"),
                 Map.of("buyerCompany", "Công ty TNHH ABC", "buyerTaxCode", "0101234567", "buyerAddress", "Hà Nội", "buyerEmail", "kt@abc.vn"));
         assertThat(repl.get("kind").asText()).isEqualTo("REPLACEMENT");
-        call(post("/api/invoices/issue-now"), null);
         assertThat(call(get("/api/invoices/" + originalId), null).get("status").asText()).isEqualTo("REPLACED");
         assertThat(call(get("/api/invoices/" + repl.get("id").asLong()), null).get("status").asText()).isEqualTo("ISSUED");
 
@@ -112,6 +111,7 @@ class InvoiceNotificationFlowTest {
         JsonNode adj = all.get(all.size() - 1);
         assertThat(adj.get("kind").asText()).isEqualTo("ADJUSTMENT");
         assertThat(adj.get("totalAmount").decimalValue()).isEqualByComparingTo("-20000");
+        assertThat(adj.get("status").asText()).isEqualTo("ISSUED");
 
         String today = LocalDate.now().toString();
         assertThat(call(get("/api/invoices").param("from", today).param("to", today).param("keyword", order.getOrderCode()), null).size()).isEqualTo(3);

@@ -18,18 +18,25 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Hóa đơn điện tử khởi tạo từ máy tính tiền: lập cho từng đơn khi đơn hoàn tất (đã thu tiền) — khách không cần yêu cầu;
- * thông tin người mua chỉ ghi khi khách đưa (tên công ty, MST…). The job sends the queue to the provider (retries, then
- * FAILED for a person to look at). After issuing: wrong buyer details → hóa đơn thay thế; money returned on a completed
+ * thông tin người mua chỉ ghi khi khách đưa (tên công ty, MST…). Each invoice is issued as soon as it is made, so it has
+ * its number in time to print for the customer; the job retries the ones the provider refused (then FAILED for a person
+ * to look at). After issuing: wrong buyer details → hóa đơn thay thế; money returned on a completed
  * order → hóa đơn điều chỉnh giảm. Never cancelled or deleted (NĐ 70/2025 → NĐ 254/2026).
  */
 @Slf4j
@@ -40,6 +47,7 @@ public class InvoiceService {
     private final InvoiceRepository invoiceRepository;
     private final OrderRepository orderRepository;
     private final EinvoiceProvider provider;
+    private final PlatformTransactionManager transactionManager;
 
     public record Buyer(String buyerName, String buyerCompany, String buyerTaxCode, String buyerAddress, String buyerEmail,
                         String buyerPhone, String buyerIdNumber) {
@@ -76,6 +84,7 @@ public class InvoiceService {
         addOrderLines(inv, order);
         totals(inv, order.getTotalAmount().subtract(refunded(order)));
         invoiceRepository.save(inv);
+        issueAfterCommit(inv.getId());
     }
 
     /** Thông tin xuất hóa đơn (công ty / cá nhân): on the pending invoice, or a hóa đơn thay thế once issued. */
@@ -95,6 +104,7 @@ public class InvoiceService {
             applyBuyer(current, buyer);
             current.setStatus("PENDING");
             current.setAttempts(0);
+            issueAfterCommit(current.getId());
             return response(current);
         }
         return response(replace(current, buyer, "Bổ sung / sửa thông tin người mua"));
@@ -126,6 +136,7 @@ public class InvoiceService {
                 .unit("Lần").quantity(BigDecimal.ONE).unitPrice(amount.negate()).amount(amount.negate()).build());
         totals(adj, amount.negate());
         invoiceRepository.save(adj);
+        issueAfterCommit(adj.getId());
     }
 
     /** FAILED → back on the queue. */
@@ -136,38 +147,83 @@ public class InvoiceService {
         inv.setStatus("PENDING");
         inv.setAttempts(0);
         inv.setLastError(null);
+        issueAfterCommit(inv.getId());
         return response(inv);
     }
 
-    // ---- job: phát hành ------------------------------------------------------------
+    // ---- phát hành ------------------------------------------------------------------
+    // Hóa đơn từ máy tính tiền phải có số ngay khi thanh toán xong để in cho khách: every invoice that goes on the queue
+    // is issued right after its transaction commits. The job only picks up what that could not issue (provider down…).
 
+    /** one invoice at a time: the number is "last in the series + 1", so issuing must not run twice at once */
+    private static final ReentrantLock ISSUING = new ReentrantLock();
+
+    /** Issue {@code invoiceId} once the current transaction has committed (straight away when there is none). */
+    private void issueAfterCommit(Long invoiceId) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    issue(invoiceId);
+                }
+            });
+        } else {
+            issue(invoiceId);
+        }
+    }
+
+    /** Retries what is still waiting (normally nothing: invoices are issued as soon as they are made). */
     @Scheduled(fixedDelayString = "${app.einvoice.issue-ms:20000}", initialDelay = 25_000)
-    @Transactional
     public int issueQueued() {
         int issued = 0;
         for (Invoice inv : invoiceRepository.findQueued(provider.props().getMaxAttempts())) {
-            try {
-                Integer max = invoiceRepository.maxNumber(inv.getSeries());
-                EinvoiceProvider.Issued r = provider.issue(inv, (max == null ? 0 : max) + 1);
-                inv.setInvoiceNo(r.invoiceNo());
-                inv.setTaxAuthorityCode(r.taxAuthorityCode());
-                inv.setLookupCode(r.lookupCode());
-                inv.setLookupUrl(provider.props().getLookupUrl());
-                inv.setProviderInvoiceId(r.providerId());
-                inv.setStatus("ISSUED");
-                inv.setIssuedAt(LocalDateTime.now());
-                inv.setLastError(null);
-                if ("REPLACEMENT".equals(inv.getKind()) && inv.getRelated() != null) inv.getRelated().setStatus("REPLACED");
-                invoiceRepository.flush();
-                issued++;
-            } catch (RuntimeException e) {
-                inv.setAttempts(inv.getAttempts() + 1);
-                inv.setLastError(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage().substring(0, Math.min(500, e.getMessage().length())));
-                if (inv.getAttempts() >= provider.props().getMaxAttempts()) inv.setStatus("FAILED");
-                log.warn("Phát hành hóa đơn đơn {} lỗi (lần {}): {}", inv.getOrder().getOrderCode(), inv.getAttempts(), e.getMessage());
-            }
+            if (issue(inv.getId())) issued++;
         }
         return issued;
+    }
+
+    /** Sends one PENDING invoice to the provider in its own transaction; false when it is not PENDING or failed. */
+    private boolean issue(Long invoiceId) {
+        ISSUING.lock();
+        try {
+            Boolean ok = requiresNew().execute(s -> {
+                Invoice inv = invoiceRepository.findById(invoiceId).orElse(null);
+                if (inv == null || !"PENDING".equals(inv.getStatus())) return false;
+                try {
+                    Integer max = invoiceRepository.maxNumber(inv.getSeries());
+                    EinvoiceProvider.Issued r = provider.issue(inv, (max == null ? 0 : max) + 1);
+                    inv.setInvoiceNo(r.invoiceNo());
+                    inv.setTaxAuthorityCode(r.taxAuthorityCode());
+                    inv.setLookupCode(r.lookupCode());
+                    inv.setLookupUrl(provider.props().getLookupUrl());
+                    inv.setProviderInvoiceId(r.providerId());
+                    inv.setStatus("ISSUED");
+                    inv.setIssuedAt(LocalDateTime.now());
+                    inv.setLastError(null);
+                    if ("REPLACEMENT".equals(inv.getKind()) && inv.getRelated() != null) inv.getRelated().setStatus("REPLACED");
+                    return true;
+                } catch (RuntimeException e) {
+                    inv.setAttempts(inv.getAttempts() + 1);
+                    inv.setLastError(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage().substring(0, Math.min(500, e.getMessage().length())));
+                    if (inv.getAttempts() >= provider.props().getMaxAttempts()) inv.setStatus("FAILED");
+                    log.warn("Phát hành hóa đơn đơn {} lỗi (lần {}): {}", inv.getOrder().getOrderCode(), inv.getAttempts(), e.getMessage());
+                    return false;
+                }
+            });
+            return Boolean.TRUE.equals(ok);
+        } catch (RuntimeException e) {
+            // never let issuing break the caller (the order is already completed); the job tries again
+            log.warn("Phát hành hóa đơn {} lỗi: {}", invoiceId, e.getMessage());
+            return false;
+        } finally {
+            ISSUING.unlock();
+        }
+    }
+
+    private TransactionTemplate requiresNew() {
+        TransactionTemplate t = new TransactionTemplate(transactionManager);
+        t.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        return t;
     }
 
     // ---- helpers -------------------------------------------------------------------
@@ -187,7 +243,9 @@ public class InvoiceService {
                     .quantity(l.getQuantity()).unitPrice(l.getUnitPrice()).amount(l.getAmount()).build());
         }
         totals(inv, original.getTotalAmount());
-        return invoiceRepository.save(inv);
+        Invoice saved = invoiceRepository.save(inv);
+        issueAfterCommit(saved.getId());
+        return saved;
     }
 
     private Invoice base(Order order, String kind, Invoice related, String reason) {

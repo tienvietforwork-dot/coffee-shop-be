@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 
 /** Hóa đơn điện tử: tra cứu, thông tin người mua (khách tự điền), thay thế, gửi lại phát hành lỗi. */
 @RestController
@@ -68,12 +67,5 @@ public class InvoiceController {
     @PreAuthorize(Perm.CAN_INVOICES)
     public InvoiceResponse retry(@PathVariable Long id) {
         return service.retry(id);
-    }
-
-    /** Phát hành ngay những hóa đơn đang chờ (normally the job does it every few seconds). */
-    @PostMapping("/api/invoices/issue-now")
-    @PreAuthorize(Perm.CAN_INVOICES)
-    public Map<String, Integer> issueNow() {
-        return Map.of("issued", service.issueQueued());
     }
 }

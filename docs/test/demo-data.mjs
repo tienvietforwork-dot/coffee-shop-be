@@ -386,7 +386,6 @@ for (let d = day0; d >= 0; d--) {
       { buyerTaxCode: '0312345678', buyerCompany: 'Công ty CP Truyền thông Sao Việt', buyerAddress: '12 Lê Thánh Tôn, P. Bến Nghé, Q.1, TP.HCM', buyerName: o.name, buyerEmail: 'invoice@saoviet.vn' },
       { buyerName: o.name, buyerIdNumber: '079' + between(100000000, 999999999), buyerEmail: 'khachle' + between(10, 99) + '@gmail.com' }]), null)
   }
-  await tryCall('POST', '/invoices/issue-now')
 
   // kho: hủy hàng, kiểm kê
   if (d % 4 === 2) {
