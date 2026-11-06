@@ -4,6 +4,7 @@ import com.coffeeshop.entity.DeliveryFeePlan;
 import com.coffeeshop.entity.DeliveryFeeTier;
 import com.coffeeshop.entity.DeliverySetting;
 import com.coffeeshop.entity.DeliveryTimeSlot;
+import com.coffeeshop.entity.DeliveryWeatherTier;
 import com.coffeeshop.exception.BadRequestException;
 import com.coffeeshop.exception.ResourceNotFoundException;
 import com.coffeeshop.integration.distance.DistanceGateway;
@@ -41,6 +42,8 @@ public class DeliveryFeeService {
     private final DeliveryFeePlanRepository planRepository;
     private final DeliveryTimeSlotRepository slotRepository;
     private final DistanceGateway distance;
+    private final com.coffeeshop.integration.weather.WeatherGateway weather;
+    private final com.coffeeshop.repository.DeliveryWeatherTierRepository weatherTierRepository;
 
     public record Settings(String shopAddress, Double shopLat, Double shopLng, LocalTime openTime, LocalTime closeTime,
                            BigDecimal freeShipThreshold, BigDecimal minOrderAmount, String provider) {
@@ -63,12 +66,33 @@ public class DeliveryFeeService {
         }
     }
 
-    /** a delivery to one address at one time: how far, which km range of which option, and the fee from what is left to pay */
-    public record Rule(BigDecimal distanceKm, Integer minutes, String tierLabel, String planName, Function<BigDecimal, BigDecimal> fee) {
-        /** "3–5 km" (option mặc định) or "3–5 km · Cao điểm" */
+    /**
+     * a delivery to one address at one time: how far, which km range of which option, the bad-weather surcharge
+     * ({@code weather} = "Mưa 3,2 mm/h" when charged) and the fee from what is left to pay
+     */
+    public record Rule(BigDecimal distanceKm, Integer minutes, String tierLabel, String planName, String weather,
+                       BigDecimal weatherSurcharge, Function<BigDecimal, BigDecimal> fee) {
+        /** "3–5 km", "3–5 km · Cao điểm", "3–5 km · Cao điểm · Mưa 3,2 mm/h" */
         public String label() {
-            return planName == null ? tierLabel : tierLabel + " · " + planName;
+            return String.join(" · ", java.util.stream.Stream.of(tierLabel, planName, weather).filter(x -> x != null).toList());
         }
+    }
+
+    /** bậc phụ phí: mưa từ {@code minRainMm} mm/h → +{@code surcharge} */
+    public record RainTier(BigDecimal minRainMm, BigDecimal surcharge) {
+    }
+
+    /**
+     * thời tiết xấu: bật / tắt, bậc phụ phí theo lượng mưa, phụ phí khi giông, ngưng giao khi mưa từ … mm/h / khi giông.
+     * {@code outlook}: thời tiết tại quán bây giờ + vài giờ tới (chỉ đọc).
+     */
+    public record WeatherSettings(boolean enabled, List<RainTier> rainTiers, BigDecimal stormSurcharge, BigDecimal stopRainMm,
+                                  boolean stopStorm, List<WeatherHour> outlook) {
+    }
+
+    /** thời tiết một giờ (đầu danh sách = hiện tại) và quán sẽ làm gì: phụ phí bao nhiêu, có ngưng giao không */
+    public record WeatherHour(LocalDateTime time, int code, String description, double temperature, double rainMm,
+                              double windKmh, BigDecimal surcharge, boolean stopped) {
     }
 
     // ---- cửa hàng ----------------------------------------------------------------
@@ -103,6 +127,60 @@ public class DeliveryFeeService {
         return settings();
     }
 
+    // ---- thời tiết xấu ----------------------------------------------------------------
+
+    @Transactional(readOnly = true)
+    public WeatherSettings weatherSettings() {
+        DeliverySetting s = setting();
+        List<DeliveryWeatherTier> tiers = weatherTierRepository.findAllByOrderByMinRainMmAsc();
+        List<WeatherHour> outlook = s.getShopLat() == null ? List.of() : weather.outlook(s.getShopLat(), s.getShopLng(), 6).stream()
+                .map(w -> new WeatherHour(w.time(), w.code(), w.describe(), round1(w.temperature()), round1(w.rainMmPerHour()),
+                        round1(w.windKmh()), surchargeFor(s, tiers, w), stops(s, w))).toList();
+        return new WeatherSettings(s.isWeatherEnabled(), tiers.stream().map(t -> new RainTier(t.getMinRainMm(), t.getSurcharge())).toList(),
+                s.getWeatherStormSurcharge(), s.getWeatherStopRainMm(), s.isWeatherStopStorm(), outlook);
+    }
+
+    @Transactional
+    public WeatherSettings saveWeather(WeatherSettings r) {
+        List<RainTier> tiers = r.rainTiers() == null ? List.of() : r.rainTiers().stream().filter(java.util.Objects::nonNull).toList();
+        for (RainTier t : tiers) {
+            if (t.minRainMm() == null || t.minRainMm().signum() <= 0) throw new BadRequestException("Lượng mưa phải lớn hơn 0");
+            if (t.surcharge() == null || t.surcharge().signum() < 0) throw new BadRequestException("Nhập phụ phí");
+        }
+        if (tiers.stream().map(t -> t.minRainMm().stripTrailingZeros()).distinct().count() < tiers.size()) {
+            throw new BadRequestException("Hai bậc mưa trùng lượng mưa");
+        }
+        DeliverySetting s = setting();
+        s.setWeatherEnabled(r.enabled());
+        s.setWeatherStormSurcharge(positiveOrNull(r.stormSurcharge()));
+        s.setWeatherStopRainMm(positiveOrNull(r.stopRainMm()));
+        s.setWeatherStopStorm(r.stopStorm());
+        settingRepository.save(s);
+        weatherTierRepository.deleteAllInBatch();
+        weatherTierRepository.saveAll(tiers.stream().map(t -> DeliveryWeatherTier.builder().minRainMm(t.minRainMm()).surcharge(t.surcharge()).build()).toList());
+        return weatherSettings();
+    }
+
+    /** phụ phí lúc thời tiết {@code w}: bậc mưa cao nhất đạt, hoặc phụ phí giông nếu lớn hơn; 0 = không */
+    private static BigDecimal surchargeFor(DeliverySetting s, List<DeliveryWeatherTier> tiers, com.coffeeshop.integration.weather.WeatherGateway.Weather w) {
+        if (!s.isWeatherEnabled() || w == null) return BigDecimal.ZERO;
+        BigDecimal rain = tiers.stream().filter(t -> w.rainMmPerHour() >= t.getMinRainMm().doubleValue())
+                .map(DeliveryWeatherTier::getSurcharge).max(Comparator.naturalOrder()).orElse(BigDecimal.ZERO);
+        BigDecimal storm = w.storm() && s.getWeatherStormSurcharge() != null ? s.getWeatherStormSurcharge() : BigDecimal.ZERO;
+        return rain.max(storm);
+    }
+
+    /** mưa từ ngưỡng ngưng giao, hoặc giông khi bật "ngưng giao khi giông" */
+    private static boolean stops(DeliverySetting s, com.coffeeshop.integration.weather.WeatherGateway.Weather w) {
+        if (!s.isWeatherEnabled() || w == null) return false;
+        return (s.getWeatherStopRainMm() != null && w.rainMmPerHour() >= s.getWeatherStopRainMm().doubleValue())
+                || (s.isWeatherStopStorm() && w.storm());
+    }
+
+    private static double round1(double v) {
+        return Math.round(v * 10) / 10.0;
+    }
+
     // ---- option giá -----------------------------------------------------------------
 
     @Transactional(readOnly = true)
@@ -110,7 +188,10 @@ public class DeliveryFeeService {
         return planRepository.findAllByOrderByDefaultPlanDescIdAsc().stream().map(Plan::from).toList();
     }
 
-    /** thêm / sửa option giá; option đầu tiên của quán là option mặc định */
+    /**
+     * Thêm / sửa option giá. {@code isDefault} = đặt làm option mặc định (option mặc định cũ bỏ cờ). Luôn có đúng 1 option
+     * mặc định: option đầu tiên tự là mặc định, và không bỏ cờ mặc định của chính nó được — phải đặt option khác.
+     */
     @Transactional
     public Plan savePlan(Long id, Plan r) {
         if (r.name() == null || r.name().isBlank()) throw new BadRequestException("Nhập tên option");
@@ -120,9 +201,17 @@ public class DeliveryFeeService {
         if (all.stream().anyMatch(p -> !p.getId().equals(id) && p.getName().equalsIgnoreCase(name))) {
             throw new BadRequestException("Đã có option tên \"" + name + "\"");
         }
-        DeliveryFeePlan p = id == null
-                ? DeliveryFeePlan.builder().defaultPlan(all.stream().noneMatch(DeliveryFeePlan::isDefaultPlan)).build()
-                : plan(id);
+        DeliveryFeePlan p = id == null ? new DeliveryFeePlan() : plan(id);
+        boolean makeDefault = r.isDefault() || all.stream().noneMatch(DeliveryFeePlan::isDefaultPlan);
+        if (p.isDefaultPlan() && !makeDefault) {
+            throw new BadRequestException("Phải luôn có 1 option mặc định — đặt option khác làm mặc định trước");
+        }
+        if (makeDefault && !p.isDefaultPlan()) {
+            // only one default (unique index): clear the old one first
+            all.stream().filter(DeliveryFeePlan::isDefaultPlan).forEach(x -> x.setDefaultPlan(false));
+            planRepository.flush();
+            p.setDefaultPlan(true);
+        }
         p.setName(name);
         p.getTiers().clear();
         planRepository.saveAndFlush(p); // orphans go before the new ranges
@@ -135,7 +224,7 @@ public class DeliveryFeeService {
     @Transactional
     public void deletePlan(Long id) {
         DeliveryFeePlan p = plan(id);
-        if (p.isDefaultPlan()) throw new BadRequestException("Không xóa được option mặc định");
+        if (p.isDefaultPlan()) throw new BadRequestException("Không xóa được option mặc định — đặt option khác làm mặc định trước");
         List<String> used = slotRepository.findAllByOrderByStartTimeAsc().stream().filter(s -> s.getPlan().getId().equals(id))
                 .map(s -> s.getStartTime() + "–" + s.getEndTime()).toList();
         if (!used.isEmpty()) throw new BadRequestException("Option đang dùng ở khung giờ " + String.join(", ", used));
@@ -211,12 +300,18 @@ public class DeliveryFeeService {
         BigDecimal free = s.getFreeShipThreshold();
         BigDecimal min = s.getMinOrderAmount();
         BigDecimal fee = tier.getFee();
-        return new Rule(km, route.minutes(), tier.label(), plan.isDefaultPlan() ? null : plan.getName(), amount -> {
+        // thời tiết xấu: ngưng giao, hoặc cộng phụ phí vào mọi khung giờ (kể cả đơn được miễn phí ship theo tiền hàng)
+        var w = s.isWeatherEnabled() ? weather.at(shop.lat(), shop.lng(), at) : null;
+        if (stops(s, w)) throw new BadRequestException("Thời tiết xấu (" + w.describe() + ") — quán tạm ngưng giao hàng");
+        BigDecimal extra = surchargeFor(s, weatherTierRepository.findAllByOrderByMinRainMmAsc(), w);
+        boolean bad = extra.signum() > 0;
+        return new Rule(km, route.minutes(), tier.label(), plan.isDefaultPlan() ? null : plan.getName(),
+                bad ? w.describe() : null, bad ? extra : null, amount -> {
             if (min != null && amount.compareTo(min) < 0) {
                 throw new BadRequestException("Đơn giao hàng tối thiểu " + min.stripTrailingZeros().toPlainString() + "đ");
             }
-            if (free != null && amount.compareTo(free) >= 0) return BigDecimal.ZERO;
-            return fee;
+            if (free != null && amount.compareTo(free) >= 0) return extra;
+            return fee.add(extra);
         });
     }
 

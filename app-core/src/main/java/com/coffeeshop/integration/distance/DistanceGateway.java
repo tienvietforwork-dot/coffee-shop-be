@@ -96,14 +96,16 @@ public class DistanceGateway {
     }
 
     /**
-     * Gợi ý trong phạm vi phường / tỉnh khách đã chọn: tìm quanh tâm phường (Photon: chỉ trong ~15 km quanh đó) và bỏ kết
-     * quả thuộc tỉnh khác. {@code ward} / {@code province} null = không giới hạn.
+     * Gợi ý trong phạm vi phường / tỉnh khách đã chọn. OpenStreetMap: lấy ranh giới phường (Nominatim) và chỉ giữ gợi ý
+     * nằm trong ranh giới đó; nhãn chỉ còn số nhà / đường (phường, tỉnh đã chọn ở ô riêng). Toạ độ của gợi ý được nhớ cho
+     * địa chỉ đầy đủ "đường, phường, tỉnh" để đo km đúng điểm đó. {@code ward} / {@code province} null = không giới hạn.
      */
     public List<String> suggest(String query, Point near, String ward, String province) {
         String q = query == null ? "" : query.trim();
         if (q.length() < 3) return List.of();
         String area = String.join(", ", java.util.stream.Stream.of(ward, province).filter(s -> s != null && !s.isBlank()).toList());
-        Point center = area.isEmpty() ? near : areaCenter(ward, province, near);
+        Area shape = ward == null || ward.isBlank() || !"osm".equals(provider()) ? null : areaOf(area);
+        Point center = shape != null ? shape.center() : area.isEmpty() ? near : areaCenter(ward, province, near);
         String key = norm(q) + "|" + norm(area) + (center == null ? "" : "@" + Math.round(center.lat() * 100) + "," + Math.round(center.lng() * 100));
         List<String> cached = suggestCache.get(key);
         if (cached != null) return cached;
@@ -114,18 +116,94 @@ public class DistanceGateway {
                 case "simulated" -> List.of(q);
                 case "google" -> googleSuggest(full, center, area.isEmpty() ? 30000.0 : 15000.0);
                 case "goong" -> goongSuggest(full, center);
-                default -> photonSuggest(q, center, !area.isEmpty());
+                default -> shape != null ? photonInArea(q, shape, area) : photonSuggest(q, center, !area.isEmpty());
             };
         } catch (IllegalStateException e) {
             return List.of();
         }
-        if (province != null && !province.isBlank()) {
+        if (shape == null && province != null && !province.isBlank()) {
             String pk = plain(province);
             out = out.stream().filter(s -> plain(s).contains(pk)).toList();
         }
         if (suggestCache.size() > CACHE_MAX) suggestCache.clear();
         suggestCache.put(key, out);
         return out;
+    }
+
+    /** ranh giới phường: tâm, khung bao [minLat, maxLat, minLon, maxLon] và các vòng ngoài [lon, lat] */
+    record Area(Point center, double[] bbox, List<double[][]> rings) {
+        boolean contains(double lat, double lon) {
+            if (lat < bbox[0] || lat > bbox[1] || lon < bbox[2] || lon > bbox[3]) return false;
+            for (double[][] ring : rings) {
+                boolean in = false;
+                for (int i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+                    double xi = ring[i][0], yi = ring[i][1], xj = ring[j][0], yj = ring[j][1];
+                    if ((yi > lat) != (yj > lat) && lon < (xj - xi) * (lat - yi) / (yj - yi) + xi) in = !in;
+                }
+                if (in) return true;
+            }
+            return false;
+        }
+    }
+
+    private final Map<String, java.util.Optional<Area>> areaCache = new ConcurrentHashMap<>();
+
+    /** ranh giới hành chính của "Phường …, Tỉnh …" từ Nominatim (null khi OSM chưa có) */
+    private Area areaOf(String area) {
+        return areaCache.computeIfAbsent(norm(area), k -> {
+            try {
+                throttleNominatim();
+                JsonNode r = getJson(UriComponentsBuilder.fromHttpUrl(props.getNominatimUrl() + "/search")
+                        .queryParam("q", area).queryParam("format", "json").queryParam("limit", 1).queryParam("countrycodes", "vn")
+                        .queryParam("polygon_geojson", 1).queryParam("polygon_threshold", 0.0003).encode().build().toUri()).path(0);
+                JsonNode g = r.path("geojson");
+                List<double[][]> rings = new ArrayList<>();
+                if ("Polygon".equals(g.path("type").asText())) rings.add(ring(g.path("coordinates").path(0)));
+                else if ("MultiPolygon".equals(g.path("type").asText())) g.path("coordinates").forEach(p -> rings.add(ring(p.path(0))));
+                JsonNode bb = r.path("boundingbox");
+                if (rings.isEmpty() || bb.size() != 4) return java.util.Optional.<Area>empty();
+                return java.util.Optional.of(new Area(new Point(r.path("lat").asDouble(), r.path("lon").asDouble()),
+                        new double[]{bb.get(0).asDouble(), bb.get(1).asDouble(), bb.get(2).asDouble(), bb.get(3).asDouble()}, rings));
+            } catch (IllegalStateException e) {
+                return java.util.Optional.<Area>empty();
+            }
+        }).orElse(null);
+    }
+
+    private static double[][] ring(JsonNode coords) {
+        double[][] out = new double[coords.size()][];
+        for (int i = 0; i < coords.size(); i++) out[i] = new double[]{coords.get(i).get(0).asDouble(), coords.get(i).get(1).asDouble()};
+        return out;
+    }
+
+    /** Photon trong khung bao của phường, chỉ giữ điểm nằm trong ranh giới; nhãn = số nhà / đường */
+    private List<String> photonInArea(String q, Area a, String areaLabel) {
+        URI uri = UriComponentsBuilder.fromHttpUrl(props.getPhotonUrl() + "/api/").queryParam("q", q).queryParam("limit", 30)
+                .queryParam("lat", a.center().lat()).queryParam("lon", a.center().lng())
+                .queryParam("bbox", String.format(Locale.ROOT, "%.5f,%.5f,%.5f,%.5f", a.bbox()[2] - 0.002, a.bbox()[0] - 0.002, a.bbox()[3] + 0.002, a.bbox()[1] + 0.002))
+                .encode().build().toUri();
+        LinkedHashSet<String> out = new LinkedHashSet<>();
+        for (JsonNode f : getJson(uri).path("features")) {
+            JsonNode c = f.path("geometry").path("coordinates");
+            if (!c.isArray() || c.size() != 2) continue;
+            double lon = c.get(0).asDouble(), lat = c.get(1).asDouble();
+            if (!a.contains(lat, lon)) continue;
+            JsonNode p = f.path("properties");
+            String num = p.path("housenumber").asText("");
+            String street = p.path("street").asText("");
+            String name = p.path("name").asText("");
+            List<String> parts = new ArrayList<>();
+            if (!name.isBlank() && !name.equals(street)) parts.add(name);
+            if (!street.isBlank()) parts.add((num.isBlank() ? "" : num + " ") + street);
+            else if (!num.isBlank() && !parts.isEmpty()) parts.set(0, num + " " + parts.get(0));
+            if (parts.isEmpty()) continue;
+            String label = String.join(", ", parts);
+            // the form sends "label, Phường …, Tỉnh …": measure from this exact point
+            geocodeCache.putIfAbsent(norm(label + ", " + areaLabel), new Point(lat, lon));
+            out.add(label);
+            if (out.size() == 6) break;
+        }
+        return new ArrayList<>(out);
     }
 
     // ---- Google Maps Platform -----------------------------------------------------

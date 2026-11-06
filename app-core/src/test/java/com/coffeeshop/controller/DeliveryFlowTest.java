@@ -54,6 +54,7 @@ class DeliveryFlowTest {
     @Autowired DeliveryTimeSlotRepository slotRepository;
     @Autowired DeliveryFeePlanRepository planRepository;
     @MockBean DistanceGateway distance;
+    @MockBean com.coffeeshop.integration.weather.WeatherGateway weather;
 
     Coffee latte;
 
@@ -70,6 +71,7 @@ class DeliveryFlowTest {
         Category c = categoryRepository.save(Category.builder().name("Cat " + UUID.randomUUID()).build());
         latte = coffeeRepository.save(Coffee.builder().category(c).name("Latte " + UUID.randomUUID()).price(new BigDecimal("40000")).build());
         slotRepository.deleteAll();
+        call(body(put("/api/delivery-weather"), Map.of("enabled", false, "stopStorm", false, "rainTiers", List.of())));
         planRepository.deleteAll();
         call(body(put("/api/delivery-settings"), Map.of("shopAddress", "Quán", "freeShipThreshold", 150000,
                 "minOrderAmount", 50000, "openTime", "06:00", "closeTime", "22:00")));
@@ -150,7 +152,42 @@ class DeliveryFlowTest {
         long def = planRepository.findFirstByDefaultPlanTrue().orElseThrow().getId();
         mvc.perform(delete("/api/delivery-fee-plans/" + def)).andExpect(status().isBadRequest());
         assertThat(call(get("/api/delivery-time-slots")).size()).isEqualTo(3);
+
+        // another option becomes the default; the old one loses the flag; the default cannot just be unset
+        call(body(put("/api/delivery-fee-plans/" + early), Map.of("name", "Sáng sớm", "isDefault", true,
+                "tiers", List.of(Map.of("fromKm", 0, "toKm", 3, "fee", 18000)))));
+        assertThat(planRepository.findFirstByDefaultPlanTrue().orElseThrow().getId()).isEqualTo(early);
+        assertThat(planRepository.findById(def).orElseThrow().isDefaultPlan()).isFalse();
+        mvc.perform(body(put("/api/delivery-fee-plans/" + early), Map.of("name", "Sáng sớm", "isDefault", false,
+                "tiers", List.of(Map.of("fromKm", 0, "toKm", 3, "fee", 18000))))).andExpect(status().isBadRequest());
+        mvc.perform(delete("/api/delivery-fee-plans/" + early)).andExpect(status().isBadRequest());
         assertThat(call(get("/api/public/delivery-settings")).get("openTime").asText()).startsWith("06:00");
+    }
+
+    private void rain(double mmPerHour, int code) {
+        when(weather.at(org.mockito.ArgumentMatchers.anyDouble(), org.mockito.ArgumentMatchers.anyDouble(), any()))
+                .thenReturn(new com.coffeeshop.integration.weather.WeatherGateway.Weather(null, code, 27, mmPerHour, 10));
+    }
+
+    @Test
+    void badWeatherAddsTheRainSurchargeOrStopsDeliveries() throws Exception {
+        call(body(put("/api/delivery-weather"), Map.of("enabled", true, "stormSurcharge", 15000, "stopRainMm", 30, "stopStorm", false,
+                "rainTiers", List.of(Map.of("minRainMm", 2, "surcharge", 5000), Map.of("minRainMm", 10, "surcharge", 10000)))));
+        rain(0.5, 61);
+        assertThat(call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
+        rain(5, 63); // bậc 2 mm/h
+        JsonNode q = call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00")));
+        assertThat(q.get("shippingFee").decimalValue()).isEqualByComparingTo("20000");
+        assertThat(q.get("weatherSurcharge").decimalValue()).isEqualByComparingTo("5000");
+        rain(12, 65); // bậc 10 mm/h; free ship (4 × 40.000 ≥ 150.000) still pays the surcharge
+        assertThat(call(body(post("/api/orders/quote"), quoteAt(4, "Gần", "12:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("10000");
+        rain(3, 95); // giông: the larger of rain tier and storm surcharge
+        assertThat(call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("30000");
+        rain(35, 65); // ≥ 30 mm/h: no deliveries
+        mvc.perform(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00"))).andExpect(status().isBadRequest());
+        // switched off: no effect
+        call(body(put("/api/delivery-weather"), Map.of("enabled", false, "stopStorm", false, "rainTiers", List.of())));
+        assertThat(call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
     }
 
     @Test

@@ -41,4 +41,21 @@ public class DeliverySetting extends BaseEntity {
     /** đơn tối thiểu để giao; null = không giới hạn */
     @Column(name = "min_order_amount", precision = 12, scale = 2)
     private BigDecimal minOrderAmount;
+
+    /**
+     * Thời tiết xấu (tại quán, giờ giao): phụ phí theo bậc lượng mưa ({@link DeliveryWeatherTier}) hoặc khi có giông, cộng
+     * vào phí ship mọi khung giờ; mưa từ {@code weatherStopRainMm} mm/h (hoặc có giông, nếu bật) thì ngưng nhận giao.
+     */
+    @Builder.Default
+    @Column(name = "weather_enabled", nullable = false)
+    private boolean weatherEnabled = false;
+    /** phụ phí khi có giông (mã WMO 95–99); null = không */
+    @Column(name = "weather_storm_surcharge", precision = 12, scale = 2)
+    private BigDecimal weatherStormSurcharge;
+    /** ngưng giao khi mưa từ … mm / giờ; null = không ngưng */
+    @Column(name = "weather_stop_rain_mm", precision = 5, scale = 1)
+    private BigDecimal weatherStopRainMm;
+    @Builder.Default
+    @Column(name = "weather_stop_storm", nullable = false)
+    private boolean weatherStopStorm = false;
 }
