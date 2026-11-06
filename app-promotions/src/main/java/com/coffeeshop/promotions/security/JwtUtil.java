@@ -38,7 +38,9 @@ public class JwtUtil {
     public boolean isValid(String token) {
         try {
             Claims claims = parseClaims(token);
-            return claims.getExpiration().after(new Date());
+            return claims.getExpiration() != null && claims.getExpiration().after(new Date());
+        } catch (io.jsonwebtoken.ExpiredJwtException e) {
+            return false;
         } catch (Exception e) {
             return false;
         }

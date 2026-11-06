@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 @Getter
 public class VoucherDetailRequest {
 
+    private Long id;
     private Long voucherId;
     private Long orderId;
     private Long customerId;

@@ -12,4 +12,6 @@ public interface PromotionRepository extends JpaRepository<Promotion, Long> {
 
     @EntityGraph(attributePaths = {"promotionItems", "promotionItems.coffee"})
     List<Promotion> findAll();
+
+    long countByNameStartingWith(String name);
 }

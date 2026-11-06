@@ -45,8 +45,12 @@ public class Voucher extends BaseEntity{
     @Column(name = "min_order_value", nullable = false, precision = 12, scale = 2)
     private BigDecimal minOrderValue;
 
+    @Builder.Default
     @Column(name = "quantity", nullable = false)
-    private Integer quantity;
+    private Integer quantity = 0;
+
+    @Column(name = "max_quantity", nullable = false)
+    private Integer maxQuantity;
 
     @Column(name = "valid_days", nullable = false)
     private Integer validDays;
