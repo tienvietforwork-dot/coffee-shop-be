@@ -71,7 +71,7 @@ class DeliveryFlowTest {
         Category c = categoryRepository.save(Category.builder().name("Cat " + UUID.randomUUID()).build());
         latte = coffeeRepository.save(Coffee.builder().category(c).name("Latte " + UUID.randomUUID()).price(new BigDecimal("40000")).build());
         slotRepository.deleteAll();
-        call(body(put("/api/delivery-weather"), Map.of("enabled", false, "stopStorm", false, "rainTiers", List.of())));
+        call(body(put("/api/delivery-weather"), Map.of("enabled", false, "rainTiers", List.of())));
         planRepository.deleteAll();
         call(body(put("/api/delivery-settings"), Map.of("shopAddress", "Quán", "freeShipThreshold", 150000,
                 "minOrderAmount", 50000, "openTime", "06:00", "closeTime", "22:00")));
@@ -171,7 +171,7 @@ class DeliveryFlowTest {
 
     @Test
     void badWeatherAddsTheRainSurchargeOrStopsDeliveries() throws Exception {
-        call(body(put("/api/delivery-weather"), Map.of("enabled", true, "stormSurcharge", 15000, "stopRainMm", 30, "stopStorm", false,
+        call(body(put("/api/delivery-weather"), Map.of("enabled", true, "stopRainMm", 30,
                 "rainTiers", List.of(Map.of("minRainMm", 2, "surcharge", 5000), Map.of("minRainMm", 10, "surcharge", 10000)))));
         rain(0.5, 61);
         assertThat(call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
@@ -181,12 +181,12 @@ class DeliveryFlowTest {
         assertThat(q.get("weatherSurcharge").decimalValue()).isEqualByComparingTo("5000");
         rain(12, 65); // bậc 10 mm/h; free ship (4 × 40.000 ≥ 150.000) still pays the surcharge
         assertThat(call(body(post("/api/orders/quote"), quoteAt(4, "Gần", "12:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("10000");
-        rain(3, 95); // giông: the larger of rain tier and storm surcharge
-        assertThat(call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("30000");
+        rain(3, 95); // giông: không ai đi giao
+        mvc.perform(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00"))).andExpect(status().isBadRequest());
         rain(35, 65); // ≥ 30 mm/h: no deliveries
         mvc.perform(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00"))).andExpect(status().isBadRequest());
         // switched off: no effect
-        call(body(put("/api/delivery-weather"), Map.of("enabled", false, "stopStorm", false, "rainTiers", List.of())));
+        call(body(put("/api/delivery-weather"), Map.of("enabled", false, "rainTiers", List.of())));
         assertThat(call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
     }
 

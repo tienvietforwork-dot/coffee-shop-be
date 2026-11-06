@@ -83,11 +83,10 @@ public class DeliveryFeeService {
     }
 
     /**
-     * thời tiết xấu: bật / tắt, bậc phụ phí theo lượng mưa, phụ phí khi giông, ngưng giao khi mưa từ … mm/h / khi giông.
+     * thời tiết xấu: bật / tắt, bậc phụ phí theo lượng mưa, ngưng giao khi mưa từ … mm/h (có giông thì luôn ngưng giao).
      * {@code outlook}: thời tiết tại quán bây giờ + vài giờ tới (chỉ đọc).
      */
-    public record WeatherSettings(boolean enabled, List<RainTier> rainTiers, BigDecimal stormSurcharge, BigDecimal stopRainMm,
-                                  boolean stopStorm, List<WeatherHour> outlook) {
+    public record WeatherSettings(boolean enabled, List<RainTier> rainTiers, BigDecimal stopRainMm, List<WeatherHour> outlook) {
     }
 
     /** thời tiết một giờ (đầu danh sách = hiện tại) và quán sẽ làm gì: phụ phí bao nhiêu, có ngưng giao không */
@@ -137,7 +136,7 @@ public class DeliveryFeeService {
                 .map(w -> new WeatherHour(w.time(), w.code(), w.describe(), round1(w.temperature()), round1(w.rainMmPerHour()),
                         round1(w.windKmh()), surchargeFor(s, tiers, w), stops(s, w))).toList();
         return new WeatherSettings(s.isWeatherEnabled(), tiers.stream().map(t -> new RainTier(t.getMinRainMm(), t.getSurcharge())).toList(),
-                s.getWeatherStormSurcharge(), s.getWeatherStopRainMm(), s.isWeatherStopStorm(), outlook);
+                s.getWeatherStopRainMm(), outlook);
     }
 
     @Transactional
@@ -152,29 +151,25 @@ public class DeliveryFeeService {
         }
         DeliverySetting s = setting();
         s.setWeatherEnabled(r.enabled());
-        s.setWeatherStormSurcharge(positiveOrNull(r.stormSurcharge()));
         s.setWeatherStopRainMm(positiveOrNull(r.stopRainMm()));
-        s.setWeatherStopStorm(r.stopStorm());
         settingRepository.save(s);
         weatherTierRepository.deleteAllInBatch();
         weatherTierRepository.saveAll(tiers.stream().map(t -> DeliveryWeatherTier.builder().minRainMm(t.minRainMm()).surcharge(t.surcharge()).build()).toList());
         return weatherSettings();
     }
 
-    /** phụ phí lúc thời tiết {@code w}: bậc mưa cao nhất đạt, hoặc phụ phí giông nếu lớn hơn; 0 = không */
+    /** phụ phí lúc thời tiết {@code w}: bậc mưa cao nhất đạt; 0 = không */
     private static BigDecimal surchargeFor(DeliverySetting s, List<DeliveryWeatherTier> tiers, com.coffeeshop.integration.weather.WeatherGateway.Weather w) {
         if (!s.isWeatherEnabled() || w == null) return BigDecimal.ZERO;
         BigDecimal rain = tiers.stream().filter(t -> w.rainMmPerHour() >= t.getMinRainMm().doubleValue())
                 .map(DeliveryWeatherTier::getSurcharge).max(Comparator.naturalOrder()).orElse(BigDecimal.ZERO);
-        BigDecimal storm = w.storm() && s.getWeatherStormSurcharge() != null ? s.getWeatherStormSurcharge() : BigDecimal.ZERO;
-        return rain.max(storm);
+        return rain;
     }
 
-    /** mưa từ ngưỡng ngưng giao, hoặc giông khi bật "ngưng giao khi giông" */
+    /** mưa từ ngưỡng ngưng giao, hoặc có giông (giông thì không ai đi giao) */
     private static boolean stops(DeliverySetting s, com.coffeeshop.integration.weather.WeatherGateway.Weather w) {
         if (!s.isWeatherEnabled() || w == null) return false;
-        return (s.getWeatherStopRainMm() != null && w.rainMmPerHour() >= s.getWeatherStopRainMm().doubleValue())
-                || (s.isWeatherStopStorm() && w.storm());
+        return w.storm() || (s.getWeatherStopRainMm() != null && w.rainMmPerHour() >= s.getWeatherStopRainMm().doubleValue());
     }
 
     private static double round1(double v) {
