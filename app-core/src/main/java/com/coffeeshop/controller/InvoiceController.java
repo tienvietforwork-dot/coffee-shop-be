@@ -3,6 +3,7 @@ package com.coffeeshop.controller;
 import com.coffeeshop.dto.response.InvoiceResponse;
 import com.coffeeshop.security.Perm;
 import com.coffeeshop.service.InvoiceService;
+import com.coffeeshop.service.InvoiceSettingService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -17,6 +18,7 @@ import java.util.List;
 public class InvoiceController {
 
     private final InvoiceService service;
+    private final InvoiceSettingService settingService;
 
     public record ReplaceRequest(InvoiceService.Buyer buyer, String reason) {
     }
@@ -67,5 +69,19 @@ public class InvoiceController {
     @PreAuthorize(Perm.CAN_INVOICES)
     public InvoiceResponse retry(@PathVariable Long id) {
         return service.retry(id);
+    }
+
+    // ---- thiết lập: người bán, ký hiệu (thu ngân chỉ xem, quản lý hóa đơn mới sửa) ----
+
+    @GetMapping("/api/invoice-settings")
+    @PreAuthorize(Perm.CAN_INVOICES)
+    public InvoiceSettingService.Settings settings() {
+        return settingService.settings();
+    }
+
+    @PutMapping("/api/invoice-settings")
+    @PreAuthorize("hasAuthority('" + Perm.INVOICES + "')")
+    public InvoiceSettingService.Settings saveSettings(@RequestBody InvoiceSettingService.Request request) {
+        return settingService.save(request);
     }
 }

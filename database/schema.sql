@@ -901,6 +901,9 @@ CREATE TABLE IF NOT EXISTS invoices (
     lookup_code         VARCHAR(40),
     lookup_url          VARCHAR(255),
     provider_invoice_id VARCHAR(60),
+    seller_name         VARCHAR(255),                            -- người bán lúc lập (thiết lập hóa đơn)
+    seller_tax_code     VARCHAR(14),
+    seller_address      VARCHAR(255),
     buyer_name          VARCHAR(150),
     buyer_company       VARCHAR(255),
     buyer_tax_code      VARCHAR(20),
@@ -935,6 +938,24 @@ CREATE TABLE IF NOT EXISTS invoice_lines (
     amount     NUMERIC(12,2) NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_invoice_lines_invoice ON invoice_lines (invoice_id);
+
+-- Thiết lập hóa đơn (1 dòng): người bán, loại hóa đơn, ký hiệu = {mẫu số}C{YY}M{series_suffix} — xem invoice_settings.sql
+CREATE TABLE IF NOT EXISTS invoice_settings (
+    id              BIGINT PRIMARY KEY CHECK (id = 1),
+    seller_name     VARCHAR(255)  NOT NULL,
+    seller_tax_code VARCHAR(14)   NOT NULL,
+    seller_address  VARCHAR(255),                          -- NULL = địa chỉ quán (delivery_settings.shop_address)
+    vat_rate        NUMERIC(5,2)  CHECK (vat_rate BETWEEN 0 AND 10), -- NULL = hóa đơn bán hàng (mẫu 2)
+    series_suffix   VARCHAR(2)    NOT NULL DEFAULT 'CH',
+    tax_office_code VARCHAR(5),                            -- XXXXX trong mã CQT M1-YY-XXXXX-NNNNNNNNNNN
+    lookup_url      VARCHAR(255),
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
 
 -- ---------------------------------------------------------------------
 -- Tin nhắn chăm sóc khách hàng theo đơn: Zalo ZNS, lỗi thì SMS brandname (qua eSMS). Không phải tin quảng cáo.

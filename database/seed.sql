@@ -282,6 +282,9 @@ INSERT INTO delivery_time_slots (start_time, end_time, plan_id)
 SELECT v.s, v.e, p.id FROM delivery_fee_plans p, (VALUES ('06:00', '08:00'), ('17:00', '20:00')) AS v(s, e) WHERE p.name = 'Cao điểm';
 INSERT INTO delivery_weather_tiers (min_rain_mm, surcharge) VALUES (2.5, 5000), (8, 10000);
 UPDATE delivery_settings SET weather_stop_rain_mm = 30 WHERE id = 1;
+-- hóa đơn bán hàng (hộ kinh doanh), ký hiệu 2C{YY}MCH, địa chỉ = địa chỉ quán
+INSERT INTO invoice_settings (id, seller_name, seller_tax_code, series_suffix, lookup_url) VALUES
+ (1, 'HỘ KINH DOANH COFFEEHOLIC', '0312345678', 'CH', 'https://www.meinvoice.vn/tra-cuu');
 
 INSERT INTO work_shifts (name, start_time, end_time, grace_minutes, color) VALUES
  ('Ca sáng', '06:30', '12:30', 5, 'blue'),

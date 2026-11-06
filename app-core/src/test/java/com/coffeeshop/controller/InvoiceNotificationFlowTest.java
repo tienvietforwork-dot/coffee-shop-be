@@ -46,6 +46,7 @@ class InvoiceNotificationFlowTest {
     @Autowired NotificationMessageRepository messageRepository;
     @Autowired CustomerNotificationService notificationService;
     @Autowired InvoiceService invoiceService;
+    @Autowired DeliverySettingRepository deliverySettingRepository;
 
     Order order;
     Payment payment;
@@ -135,5 +136,37 @@ class InvoiceNotificationFlowTest {
         // a template switched off sends nothing
         call(put("/api/notifications/templates/ORDER_CANCELLED"), Map.of("enabled", false));
         assertThat(call(get("/api/notifications/templates"), null).size()).isEqualTo(5);
+    }
+
+    @Test
+    void invoiceUsesSettingsAndShopAddress() throws Exception {
+        deliverySettingRepository.save(DeliverySetting.builder().id(DeliverySetting.ID).shopAddress("12 Lê Lợi, Quận 1, TP. HCM")
+                .shopLat(10.77).shopLng(106.70).build());
+        String yy = String.format("%02d", LocalDate.now().getYear() % 100);
+        // địa chỉ để trống → địa chỉ quán; ký hiệu ghép theo năm
+        JsonNode s = call(put("/api/invoice-settings"), Map.of("sellerName", "HKD Coffeeholic", "sellerTaxCode", "0312345678",
+                "seriesSuffix", "ab", "taxOfficeCode", "c1a2b", "lookupUrl", "https://tra-cuu.test"));
+        assertThat(s.get("series").asText()).isEqualTo("2C" + yy + "MAB");
+        assertThat(s.get("shopAddress").asText()).isEqualTo("12 Lê Lợi, Quận 1, TP. HCM");
+        mvc.perform(put("/api/invoice-settings").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"sellerName\":\"X\",\"sellerTaxCode\":\"123\",\"seriesSuffix\":\"AB\"}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        try {
+            call(post("/api/orders/" + order.getId() + "/complete"), null);
+            JsonNode inv = call(get("/api/public/orders/" + order.getOrderCode() + "/invoices"), null).get(0);
+            assertThat(inv.get("series").asText()).isEqualTo("2C" + yy + "MAB");
+            assertThat(inv.get("sellerName").asText()).isEqualTo("HKD Coffeeholic");
+            assertThat(inv.get("sellerAddress").asText()).isEqualTo("12 Lê Lợi, Quận 1, TP. HCM");
+            assertThat(inv.get("lookupUrl").asText()).isEqualTo("https://tra-cuu.test");
+            // M{mẫu số}-{YY}-{5 ký tự CQT cấp}-{11 số}
+            assertThat(inv.get("taxAuthorityCode").asText()).matches("M2-" + yy + "-C1A2B-\\d{11}");
+
+            // đổi thiết lập sau đó không làm đổi hóa đơn đã lập
+            call(put("/api/invoice-settings"), Map.of("sellerName", "Tên mới", "sellerTaxCode", "0312345678", "seriesSuffix", "AB"));
+            inv = call(get("/api/public/orders/" + order.getOrderCode() + "/invoices"), null).get(0);
+            assertThat(inv.get("sellerName").asText()).isEqualTo("HKD Coffeeholic");
+        } finally {
+            call(put("/api/invoice-settings"), Map.of("sellerName", "HỘ KINH DOANH COFFEEHOLIC", "sellerTaxCode", "0312345678", "seriesSuffix", "CH"));
+        }
     }
 }

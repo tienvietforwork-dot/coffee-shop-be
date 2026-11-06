@@ -56,6 +56,13 @@ public class Invoice {
     private String lookupUrl;
     @Column(name = "provider_invoice_id", length = 60)
     private String providerInvoiceId;
+    // ---- người bán: chụp lại lúc lập hóa đơn (đổi thiết lập sau không làm đổi hóa đơn cũ); null = hóa đơn cũ ----
+    @Column(name = "seller_name", length = 255)
+    private String sellerName;
+    @Column(name = "seller_tax_code", length = 14)
+    private String sellerTaxCode;
+    @Column(name = "seller_address", length = 255)
+    private String sellerAddress;
     // ---- người mua (optional) ----
     @Column(name = "buyer_name", length = 150)
     private String buyerName;

@@ -34,12 +34,17 @@ public class EinvoiceProvider {
         return props;
     }
 
-    /** {@code number}: next number of the series (used by the simulation; MISA numbers it itself) */
-    public Issued issue(Invoice inv, int number) {
+    /**
+     * {@code number}: next number of the series (used by the simulation; MISA numbers it itself).
+     * {@code taxOfficeCode}: 5 ký tự CQT cấp cho người bán (simulation only; null → 00000).
+     * Mã của CQT trên hóa đơn từ máy tính tiền: M{mẫu số}-{YY}-{XXXXX}-{11 số tự sinh liên tục}.
+     */
+    public Issued issue(Invoice inv, int number, String taxOfficeCode) {
         if (props.simulated()) {
             String no = String.format("%08d", number);
-            String cqt = "M" + inv.getSeries().substring(0, 1) + "-" + inv.getCreatedAt().getYear() % 100 + "-"
-                    + UUID.randomUUID().toString().replace("-", "").substring(0, 5).toUpperCase() + "-" + no;
+            String cqt = "M" + inv.getTemplateCode() + "-" + inv.getSeries().substring(2, 4) + "-"
+                    + (taxOfficeCode == null || taxOfficeCode.isBlank() ? "00000" : taxOfficeCode) + "-"
+                    + String.format("%011d", number);
             return new Issued(no, cqt, UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase(),
                     "SIM-" + inv.getId());
         }
@@ -48,7 +53,7 @@ public class EinvoiceProvider {
         body.put("InvSeries", inv.getSeries());
         body.put("InvTemplate", inv.getTemplateCode());
         body.put("IsInvoiceCalculatingMachine", true);
-        body.put("SellerTaxCode", props.getSellerTaxCode());
+        body.put("SellerTaxCode", inv.getSellerTaxCode());
         body.put("BuyerLegalName", inv.getBuyerCompany());
         body.put("BuyerFullName", inv.getBuyerName() == null && inv.getBuyerCompany() == null ? "Người mua không lấy hóa đơn" : inv.getBuyerName());
         body.put("BuyerTaxCode", inv.getBuyerTaxCode());
@@ -70,7 +75,7 @@ public class EinvoiceProvider {
         body.put("OriginalInvoiceDetail", inv.getLines().stream().map(l -> Map.of(
                 "SortOrder", l.getLineNo(), "ItemName", l.getName(), "UnitName", l.getUnit(), "Quantity", l.getQuantity(),
                 "UnitPrice", l.getUnitPrice(), "AmountOC", l.getAmount(),
-                "VATRateName", props.getVatRate() == null ? "KCT" : props.getVatRate().stripTrailingZeros().toPlainString() + "%")).toList());
+                "VATRateName", inv.getVatRate() == null ? "KCT" : inv.getVatRate().stripTrailingZeros().toPlainString() + "%")).toList());
         try {
             String raw = http.post().uri(props.getApiUrl() + "/invoice/publishing")
                     .header("appid", props.getAppId()).header("username", props.getUsername()).header("password", props.getPassword())
