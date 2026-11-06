@@ -50,6 +50,20 @@ public class DeliveryController {
         return feeService.saveSettings(request);
     }
 
+    // ---- thời tiết xấu ----
+
+    @GetMapping("/api/delivery-weather")
+    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
+    public DeliveryFeeService.WeatherSettings weather() {
+        return feeService.weatherSettings();
+    }
+
+    @PutMapping("/api/delivery-weather")
+    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
+    public DeliveryFeeService.WeatherSettings saveWeather(@RequestBody DeliveryFeeService.WeatherSettings request) {
+        return feeService.saveWeather(request);
+    }
+
     // ---- option giá ----
 
     @GetMapping("/api/delivery-fee-plans")

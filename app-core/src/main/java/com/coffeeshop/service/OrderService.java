@@ -125,7 +125,7 @@ public class OrderService {
     }
 
     private static PriceQuoteResponse withDelivery(PriceQuoteResponse q, DeliveryFeeService.Rule rule) {
-        return rule == null ? q : q.withDelivery(rule.distanceKm(), rule.tierLabel(), rule.planName());
+        return rule == null ? q : q.withDelivery(rule.distanceKm(), rule.tierLabel(), rule.planName(), rule.weather(), rule.weatherSurcharge());
     }
 
     // ---- creation --------------------------------------------------------

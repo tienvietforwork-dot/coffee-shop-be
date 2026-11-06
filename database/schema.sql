@@ -1023,3 +1023,16 @@ CREATE TABLE IF NOT EXISTS delivery_time_slots (
     plan_id    BIGINT      NOT NULL REFERENCES delivery_fee_plans (id),
     CHECK (start_time <> end_time)
 );
+
+-- Thời tiết xấu — xem delivery_weather.sql
+ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS weather_enabled         BOOLEAN       NOT NULL DEFAULT FALSE;
+ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS weather_storm_surcharge NUMERIC(12,2) CHECK (weather_storm_surcharge >= 0);
+ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS weather_stop_rain_mm    NUMERIC(5,1)  CHECK (weather_stop_rain_mm > 0);
+ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS weather_stop_storm      BOOLEAN       NOT NULL DEFAULT FALSE;
+
+-- mưa từ min_rain_mm mm/h → cộng surcharge (lấy bậc cao nhất đạt)
+CREATE TABLE IF NOT EXISTS delivery_weather_tiers (
+    id          BIGSERIAL PRIMARY KEY,
+    min_rain_mm NUMERIC(5,1)  NOT NULL CHECK (min_rain_mm > 0),
+    surcharge   NUMERIC(12,2) NOT NULL CHECK (surcharge >= 0)
+);
