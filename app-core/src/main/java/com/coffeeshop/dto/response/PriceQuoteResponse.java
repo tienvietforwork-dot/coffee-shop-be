@@ -8,14 +8,14 @@ public record PriceQuoteResponse(List<Line> lines, BigDecimal subtotal, String p
                                  BigDecimal promotionDiscount, String voucherCode, BigDecimal voucherDiscount,
                                  String voucherMessage, BigDecimal shippingFee, BigDecimal total,
                                  List<String> unavailableItems, BigDecimal deliveryDistanceKm, String deliveryTier,
-                                 String deliveryOption, String deliveryWeather, BigDecimal weatherSurcharge) {
+                                 String deliveryOption, String deliveryWeather, BigDecimal weatherSurcharge, String deliveryNote) {
 
     public record Line(Long coffeeId, String coffeeName, Integer quantity, BigDecimal listPrice,
                        BigDecimal unitPrice, String promotionName, BigDecimal lineTotal, String note) {
     }
 
-    public PriceQuoteResponse withDelivery(BigDecimal km, String tier, String peak, String weather, BigDecimal surcharge) {
+    public PriceQuoteResponse withDelivery(BigDecimal km, String tier, String peak, String weather, BigDecimal surcharge, String note) {
         return new PriceQuoteResponse(lines, subtotal, promotionName, promotionDiscount, voucherCode, voucherDiscount,
-                voucherMessage, shippingFee, total, unavailableItems, km, tier, peak, weather, surcharge);
+                voucherMessage, shippingFee, total, unavailableItems, km, tier, peak, weather, surcharge, note);
     }
 }

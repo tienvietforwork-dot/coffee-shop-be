@@ -21,14 +21,27 @@ public class DeliveryController {
     private final DeliveryFeeService feeService;
     private final ShipmentService shipmentService;
 
-    /** what the checkout needs: giờ mở cửa, miễn phí từ, đơn tối thiểu */
-    public record PublicConfig(LocalTime openTime, LocalTime closeTime, BigDecimal freeShipThreshold, BigDecimal minOrderAmount) {
+    /** what the checkout needs: địa chỉ quán, giờ mở cửa, miễn phí từ, đơn tối thiểu */
+    public record PublicConfig(String shopAddress, LocalTime openTime, LocalTime closeTime, BigDecimal freeShipThreshold,
+                               BigDecimal minOrderAmount, BigDecimal minutesPerKm) {
     }
 
     @GetMapping("/api/public/delivery-settings")
     public PublicConfig publicConfig() {
         var s = feeService.settings();
-        return new PublicConfig(s.openTime(), s.closeTime(), s.freeShipThreshold(), s.minOrderAmount());
+        return new PublicConfig(s.shopAddress(), s.openTime(), s.closeTime(), s.freeShipThreshold(), s.minOrderAmount(), s.minutesPerKm());
+    }
+
+    /** quãng đường quán → địa chỉ (form thêm / sửa địa chỉ giao hàng) */
+    @GetMapping("/api/public/delivery-distance")
+    public DeliveryFeeService.Distance distance(@RequestParam String address) {
+        return feeService.distanceTo(address);
+    }
+
+    /** phường / xã đã chọn có nằm ngoài khu vực giao không (trước khi nhập số nhà) */
+    @GetMapping("/api/public/delivery-area")
+    public DeliveryFeeService.AreaCheck area(@RequestParam String ward, @RequestParam(required = false) String province) {
+        return feeService.checkArea(ward, province);
     }
 
     /** gợi ý địa chỉ khi gõ (ô địa chỉ ở trang đặt hàng, quầy, cấu hình) */

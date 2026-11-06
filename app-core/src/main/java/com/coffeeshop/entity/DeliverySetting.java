@@ -41,6 +41,9 @@ public class DeliverySetting extends BaseEntity {
     /** đơn tối thiểu để giao; null = không giới hạn */
     @Column(name = "min_order_amount", precision = 12, scale = 2)
     private BigDecimal minOrderAmount;
+    /** thời gian di chuyển (phút / km) để ước tính giờ giao tới; null = không ước tính */
+    @Column(name = "minutes_per_km", precision = 4, scale = 1)
+    private BigDecimal minutesPerKm;
 
     /**
      * Thời tiết xấu (tại quán, giờ giao): phụ phí theo bậc lượng mưa ({@link DeliveryWeatherTier}) cộng vào phí ship mọi
@@ -52,4 +55,7 @@ public class DeliverySetting extends BaseEntity {
     /** ngưng giao khi mưa từ … mm / giờ; null = không ngưng theo lượng mưa */
     @Column(name = "weather_stop_rain_mm", precision = 5, scale = 1)
     private BigDecimal weatherStopRainMm;
+    /** ghi chú cho khách khi có phụ phí thời tiết; null = câu mặc định */
+    @Column(name = "weather_note", length = 255)
+    private String weatherNote;
 }

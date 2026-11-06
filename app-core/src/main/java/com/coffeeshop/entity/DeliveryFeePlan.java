@@ -26,6 +26,9 @@ public class DeliveryFeePlan {
     @Builder.Default
     @Column(name = "is_default", nullable = false)
     private boolean defaultPlan = false;
+    /** ghi chú cho khách khi option này được áp dụng (khung giờ cao điểm…); null = câu mặc định */
+    @Column(length = 255)
+    private String note;
     @Builder.Default
     @OneToMany(mappedBy = "plan", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("fromKm ASC")

@@ -74,7 +74,7 @@ public class PricingService {
                             l.lineTotal(), l.note())).toList(),
                     subtotal, orderPromotion == null ? null : orderPromotion.getName(), promotionDiscount,
                     voucher == null ? null : voucher.getCode(), voucherDiscount, voucherMessage, shippingFee, total,
-                    unavailable, null, null, null, null, null);
+                    unavailable, null, null, null, null, null, null);
         }
     }
 

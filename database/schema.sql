@@ -1055,3 +1055,10 @@ CREATE TABLE IF NOT EXISTS delivery_weather_tiers (
     min_rain_mm NUMERIC(5,1)  NOT NULL CHECK (min_rain_mm > 0),
     surcharge   NUMERIC(12,2) NOT NULL CHECK (surcharge >= 0)
 );
+
+-- Ghi chú phí giao hàng — xem delivery_fee_notes.sql
+ALTER TABLE delivery_fee_plans ADD COLUMN IF NOT EXISTS note         VARCHAR(255);
+ALTER TABLE delivery_settings  ADD COLUMN IF NOT EXISTS weather_note VARCHAR(255);
+
+-- Ước tính giờ giao — xem delivery_eta.sql
+ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS minutes_per_km NUMERIC(4,1) CHECK (minutes_per_km > 0);

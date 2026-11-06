@@ -149,6 +149,22 @@ public class DistanceGateway {
     private final Map<String, java.util.Optional<Area>> areaCache = new ConcurrentHashMap<>();
 
     /** ranh giới hành chính của "Phường …, Tỉnh …" từ Nominatim (null khi OSM chưa có) */
+    /**
+     * Khoảng cách đường chim bay (km) từ {@code from} tới điểm gần nhất của phường (0 khi {@code from} nằm trong phường),
+     * hoặc null khi không có ranh giới. Đường đi thật luôn dài hơn, nên vượt ngưỡng ở đây = chắc chắn ngoài phạm vi.
+     */
+    public Double nearestKm(String ward, String province, Point from) {
+        if (ward == null || ward.isBlank()) return null;
+        Area a = areaOf(ward + (province == null || province.isBlank() ? "" : ", " + province));
+        if (a == null) return null;
+        if (a.contains(from.lat(), from.lng())) return 0.0;
+        double best = Double.MAX_VALUE;
+        for (double[][] ring : a.rings()) {
+            for (double[] p : ring) best = Math.min(best, haversineKm(from, new Point(p[1], p[0])));
+        }
+        return best;
+    }
+
     private Area areaOf(String area) {
         return areaCache.computeIfAbsent(norm(area), k -> {
             try {

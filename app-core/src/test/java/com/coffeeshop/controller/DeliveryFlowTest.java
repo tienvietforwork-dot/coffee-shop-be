@@ -111,9 +111,17 @@ class DeliveryFlowTest {
         // below the minimum, and beyond the last tier
         mvc.perform(body(post("/api/orders/quote"), quote(1, "Gần"))).andExpect(status().isBadRequest());
         mvc.perform(body(post("/api/orders/quote"), quote(2, "Xa"))).andExpect(status().isBadRequest());
-        // overlapping km ranges are refused
-        mvc.perform(body(post("/api/delivery-fee-plans"), Map.of("name", "X", "tiers",
-                List.of(Map.of("fromKm", 0, "toKm", 5, "fee", 1), Map.of("fromKm", 3, "toKm", 7, "fee", 2))))).andExpect(status().isBadRequest());
+        // "từ X km" levels + "không giao quá": the ranges are worked out on save
+        JsonNode x = call(body(post("/api/delivery-fee-plans"), Map.of("name", "X", "maxKm", 10,
+                "tiers", List.of(Map.of("fromKm", 4, "fee", 2), Map.of("fromKm", 0, "fee", 1)))));
+        assertThat(x.get("maxKm").decimalValue()).isEqualByComparingTo("10");
+        assertThat(x.get("tiers").get(0).get("toKm").decimalValue()).isEqualByComparingTo("4");
+        assertThat(x.get("tiers").get(1).get("toKm").decimalValue()).isEqualByComparingTo("10");
+        // first level from 0 km; "không giao quá" beyond the last level
+        mvc.perform(body(post("/api/delivery-fee-plans"), Map.of("name", "Y", "maxKm", 10, "tiers", List.of(Map.of("fromKm", 1, "fee", 1)))))
+                .andExpect(status().isBadRequest());
+        mvc.perform(body(post("/api/delivery-fee-plans"), Map.of("name", "Z", "maxKm", 3, "tiers",
+                List.of(Map.of("fromKm", 0, "fee", 1), Map.of("fromKm", 5, "fee", 2))))).andExpect(status().isBadRequest());
     }
 
     private Map<String, Object> quoteAt(int cups, String address, String time) {
@@ -142,12 +150,17 @@ class DeliveryFlowTest {
         JsonNode evening = call(body(post("/api/orders/quote"), quoteAt(2, "Vừa", "18:30")));
         assertThat(evening.get("shippingFee").decimalValue()).isEqualByComparingTo("30000");
         assertThat(evening.get("deliveryOption").asText()).isEqualTo("Cao điểm");
+        assertThat(evening.get("deliveryNote").asText()).isEqualTo("Phí giao hàng khung giờ Cao điểm");
+        assertThat(noon.has("deliveryNote")).isFalse();
         // 6–8h on a Monday: Sáng sớm; its only range stops at 3 km, so 4.2 km is out of range then
         assertThat(call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "07:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("18000");
         mvc.perform(body(post("/api/orders/quote"), quoteAt(2, "Vừa", "07:00"))).andExpect(status().isBadRequest());
 
         // overlapping slots are refused; an option in use, or the default one, cannot be deleted
         mvc.perform(body(post("/api/delivery-time-slots"), slot("19:00", "21:00", early, List.of()))).andExpect(status().isBadRequest());
+        // outside the opening hours (06:00–22:00)
+        mvc.perform(body(post("/api/delivery-time-slots"), slot("05:00", "07:00", early, List.of()))).andExpect(status().isBadRequest());
+        mvc.perform(body(post("/api/delivery-time-slots"), slot("21:00", "23:00", early, List.of()))).andExpect(status().isBadRequest());
         mvc.perform(delete("/api/delivery-fee-plans/" + peak)).andExpect(status().isBadRequest());
         long def = planRepository.findFirstByDefaultPlanTrue().orElseThrow().getId();
         mvc.perform(delete("/api/delivery-fee-plans/" + def)).andExpect(status().isBadRequest());
@@ -179,6 +192,7 @@ class DeliveryFlowTest {
         JsonNode q = call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00")));
         assertThat(q.get("shippingFee").decimalValue()).isEqualByComparingTo("20000");
         assertThat(q.get("weatherSurcharge").decimalValue()).isEqualByComparingTo("5000");
+        assertThat(q.get("deliveryNote").asText()).startsWith("Phụ phí do thời tiết xấu");
         rain(12, 65); // bậc 10 mm/h; free ship (4 × 40.000 ≥ 150.000) still pays the surcharge
         assertThat(call(body(post("/api/orders/quote"), quoteAt(4, "Gần", "12:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("10000");
         rain(3, 95); // giông: không ai đi giao
@@ -199,6 +213,12 @@ class DeliveryFlowTest {
         assertThat(s.getShippingFee()).isEqualByComparingTo("25000");
         assertThat(s.getDistanceKm()).isEqualByComparingTo("4.2");
         assertThat(s.getZoneName()).isEqualTo("3–7 km");
+        // the same address again (picked from the saved ones) is reused, not saved twice
+        JsonNode again = call(body(post("/api/orders"), Map.of("items", List.of(Map.of("coffeeId", latte.getId(), "quantity", 2)),
+                "orderType", "DELIVERY", "customerPhone", "0912345678", "paymentMethod", "CASH",
+                "delivery", Map.of("recipientName", "Lan", "recipientPhone", "0912345678", "address", "Vừa"))));
+        Shipment s2 = shipmentRepository.findAll().stream().filter(x -> x.getOrder().getId().equals(again.get("id").asLong())).findFirst().orElseThrow();
+        assertThat(s2.getAddress().getId()).isEqualTo(s.getAddress().getId());
     }
 
     private Shipment deliveryOrder(OrderStatus status) {

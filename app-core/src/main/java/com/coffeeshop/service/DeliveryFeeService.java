@@ -46,16 +46,22 @@ public class DeliveryFeeService {
     private final com.coffeeshop.repository.DeliveryWeatherTierRepository weatherTierRepository;
 
     public record Settings(String shopAddress, Double shopLat, Double shopLng, LocalTime openTime, LocalTime closeTime,
-                           BigDecimal freeShipThreshold, BigDecimal minOrderAmount, String provider) {
+                           BigDecimal freeShipThreshold, BigDecimal minOrderAmount, BigDecimal minutesPerKm, String provider) {
     }
 
+    /** mức km: từ {@code fromKm} km trở đi → {@code fee}; {@code toKm} (tự tính: mốc kế tiếp hoặc maxKm) chỉ để đọc */
     public record Tier(BigDecimal fromKm, BigDecimal toKm, BigDecimal fee) {
     }
 
-    public record Plan(Long id, String name, boolean isDefault, List<Tier> tiers) {
+    /**
+     * Option giá: các mức "từ X km → phí" và {@code maxKm} = không giao quá … km. {@code note}: ghi chú cho khách khi
+     * option này được áp dụng (trống = câu mặc định).
+     */
+    public record Plan(Long id, String name, boolean isDefault, String note, List<Tier> tiers, BigDecimal maxKm) {
         static Plan from(DeliveryFeePlan p) {
-            return new Plan(p.getId(), p.getName(), p.isDefaultPlan(),
-                    p.getTiers().stream().map(t -> new Tier(t.getFromKm(), t.getToKm(), t.getFee())).toList());
+            return new Plan(p.getId(), p.getName(), p.isDefaultPlan(), p.getNote(),
+                    p.getTiers().stream().map(t -> new Tier(t.getFromKm(), t.getToKm(), t.getFee())).toList(),
+                    p.getTiers().stream().map(DeliveryFeeTier::getToKm).max(Comparator.naturalOrder()).orElse(null));
         }
     }
 
@@ -71,7 +77,7 @@ public class DeliveryFeeService {
      * ({@code weather} = "Mưa 3,2 mm/h" when charged) and the fee from what is left to pay
      */
     public record Rule(BigDecimal distanceKm, Integer minutes, String tierLabel, String planName, String weather,
-                       BigDecimal weatherSurcharge, Function<BigDecimal, BigDecimal> fee) {
+                       BigDecimal weatherSurcharge, String note, Function<BigDecimal, BigDecimal> fee) {
         /** "3–5 km", "3–5 km · Cao điểm", "3–5 km · Cao điểm · Mưa 3,2 mm/h" */
         public String label() {
             return String.join(" · ", java.util.stream.Stream.of(tierLabel, planName, weather).filter(x -> x != null).toList());
@@ -86,7 +92,7 @@ public class DeliveryFeeService {
      * thời tiết xấu: bật / tắt, bậc phụ phí theo lượng mưa, ngưng giao khi mưa từ … mm/h (có giông thì luôn ngưng giao).
      * {@code outlook}: thời tiết tại quán bây giờ + vài giờ tới (chỉ đọc).
      */
-    public record WeatherSettings(boolean enabled, List<RainTier> rainTiers, BigDecimal stopRainMm, List<WeatherHour> outlook) {
+    public record WeatherSettings(boolean enabled, List<RainTier> rainTiers, BigDecimal stopRainMm, String note, List<WeatherHour> outlook) {
     }
 
     /** thời tiết một giờ (đầu danh sách = hiện tại) và quán sẽ làm gì: phụ phí bao nhiêu, có ngưng giao không */
@@ -100,7 +106,7 @@ public class DeliveryFeeService {
     public Settings settings() {
         DeliverySetting s = setting();
         return new Settings(s.getShopAddress(), s.getShopLat(), s.getShopLng(), s.getOpenTime(), s.getCloseTime(),
-                s.getFreeShipThreshold(), s.getMinOrderAmount(), distance.provider());
+                s.getFreeShipThreshold(), s.getMinOrderAmount(), s.getMinutesPerKm(), distance.provider());
     }
 
     /** địa chỉ quán đổi (hoặc chưa có toạ độ) thì đo lại toạ độ */
@@ -117,6 +123,7 @@ public class DeliveryFeeService {
         s.setCloseTime(r.closeTime());
         s.setFreeShipThreshold(positiveOrNull(r.freeShipThreshold()));
         s.setMinOrderAmount(positiveOrNull(r.minOrderAmount()));
+        s.setMinutesPerKm(positiveOrNull(r.minutesPerKm()));
         if (moved || s.getShopLat() == null || s.getShopLng() == null) {
             var p = locate(s.getShopAddress(), null);
             s.setShopLat(p.lat());
@@ -136,7 +143,7 @@ public class DeliveryFeeService {
                 .map(w -> new WeatherHour(w.time(), w.code(), w.describe(), round1(w.temperature()), round1(w.rainMmPerHour()),
                         round1(w.windKmh()), surchargeFor(s, tiers, w), stops(s, w))).toList();
         return new WeatherSettings(s.isWeatherEnabled(), tiers.stream().map(t -> new RainTier(t.getMinRainMm(), t.getSurcharge())).toList(),
-                s.getWeatherStopRainMm(), outlook);
+                s.getWeatherStopRainMm(), s.getWeatherNote(), outlook);
     }
 
     @Transactional
@@ -152,6 +159,7 @@ public class DeliveryFeeService {
         DeliverySetting s = setting();
         s.setWeatherEnabled(r.enabled());
         s.setWeatherStopRainMm(positiveOrNull(r.stopRainMm()));
+        s.setWeatherNote(r.note() == null || r.note().isBlank() ? null : r.note().trim());
         settingRepository.save(s);
         weatherTierRepository.deleteAllInBatch();
         weatherTierRepository.saveAll(tiers.stream().map(t -> DeliveryWeatherTier.builder().minRainMm(t.minRainMm()).surcharge(t.surcharge()).build()).toList());
@@ -190,7 +198,7 @@ public class DeliveryFeeService {
     @Transactional
     public Plan savePlan(Long id, Plan r) {
         if (r.name() == null || r.name().isBlank()) throw new BadRequestException("Nhập tên option");
-        List<Tier> tiers = validTiers(r.tiers());
+        List<Tier> tiers = validTiers(r.tiers(), r.maxKm());
         String name = r.name().trim();
         List<DeliveryFeePlan> all = planRepository.findAllByOrderByDefaultPlanDescIdAsc();
         if (all.stream().anyMatch(p -> !p.getId().equals(id) && p.getName().equalsIgnoreCase(name))) {
@@ -208,6 +216,7 @@ public class DeliveryFeeService {
             p.setDefaultPlan(true);
         }
         p.setName(name);
+        p.setNote(r.note() == null || r.note().isBlank() ? null : r.note().trim());
         p.getTiers().clear();
         planRepository.saveAndFlush(p); // orphans go before the new ranges
         for (Tier t : tiers) {
@@ -240,6 +249,15 @@ public class DeliveryFeeService {
             throw new BadRequestException("Giờ bắt đầu và kết thúc không hợp lệ");
         }
         if (r.planId() == null) throw new BadRequestException("Chọn option giá");
+        // khung giờ phải nằm trong giờ mở cửa
+        DeliverySetting shop = setting();
+        if (shop.getOpenTime() != null) {
+            for (LocalTime t = r.startTime(); !t.equals(r.endTime()); t = t.plusMinutes(1)) {
+                if (!isOpen(shop, t)) {
+                    throw new BadRequestException("Khung giờ phải nằm trong giờ mở cửa (" + shop.getOpenTime() + "–" + shop.getCloseTime() + ")");
+                }
+            }
+        }
         DeliveryTimeSlot s = id == null ? new DeliveryTimeSlot() : slotRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy khung giờ: " + id));
         List<Integer> days = r.days() == null ? List.of()
@@ -300,14 +318,52 @@ public class DeliveryFeeService {
         if (stops(s, w)) throw new BadRequestException("Thời tiết xấu (" + w.describe() + ") — quán tạm ngưng giao hàng");
         BigDecimal extra = surchargeFor(s, weatherTierRepository.findAllByOrderByMinRainMmAsc(), w);
         boolean bad = extra.signum() > 0;
+        // ghi chú cho khách: vì sao phí khác thường (option của khung giờ, thời tiết xấu)
+        List<String> notes = new ArrayList<>();
+        if (!plan.isDefaultPlan()) notes.add(plan.getNote() != null ? plan.getNote() : "Phí giao hàng khung giờ " + plan.getName());
+        if (bad) notes.add(s.getWeatherNote() != null ? s.getWeatherNote() : "Phụ phí do thời tiết xấu (" + w.describe() + ")");
         return new Rule(km, route.minutes(), tier.label(), plan.isDefaultPlan() ? null : plan.getName(),
-                bad ? w.describe() : null, bad ? extra : null, amount -> {
+                bad ? w.describe() : null, bad ? extra : null, notes.isEmpty() ? null : String.join(". ", notes), amount -> {
             if (min != null && amount.compareTo(min) < 0) {
                 throw new BadRequestException("Đơn giao hàng tối thiểu " + min.stripTrailingZeros().toPlainString() + "đ");
             }
             if (free != null && amount.compareTo(free) >= 0) return extra;
             return fee.add(extra);
         });
+    }
+
+    /** kiểm tra phường đã chọn: {@code outside} = ngay điểm gần nhất của phường cũng xa hơn khoảng km xa nhất quán giao */
+    public record AreaCheck(boolean outside, Double nearestKm, BigDecimal maxKm) {
+    }
+
+    @Transactional(readOnly = true)
+    public AreaCheck checkArea(String ward, String province) {
+        BigDecimal max = planRepository.findAllByOrderByDefaultPlanDescIdAsc().stream().flatMap(p -> p.getTiers().stream())
+                .map(DeliveryFeeTier::getToKm).max(Comparator.naturalOrder()).orElse(null);
+        DeliverySetting s = setting();
+        Double km = max == null ? null : distance.nearestKm(ward, province, shopPoint(s));
+        Double rounded = km == null ? null : Math.round(km * 10) / 10.0;
+        return new AreaCheck(km != null && km > max.doubleValue(), rounded, max);
+    }
+
+    /** quãng đường đi xe quán → một địa chỉ; {@code outside} = xa hơn mức "không giao quá" lớn nhất của các option */
+    public record Distance(BigDecimal km, boolean outside, BigDecimal maxKm) {
+    }
+
+    @Transactional(readOnly = true)
+    public Distance distanceTo(String address) {
+        if (address == null || address.isBlank()) throw new BadRequestException("Nhập địa chỉ");
+        BigDecimal max = planRepository.findAllByOrderByDefaultPlanDescIdAsc().stream().flatMap(p -> p.getTiers().stream())
+                .map(DeliveryFeeTier::getToKm).max(Comparator.naturalOrder()).orElse(null);
+        DistanceGateway.Point shop = shopPoint(setting());
+        DistanceGateway.Route route;
+        try {
+            route = distance.route(shop, distance.geocode(address, shop));
+        } catch (IllegalStateException e) {
+            throw new BadRequestException(e.getMessage());
+        }
+        BigDecimal km = BigDecimal.valueOf(route.km()).setScale(1, RoundingMode.HALF_UP);
+        return new Distance(km, max != null && km.compareTo(max) > 0, max);
     }
 
     /** gợi ý địa chỉ khi gõ, ưu tiên quanh quán */
@@ -365,25 +421,36 @@ public class DeliveryFeeService {
         }
     }
 
-    /** sorted, non-overlapping, each from < to, fees ≥ 0 */
-    private static List<Tier> validTiers(List<Tier> in) {
-        if (in == null || in.isEmpty()) throw new BadRequestException("Thêm ít nhất 1 khoảng km");
-        List<Tier> tiers = new ArrayList<>(in);
+    /**
+     * Mức "từ X km → phí" (mức đầu từ 0 km, không trùng mốc) + không giao quá {@code maxKm}: trả về các khoảng
+     * [từ, mốc kế tiếp) với khoảng cuối kết thúc ở maxKm. maxKm trống = "đến km" lớn nhất gửi lên (API cũ).
+     */
+    private static List<Tier> validTiers(List<Tier> in, BigDecimal maxKm) {
+        if (in == null || in.isEmpty()) throw new BadRequestException("Thêm ít nhất 1 mức km");
+        List<Tier> tiers = new ArrayList<>(in.stream().filter(java.util.Objects::nonNull).toList());
         for (Tier t : tiers) {
-            if (t == null || t.fromKm() == null || t.toKm() == null || t.fee() == null) throw new BadRequestException("Nhập đủ từ km, đến km và phí");
-            if (t.fromKm().signum() < 0 || t.toKm().compareTo(t.fromKm()) <= 0) {
-                throw new BadRequestException("Khoảng km không hợp lệ: " + t.fromKm() + "–" + t.toKm());
-            }
+            if (t.fromKm() == null || t.fee() == null) throw new BadRequestException("Nhập đủ km và phí");
+            if (t.fromKm().signum() < 0) throw new BadRequestException("Km không hợp lệ");
             if (t.fee().signum() < 0) throw new BadRequestException("Phí ship không hợp lệ");
         }
         tiers.sort(Comparator.comparing(Tier::fromKm));
+        if (tiers.get(0).fromKm().signum() != 0) throw new BadRequestException("Mức đầu tiên phải từ 0 km");
         for (int i = 1; i < tiers.size(); i++) {
-            if (tiers.get(i).fromKm().compareTo(tiers.get(i - 1).toKm()) < 0) {
-                throw new BadRequestException("Các khoảng km bị chồng nhau: " + tiers.get(i - 1).toKm().stripTrailingZeros().toPlainString()
-                        + " > " + tiers.get(i).fromKm().stripTrailingZeros().toPlainString());
-            }
+            if (tiers.get(i).fromKm().compareTo(tiers.get(i - 1).fromKm()) == 0) throw new BadRequestException("Hai mức trùng km");
         }
-        return tiers;
+        BigDecimal max = maxKm != null ? maxKm
+                : tiers.stream().map(Tier::toKm).filter(java.util.Objects::nonNull).max(Comparator.naturalOrder()).orElse(null);
+        if (max == null) throw new BadRequestException("Nhập \"Không giao quá … km\"");
+        BigDecimal last = tiers.get(tiers.size() - 1).fromKm();
+        if (max.compareTo(last) <= 0) {
+            throw new BadRequestException("\"Không giao quá\" phải lớn hơn " + last.stripTrailingZeros().toPlainString() + " km");
+        }
+        List<Tier> out = new ArrayList<>();
+        for (int i = 0; i < tiers.size(); i++) {
+            BigDecimal to = i + 1 < tiers.size() ? tiers.get(i + 1).fromKm() : max;
+            out.add(new Tier(tiers.get(i).fromKm(), to, tiers.get(i).fee()));
+        }
+        return out;
     }
 
     private static BigDecimal positiveOrNull(BigDecimal v) {
