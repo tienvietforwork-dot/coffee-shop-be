@@ -47,7 +47,7 @@ public class MaterialTransaction extends BaseEntity {
     private BigDecimal quantity;
     /** DISPOSAL / EXPORT: why it left */
     @Enumerated(EnumType.STRING)
-    @Column(length = 30)
+    @Column(length = 30)    
     private TransactionReason reason;
     @Column(length = 255)
     private String note;

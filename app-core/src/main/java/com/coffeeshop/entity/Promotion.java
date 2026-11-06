@@ -32,7 +32,10 @@ public class Promotion extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "apply_scope", nullable = false, length = 10)
     private PromotionScope applyScope;
-    @Column(name = "discount_percent", precision = 5, scale = 2)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "discount_type", nullable = false, length = 20)
+    private PromotionType discountType;
+    @Column(name = "discount_percent", precision = 12, scale = 2)
     private BigDecimal discountPercent;
     @Column(name = "min_order_amount", precision = 12, scale = 2)
     private BigDecimal minOrderAmount;

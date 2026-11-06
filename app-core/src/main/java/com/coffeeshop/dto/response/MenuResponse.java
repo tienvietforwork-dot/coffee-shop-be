@@ -21,7 +21,7 @@ public record MenuResponse(List<MenuCategory> categories, List<OrderPromotion> o
                              Integer servings, Map<Long, BigDecimal> perCup) {
     }
 
-    public record OrderPromotion(Long id, String name, String description, BigDecimal discountPercent,
+    public record OrderPromotion(Long id, String name, String description, String discountType, BigDecimal discountPercent,
                                  BigDecimal minOrderAmount, LocalDateTime endDate) {
     }
 }
