@@ -43,13 +43,15 @@ public class VoucherService {
     @Transactional
     public VoucherResponse create(VoucherRequest request){
 
+
+
         VoucherTypeStatus defaultStatus = request.getStatus() != null ? request.getStatus() : VoucherTypeStatus.DRAFT;
         Voucher voucher = Voucher.builder()
                 .name(request.getName())
                 .discountType(request.getDiscountType())
                 .discountValue(request.getDiscountValue())
                 .minOrderValue(request.getMinOrderValue())
-                .quantity(request.getQuantity())
+                .quantity(0)
                 .maxQuantity(request.getMaxQuantity())
                 .validDays(request.getValidDate())
                 .status(defaultStatus)
