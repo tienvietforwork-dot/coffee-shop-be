@@ -60,6 +60,15 @@ public class Coffee extends BaseEntity{
     private boolean autoSoldOut = false;
 
 
+    @PrePersist
+    public void prePersist() {
+        if (this.price != null && this.salePrice == null) {
+            this.salePrice = this.price;
+        }
+        if (this.sale == null) {
+            this.sale = BigDecimal.ZERO;
+        }
+    }
 
     public void updatePricing(BigDecimal salePrice, BigDecimal salePercentage) {
         this.salePrice = salePrice;

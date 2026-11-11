@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -30,8 +31,27 @@ public class PromotionService {
     @Transactional(readOnly = true)
     public List<PromotionResponse> findAll() {
         return promotionRepository.findAll().stream()
+                .sorted(
+                        Comparator.comparingInt((Promotion p) -> getStatusPriority(p.getStatus()))
+                                .thenComparing(Promotion::getStartDate, Comparator.nullsLast(Comparator.reverseOrder()))
+                )
                 .map(PromotionResponse::new)
                 .collect(Collectors.toList());
+    }
+
+    private int getStatusPriority(PromotionStatus status) {
+        if (status == null) return 5;
+        switch (status) {
+            case ACTIVE:
+                return 1;
+            case PAUSED:
+                return 2;
+            case DRAFT:
+                return 3;
+            case ENDED:
+            default:
+                return 4;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -42,6 +62,8 @@ public class PromotionService {
 
     @Transactional
     public PromotionResponse create(PromotionRequest request) {
+
+        PromotionStatus defaultStatus = PromotionStatus.DRAFT;
         Promotion promotion = Promotion.builder()
                 .name(request.getName())
                 .description(request.getDescription())
@@ -51,7 +73,7 @@ public class PromotionService {
                 .minOrderAmount(request.getMinOrderAmount())
                 .startDate(request.getStartDate())
                 .endDate(request.getEndDate())
-                .status(request.getStatus())
+                .status(defaultStatus)
                 .build();
 
         if (request.getItems() != null) {
@@ -86,33 +108,38 @@ public class PromotionService {
         promotion.setMinOrderAmount(request.getMinOrderAmount());
         promotion.setStartDate(request.getStartDate());
         promotion.setEndDate(request.getEndDate());
-        promotion.setStatus(request.getStatus());
+        promotion.setStatus(request.getStatus() != null ? request.getStatus() : PromotionStatus.DRAFT);
 
         if (request.getItems() != null) {
-            List<Long> itemNoNull = request.getItems().stream()
+            List<Long> requestNoNull = request.getItems().stream()
                     .map(PromotionItemRequest::getId)
                     .filter(itemId -> itemId != null)
                     .collect(Collectors.toList());
 
-            promotion.getPromotionItems().removeIf(item -> !itemNoNull.contains(item.getId()));
+            promotion.getPromotionItems().removeIf(item -> !requestNoNull.contains(item.getId()));
+
+
+            promotionRepository.flush();
+
 
             for (PromotionItemRequest itemReq : request.getItems()) {
+                Coffee coffee = findCoffeeById(itemReq.getCoffeeId());
+
                 if (itemReq.getId() != null) {
-                    PromotionItem updateItem = promotion.getPromotionItems().stream()
+
+                    PromotionItem existingItem = promotion.getPromotionItems().stream()
                             .filter(i -> i.getId().equals(itemReq.getId()))
                             .findFirst()
                             .orElseThrow(() -> new RuntimeException("PromotionItem not found with id: " + itemReq.getId()));
 
-                    Coffee coffee = findCoffeeById(itemReq.getCoffeeId());
-                    updateItem.setCoffee(coffee);
-                    updateItem.setCustomDiscount(itemReq.getCustomDiscount());
-                    updateItem.setSalePrice(itemReq.getSalePrice());
-                    updateItem.setMaxQuantity(itemReq.getMaxQuantity());
+                    existingItem.setCoffee(coffee);
+                    existingItem.setCustomDiscount(itemReq.getCustomDiscount());
+                    existingItem.setSalePrice(itemReq.getSalePrice());
+                    existingItem.setMaxQuantity(itemReq.getMaxQuantity());
                     if (itemReq.getSoldQuantity() != null) {
-                        updateItem.setSoldQuantity(itemReq.getSoldQuantity());
+                        existingItem.setSoldQuantity(itemReq.getSoldQuantity());
                     }
                 } else {
-                    Coffee coffee = findCoffeeById(itemReq.getCoffeeId());
 
                     PromotionItem newItem = PromotionItem.builder()
                             .coffee(coffee)
@@ -207,11 +234,11 @@ public class PromotionService {
     }
 
     @Transactional
-    public void activatePromotion(Long id) {
+    public void activePromotion(Long id) {
         Promotion promotion = findPromotionById(id);
 
-        if (promotion.getStatus() != PromotionStatus.DRAFT) {
-            throw new RuntimeException("Chỉ có thể kích hoạt chương trình ở trạng thái DRAFT");
+        if (promotion.getStatus() != PromotionStatus.DRAFT && promotion.getStatus() != PromotionStatus.PAUSED) {
+            throw new RuntimeException("Chỉ có thể kích hoạt chương trình ở trạng thái DRAFT và PAUSED");
         }
 
         LocalDateTime now = LocalDateTime.now();
@@ -264,31 +291,7 @@ public class PromotionService {
         promotionRepository.save(promotion);
     }
 
-    @Transactional
-    public void resumePromotion(Long id) {
-        Promotion promotion = findPromotionById(id);
 
-        if (promotion.getStatus() != PromotionStatus.PAUSED) {
-            throw new RuntimeException("Chỉ có thể tiếp tục chương trình khuyến mãi đang ở trạng thái PAUSED");
-        }
-
-        LocalDateTime now = LocalDateTime.now();
-        if (promotion.getStartDate() == null || promotion.getEndDate() == null) {
-            throw new RuntimeException("Chưa thiết lập thời gian bắt đầu hoặc kết thúc cho chương trình");
-        }
-
-        if (now.isBefore(promotion.getStartDate()) || now.isAfter(promotion.getEndDate())) {
-            throw new RuntimeException("Không thể tiếp tục: Chương trình đã quá hạn hoặc chưa đến thời gian hiệu lực (startDate - endDate)");
-        }
-
-        promotion.setStatus(PromotionStatus.ACTIVE);
-
-        if (promotion.getApplyScope() == PromotionScope.COFFEE) {
-            tinhToanGiaTri(promotion);
-        }
-
-        promotionRepository.save(promotion);
-    }
 
 
     @Transactional
@@ -318,15 +321,18 @@ public class PromotionService {
         promotionRepository.save(promotion);
     }
 
-    /**
-     * Nhân bản chương trình khuyến mãi dựa theo ID
-     */
     @Transactional
     public PromotionResponse clonePromotion(Long id) {
         Promotion promotion = findPromotionById(id);
 
+        String baseName = promotion.getName() + " (Bản sao";
+
+        long count = promotionRepository.countByNameStartingWith(baseName);
+
+        String cloneName = count == 0 ? promotion.getName() + " (Bản sao)" : promotion.getName() + "(Bản sao " + (count + 1) + ")";
+
         Promotion clonedPromotion = Promotion.builder()
-                .name(promotion.getName() + " (Bản sao)")
+                .name(cloneName)
                 .description(promotion.getDescription())
                 .applyScope(promotion.getApplyScope())
                 .discountType(promotion.getDiscountType())
@@ -353,6 +359,23 @@ public class PromotionService {
 
         Promotion savedPromotion = promotionRepository.save(clonedPromotion);
         return new PromotionResponse(savedPromotion);
+    }
+
+    @Transactional
+    public void removePromotion(Long id){
+        Promotion promotion = findPromotionById(id);
+
+        if (promotion.getStatus() != PromotionStatus.DRAFT){
+            throw new RuntimeException("Chỉ có thể xóa chương trình khuyến mãi đang ở trạng thái DRAFT");
+        }
+
+        if (promotion.getPromotionItems() != null) {
+            for (PromotionItem item : promotion.getPromotionItems()) {
+                item.setDelFlag(true);
+            }
+        }
+
+        promotionRepository.delete(promotion);
     }
 
 }

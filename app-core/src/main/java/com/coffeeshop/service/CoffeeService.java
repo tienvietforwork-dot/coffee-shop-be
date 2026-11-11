@@ -108,6 +108,7 @@ public class CoffeeService {
         }
         var orderPromos = promotionRepository.findRunningOrderPromotions(now).stream()
                 .map(p -> new MenuResponse.OrderPromotion(p.getId(), p.getName(), p.getDescription(),
+                        p.getDiscountType() == null ? "PERCENTAGE" : p.getDiscountType().name(),
                         p.getDiscountPercent(), p.getMinOrderAmount(), p.getEndDate()))
                 .toList();
         return new MenuResponse(categories, orderPromos);

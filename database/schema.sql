@@ -448,7 +448,9 @@ CREATE TABLE promotions (
     name             VARCHAR(150)  NOT NULL,
     description      TEXT,
     apply_scope      VARCHAR(10)   NOT NULL CHECK (apply_scope IN ('ORDER', 'COFFEE')),
-    discount_percent NUMERIC(5,2)  CHECK (discount_percent > 0 AND discount_percent <= 100),
+    discount_type    VARCHAR(20)   NOT NULL DEFAULT 'PERCENTAGE'
+                                      CHECK (discount_type IN ('PERCENTAGE', 'FIXED_AMOUNT', 'SPECIAL')),
+    discount_percent NUMERIC(12,2),
     min_order_amount NUMERIC(12,2) CHECK (min_order_amount >= 0),
     start_date       TIMESTAMP     NOT NULL,
     end_date         TIMESTAMP     NOT NULL,
@@ -459,7 +461,19 @@ CREATE TABLE promotions (
     updated_at TIMESTAMP,
     del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
     del_user   VARCHAR(50),
-    CHECK (end_date > start_date)
+    CHECK (end_date > start_date),
+    CHECK (
+        (discount_type = 'PERCENTAGE' AND (
+            (apply_scope = 'ORDER' AND discount_percent IS NOT NULL AND discount_percent > 0 AND discount_percent <= 100)
+            OR (apply_scope = 'COFFEE' AND (discount_percent IS NULL OR (discount_percent > 0 AND discount_percent <= 100)))
+        ))
+        OR (discount_type = 'FIXED_AMOUNT' AND (
+            (apply_scope = 'ORDER' AND discount_percent IS NOT NULL AND discount_percent > 0)
+            OR (apply_scope = 'COFFEE' AND (discount_percent IS NULL OR discount_percent > 0))
+        ))
+        OR (discount_type = 'SPECIAL' AND apply_scope = 'COFFEE'
+            AND (discount_percent IS NULL OR discount_percent > 0))
+    )
 );
 CREATE INDEX idx_promotions_period ON promotions (start_date, end_date);
 

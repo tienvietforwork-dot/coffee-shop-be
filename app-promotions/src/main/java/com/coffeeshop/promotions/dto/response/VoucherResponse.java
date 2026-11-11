@@ -23,6 +23,7 @@ public class VoucherResponse {
   private BigDecimal discountValue;
   private BigDecimal minOrderValue;
   private Integer quantity;
+  private Integer maxQuantity;
   private Integer validDays;
   private VoucherTypeStatus status;
 
@@ -33,6 +34,7 @@ public class VoucherResponse {
       this.discountValue = voucher.getDiscountValue();
       this.minOrderValue = voucher.getMinOrderValue();
       this.quantity = voucher.getQuantity();
+      this.maxQuantity = voucher.getMaxQuantity();
       this.validDays = voucher.getValidDays();
       this.status = voucher.getStatus();
 

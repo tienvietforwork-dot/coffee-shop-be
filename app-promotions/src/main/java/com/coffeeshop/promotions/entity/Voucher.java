@@ -45,11 +45,16 @@ public class Voucher extends BaseEntity{
     @Column(name = "min_order_value", nullable = false, precision = 12, scale = 2)
     private BigDecimal minOrderValue;
 
+    @Builder.Default
     @Column(name = "quantity", nullable = false)
-    private Integer quantity;
+    private Integer quantity = 0;
 
+    @Column(name = "max_quantity", nullable = false)
+    private Integer maxQuantity;
+
+    @Builder.Default
     @Column(name = "valid_days", nullable = false)
-    private Integer validDays;
+    private Integer validDays = 30;
 
     @Builder.Default
     @Enumerated(EnumType.STRING)
@@ -59,6 +64,11 @@ public class Voucher extends BaseEntity{
     public void addVoucherDetail(VoucherDetail item){
         voucherDetails.add(item);
         item.setVoucher(this);
+    }
+
+    @PreUpdate
+    public void onUpdate(){
+        if (status == null) status = VoucherTypeStatus.DRAFT;
     }
 
 }

@@ -15,7 +15,7 @@ public record MenuResponse(List<MenuCategory> categories, List<OrderPromotion> o
                              BigDecimal salePrice, String promotionName, boolean available) {
     }
 
-    public record OrderPromotion(Long id, String name, String description, BigDecimal discountPercent,
+    public record OrderPromotion(Long id, String name, String description, String discountType, BigDecimal discountPercent,
                                  BigDecimal minOrderAmount, LocalDateTime endDate) {
     }
 }
