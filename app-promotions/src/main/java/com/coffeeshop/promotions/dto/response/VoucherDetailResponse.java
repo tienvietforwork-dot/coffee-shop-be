@@ -29,7 +29,7 @@ public class VoucherDetailResponse {
 
     public VoucherDetailResponse(VoucherDetail voucherDetail) {
 
-
+        this.id = voucherDetail.getId();
         if (voucherDetail.getOrder() != null){
             this.orderId = voucherDetail.getOrder().getId();
             this.orderCode = voucherDetail.getOrder().getCode();
