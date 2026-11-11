@@ -6,7 +6,7 @@
 #   /api/crm/*         -> app-crm        (rewritten to /api/* for that app)
 #   /api/stats/*        -> app-stats      (rewritten to /api/* for that app)
 #   /api/promotions/*  -> app-promotions (rewritten to /api/* for that app)
-#   /api/vouchers      -> app-promotions (unchanged)
+#   /api/vouchers/*    -> app-promotions (unchanged)
 #   /ws                -> app-core        (WebSocket, unchanged)
 #   everything else    -> app-core        (its existing /api/auth, /api/products,
 #                                           /api/materials, /api/orders, ... paths
@@ -29,6 +29,18 @@ server {
     client_max_body_size 5m;
 
     location = /api/vouchers {
+        set $upstream_host ${PROMOTIONS_UPSTREAM};
+        proxy_pass https://$upstream_host;
+        proxy_ssl_server_name on;
+        proxy_ssl_name $upstream_host;
+        proxy_set_header Host $upstream_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+    }
+
+    location ^~ /api/vouchers/ {
         set $upstream_host ${PROMOTIONS_UPSTREAM};
         proxy_pass https://$upstream_host;
         proxy_ssl_server_name on;

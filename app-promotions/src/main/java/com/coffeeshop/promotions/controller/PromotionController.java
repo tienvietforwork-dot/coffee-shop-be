@@ -1,6 +1,7 @@
 package com.coffeeshop.promotions.controller;
 
 import com.coffeeshop.promotions.dto.request.PromotionRequest;
+import com.coffeeshop.promotions.dto.response.PromotionAnalyticsResponse;
 import com.coffeeshop.promotions.dto.response.PromotionResponse;
 import com.coffeeshop.promotions.service.PromotionService;
 import lombok.RequiredArgsConstructor;
@@ -79,5 +80,13 @@ public class PromotionController {
     public ResponseEntity<Void> removePromotion(@PathVariable Long id){
         promotionService.removePromotion(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("promotions/analytics")
+    public ResponseEntity<PromotionAnalyticsResponse> getAnalytics(
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to) {
+        PromotionAnalyticsResponse response = promotionService.getAnalytics(from, to);
+        return ResponseEntity.ok(response);
     }
 }

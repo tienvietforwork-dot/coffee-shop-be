@@ -2,20 +2,24 @@ package com.coffeeshop.promotions.service;
 
 import com.coffeeshop.promotions.dto.request.PromotionItemRequest;
 import com.coffeeshop.promotions.dto.request.PromotionRequest;
+import com.coffeeshop.promotions.dto.response.PromotionAnalyticsResponse;
 import com.coffeeshop.promotions.dto.response.PromotionResponse;
-import com.coffeeshop.promotions.entity.Coffee;
-import com.coffeeshop.promotions.entity.Promotion;
-import com.coffeeshop.promotions.entity.PromotionItem;
+import com.coffeeshop.promotions.entity.*;
 import com.coffeeshop.promotions.entity.enums.PromotionScope;
 import com.coffeeshop.promotions.entity.enums.PromotionStatus;
 import com.coffeeshop.promotions.entity.enums.PromotionType;
+import com.coffeeshop.promotions.entity.enums.VoucherStatus;
 import com.coffeeshop.promotions.repository.CoffeeRepository;
+import com.coffeeshop.promotions.repository.OrderRepository;
 import com.coffeeshop.promotions.repository.PromotionRepository;
+import com.coffeeshop.promotions.repository.VoucherDetailRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -27,6 +31,8 @@ public class PromotionService {
 
     private final PromotionRepository promotionRepository;
     private final CoffeeRepository coffeeRepository;
+    private final OrderRepository orderRepository;
+    private final VoucherDetailRepository voucherDetailRepository;
 
     @Transactional(readOnly = true)
     public List<PromotionResponse> findAll() {
@@ -158,6 +164,75 @@ public class PromotionService {
 
         Promotion updated = promotionRepository.save(promotion);
         return new PromotionResponse(updated);
+    }
+
+
+    @Transactional(readOnly = true)
+    public PromotionAnalyticsResponse getAnalytics(String fromStr, String toStr) {
+        LocalDateTime fromDate = (fromStr != null && !fromStr.isEmpty())
+                ? LocalDate.parse(fromStr).atStartOfDay()
+                : LocalDateTime.now().minusDays(30);
+        LocalDateTime toDate = (toStr != null && !toStr.isEmpty())
+                ? LocalDate.parse(toStr).atTime(23, 59, 59)
+                : LocalDateTime.now();
+
+        List<Promotion> promotions = promotionRepository.findAll();
+        List<PromotionStat> promotionStats = promotions.stream().map(promo -> {
+
+            Long orders = orderRepository.countOrdersByPromotion(promo.getId(), fromDate, toDate);
+            BigDecimal revenue = orderRepository.sumRevenueByPromotion(promo.getId(), fromDate, toDate);
+            BigDecimal discountTotal = orderRepository.sumDiscountByPromotion(promo.getId(), fromDate, toDate);
+
+            orders = (orders != null) ? orders : 0L;
+            revenue = (revenue != null) ? revenue : BigDecimal.ZERO;
+            discountTotal = (discountTotal != null) ? discountTotal : BigDecimal.ZERO;
+
+            BigDecimal avgOrderValue = orders > 0
+                    ? revenue.divide(BigDecimal.valueOf(orders), 2)
+                    : BigDecimal.ZERO;
+
+            BigDecimal roi = BigDecimal.ZERO;
+            if (discountTotal.compareTo(BigDecimal.ZERO) > 0) {
+                roi = revenue.subtract(discountTotal).divide(discountTotal, 2);
+            }
+
+            return PromotionStat.builder()
+                    .id(promo.getId())
+                    .name(promo.getName())
+                    .status(promo.getStatus())
+                    .orders(orders)
+                    .revenue(revenue)
+                    .discountTotal(discountTotal)
+                    .avgOrderValue(avgOrderValue)
+                    .roi(roi)
+                    .build();
+        }).collect(Collectors.toList());
+
+
+        long issued = voucherDetailRepository.countByStatus(VoucherStatus.ISSUED);
+        long used = voucherDetailRepository.countByStatus(VoucherStatus.USED);
+        long expired = voucherDetailRepository.countByStatus(VoucherStatus.EXPIRED);
+
+        double usageRate = issued > 0 ? ((double) used / issued) * 100.0 : 0.0;
+
+        VoucherStat voucherStat = VoucherStat.builder()
+                .issued(issued)
+                .used(used)
+                .expired(expired)
+                .usageRate(Math.round(usageRate * 10.0) / 10.0)
+                .discountTotal(BigDecimal.ZERO)
+                .build();
+
+        BaselineStat baselineStat = BaselineStat.builder()
+                .avgOrderValue(new BigDecimal("50000"))
+                .ordersPerDay(new BigDecimal("25"))
+                .build();
+
+        return PromotionAnalyticsResponse.builder()
+                .promotions(promotionStats)
+                .vouchers(voucherStat)
+                .baseline(baselineStat)
+                .build();
     }
 
     @Transactional
@@ -376,6 +451,32 @@ public class PromotionService {
         }
 
         promotionRepository.delete(promotion);
+    }
+
+    @Scheduled(cron = "0 0 * * * *")
+    @Transactional
+    public void autoEndExpiredPromotions() {
+        LocalDateTime now = LocalDateTime.now();
+
+        List<Promotion> activeOrPausedPromotions = promotionRepository.findByStatusIn(
+                List.of(PromotionStatus.ACTIVE, PromotionStatus.PAUSED)
+        );
+
+        for (Promotion promo : activeOrPausedPromotions) {
+            if (promo.getEndDate() != null && now.isAfter(promo.getEndDate())) {
+                promo.setStatus(PromotionStatus.ENDED);
+
+                if (promo.getApplyScope() == PromotionScope.COFFEE && promo.getPromotionItems() != null) {
+                    for (PromotionItem item : promo.getPromotionItems()) {
+                        Coffee coffee = item.getCoffee();
+                        if (coffee != null) {
+                            coffee.resetSalePrice();
+                        }
+                    }
+                }
+                promotionRepository.save(promo);
+            }
+        }
     }
 
 }

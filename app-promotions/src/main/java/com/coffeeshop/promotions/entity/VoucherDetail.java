@@ -28,7 +28,6 @@ public class VoucherDetail extends BaseEntity{
     @JoinColumn(name = "voucher_id", nullable = false)
     private Voucher voucher;
 
-    // Nếu Order có thể không bắt buộc, hãy chuyển optional = true và bỏ nullable = false
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "order_id", nullable = true)
     private Order order;
@@ -37,7 +36,6 @@ public class VoucherDetail extends BaseEntity{
     @JoinColumn(name = "customer_id", nullable = false)
     private Customer customer;
 
-    // Nếu Incident có thể không bắt buộc, hãy chuyển optional = true và bỏ nullable = false
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "incident_id", nullable = true)
     private Incident incident;

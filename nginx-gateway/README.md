@@ -12,6 +12,7 @@ Cổng vào duy nhất cho frontend — gộp 4 backend độc lập (`app-core`
 | `/api/crm/...` | `app-crm` (bỏ tiền tố `/crm`, ví dụ `/api/crm/ping` → `/api/ping` ở app-crm) |
 | `/api/stats/...` | `app-stats` (tương tự) |
 | `/api/promotions/...` | `app-promotions` (tương tự) |
+| `/api/vouchers/...` | `app-promotions` (giữ nguyên đường dẫn `/api/vouchers/...`) |
 | `/ws` | `app-core` (WebSocket, giữ nguyên) |
 | Mọi thứ khác (`/api/auth`, `/api/products`, `/api/materials`, `/api/orders`...) | `app-core` (giữ nguyên, không đổi gì cả — đây là các API đã có sẵn từ trước) |
 
