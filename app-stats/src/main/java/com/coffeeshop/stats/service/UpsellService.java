@@ -16,7 +16,6 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.text.Normalizer;
 
 @Service
 @RequiredArgsConstructor
@@ -27,73 +26,54 @@ public class UpsellService {
     private final CoffeeRepository coffees;
     private final JdbcTemplate jdbc;
 
-    /** Safety guard: names must explicitly identify an upgraded version of the SAME drink.
-     * This is not a substitute for SKU recipe validation in app-core. */
-    private String normalized(String value) {
-        String n = Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "").toLowerCase(Locale.ROOT)
-                .replace('đ', 'd').trim().replaceAll("\\s+", " ");
-        return n;
-    }
-
-    private boolean sameDrinkVariant(Coffee base, Coffee variant, String type) {
-        String baseName = normalized(base.getName());
-        String variantName = normalized(variant.getName());
-        if (baseName.isBlank() || !variantName.startsWith(baseName + " ")
-                && !variantName.startsWith(baseName + " +")
-                && !variantName.startsWith(baseName + " -")
-                && !variantName.startsWith(baseName + " (")) return false;
-        String extra = variantName.substring(baseName.length()).trim();
-        return switch (type) {
-            case "LARGER_SIZE" -> extra.matches(".*(size|\\b(l|xl|large)\\b|lon|dung tich|ml).*" );
-            case "PREMIUM_ADDON" -> extra.matches(".*(shot|topping|them|extra|kem|tran chau|syrup).*" );
-            case "PREMIUM_VERSION" -> extra.matches(".*(premium|cao cap|dac biet|special|sua hat|oat|single origin).*" );
-            default -> false;
-        };
-    }
-
-    /** Only explicit, recipe-verified variants count as an upsell. */
+    /** The manager curates the taste match between two different sellable coffees. */
     private boolean isVerifiedVariant(Long baseId, Long variantId, String type) {
-        if (baseId == null || variantId == null || type == null) return false;
+        if (baseId == null || variantId == null || type == null
+                || baseId.equals(variantId) || !"PREMIUM_VERSION".equals(type)) return false;
         Coffee base = coffees.findById(baseId).orElse(null);
         Coffee variant = coffees.findById(variantId).orElse(null);
-        if (base == null || variant == null || !sameDrinkVariant(base, variant, type)) return false;
+        if (base == null || variant == null
+                || variant.getPrice().compareTo(base.getPrice()) <= 0) return false;
         Integer count = jdbc.queryForObject("""
                 SELECT count(*) FROM public.upsell_variant_links
                 WHERE base_coffee_id = ? AND variant_coffee_id = ?
                   AND upgrade_type = ? AND enabled = true
+                  AND nullif(trim(experience_note), '') IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1 FROM public.recipes r
+                      WHERE r.coffee_id = public.upsell_variant_links.variant_coffee_id
+                        AND r.is_active = true AND r.del_flag = false
+                  )
                 """, Integer.class, baseId, variantId, type);
         return count != null && count > 0;
     }
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> compatible(Long anchorId, String type) {
-        if (anchorId == null || type == null ||
-                !Set.of("LARGER_SIZE", "PREMIUM_VERSION", "PREMIUM_ADDON").contains(type)) {
+        if (anchorId == null || !"PREMIUM_VERSION".equals(type)) {
             return List.of();
         }
         List<Map<String, Object>> candidates = jdbc.queryForList("""
-                SELECT c.id AS "coffeeId", c.name AS "coffeeName", c.price
+                SELECT c.id AS "coffeeId", c.name AS "coffeeName", c.price,
+                       l.experience_note AS "experienceNote"
                 FROM public.upsell_variant_links l
                 JOIN public.coffees c ON c.id = l.variant_coffee_id
                 JOIN public.coffees base ON base.id = l.base_coffee_id
                 WHERE l.base_coffee_id = ? AND l.upgrade_type = ? AND l.enabled = true
+                  AND nullif(trim(l.experience_note), '') IS NOT NULL
                   AND c.del_flag = false AND base.del_flag = false
                   AND c.status = 'AVAILABLE' AND c.auto_sold_out = false
+                  AND c.id <> base.id
                   AND c.price > base.price
                 ORDER BY c.price ASC, c.id ASC
                 """, anchorId, type);
-        Coffee base = coffee(anchorId);
-        return candidates.stream().filter(row -> {
-            Long id = ((Number) row.get("coffeeId")).longValue();
-            Coffee variant = coffees.findById(id).orElse(null);
-            return variant != null && sameDrinkVariant(base, variant, type);
-        }).toList();
+        return candidates;
     }
 
-    /** Admin-managed relationship. Each target is a real sellable SKU with its own recipe. */
+    /** Admin-curated relationship between two distinct menu items. */
     public record VariantInput(Long baseCoffeeId, Long variantCoffeeId,
-                               String upgradeType, boolean recipeConfirmed) {}
+                               String upgradeType, boolean recipeConfirmed,
+                               boolean experienceConfirmed, String experienceNote) {}
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> variants() {
@@ -101,6 +81,7 @@ public class UpsellService {
                 SELECT l.id, l.base_coffee_id AS "baseCoffeeId", b.name AS "baseName",
                        l.variant_coffee_id AS "variantCoffeeId", v.name AS "variantName",
                        l.upgrade_type AS "upgradeType", l.enabled,
+                       l.experience_note AS "experienceNote",
                        b.price AS "basePrice", v.price AS "variantPrice"
                 FROM public.upsell_variant_links l
                 JOIN public.coffees b ON b.id=l.base_coffee_id
@@ -112,33 +93,39 @@ public class UpsellService {
     @Transactional
     public void registerVariant(VariantInput x) {
         if (x == null || x.baseCoffeeId() == null || x.variantCoffeeId() == null
-                || !x.recipeConfirmed()) {
-            throw bad("Cần chọn 2 SKU và xác nhận phiên bản đã có công thức/định lượng riêng ở app-core");
+                || !x.recipeConfirmed() || !x.experienceConfirmed()) {
+            throw bad("Cần chọn 2 món, xác nhận công thức và xác nhận hai món cùng gu trải nghiệm");
         }
         if (x.baseCoffeeId().equals(x.variantCoffeeId())) throw bad("Phiên bản phải khác SKU gốc");
-        if (x.upgradeType() == null || !Set.of(
-                "LARGER_SIZE", "PREMIUM_VERSION", "PREMIUM_ADDON").contains(x.upgradeType())) {
-            throw bad("Loại nâng cấp không hợp lệ");
+        if (!"PREMIUM_VERSION".equals(x.upgradeType())) {
+            throw bad("Upsell sản phẩm chỉ hỗ trợ phiên bản cà phê cao cấp hơn");
+        }
+        String experienceNote = x.experienceNote() == null ? "" : x.experienceNote().trim();
+        if (experienceNote.length() < 12 || experienceNote.length() > 500) {
+            throw bad("Mô tả điểm chung về trải nghiệm cần từ 12 đến 500 ký tự");
         }
         Coffee base = coffee(x.baseCoffeeId());
         Coffee variant = coffee(x.variantCoffeeId());
-        if (!sameDrinkVariant(base, variant, x.upgradeType())) {
-            throw bad("Chỉ đăng ký phiên bản cùng món, ví dụ: Cappuccino size L, Cappuccino + extra shot. "
-                    + "Không được chọn Americano, Latte hay món cà phê khác.");
-        }
         if (variant.getPrice().compareTo(base.getPrice()) <= 0) {
-            throw bad("SKU nâng cấp phải có giá niêm yết cao hơn");
+            throw bad("Món nâng cấp phải là món khác và có giá niêm yết cao hơn món gốc");
         }
         if (variant.getStatus() != CoffeeStatus.AVAILABLE || variant.isAutoSoldOut()) {
             throw bad("SKU nâng cấp chưa sẵn sàng để bán");
         }
+        Integer activeRecipeCount = jdbc.queryForObject("""
+                SELECT count(*) FROM public.recipes
+                WHERE coffee_id = ? AND is_active = true AND del_flag = false
+                """, Integer.class, variant.getId());
+        if (activeRecipeCount == null || activeRecipeCount == 0) {
+            throw bad("Món nâng cấp phải có công thức đang áp dụng trong app-core");
+        }
         jdbc.update("""
                 INSERT INTO public.upsell_variant_links
-                (base_coffee_id, variant_coffee_id, upgrade_type, enabled)
-                VALUES (?, ?, ?, true)
+                (base_coffee_id, variant_coffee_id, upgrade_type, enabled, experience_note)
+                VALUES (?, ?, ?, true, ?)
                 ON CONFLICT (base_coffee_id, variant_coffee_id, upgrade_type)
-                DO UPDATE SET enabled=true
-                """, x.baseCoffeeId(), x.variantCoffeeId(), x.upgradeType());
+                DO UPDATE SET enabled=true, experience_note=EXCLUDED.experience_note
+                """, x.baseCoffeeId(), x.variantCoffeeId(), x.upgradeType(), experienceNote);
     }
 
     @Transactional
@@ -226,7 +213,7 @@ public class UpsellService {
 
         if (x.startsAt() != null
                 && x.endsAt() != null
-                && x.startsAt().isAfter(x.endsAt())) {
+                && !x.startsAt().isBefore(x.endsAt())) {
             throw bad(
                     "Thời gian không hợp lệ"
             );
@@ -236,13 +223,9 @@ public class UpsellService {
                 ? "PREMIUM_VERSION"
                 : x.upgradeType();
 
-        if (!Set.of(
-                "LARGER_SIZE",
-                "PREMIUM_VERSION",
-                "PREMIUM_ADDON"
-        ).contains(type)) {
+        if (!"PREMIUM_VERSION".equals(type)) {
             throw bad(
-                    "Loại nâng cấp không hợp lệ"
+                    "Upsell sản phẩm chỉ hỗ trợ phiên bản cà phê cao cấp hơn"
             );
         }
 
@@ -250,13 +233,12 @@ public class UpsellService {
         Coffee upgrade = coffee(x.upgradeCoffeeId());
 
         if (!isVerifiedVariant(anchor.getId(), upgrade.getId(), type)) {
-            throw bad("Chỉ được chọn phiên bản cùng món đã xác nhận công thức/size. Không đổi sang loại cà phê khác.");
+            throw bad("Cần liên kết hai món khác nhau, giá món nâng cấp cao hơn và có xác nhận cùng gu trải nghiệm.");
         }
         if (upgrade.getPrice()
                 .compareTo(anchor.getPrice()) <= 0) {
             throw bad(
-                    "Phiên bản nâng cấp phải có "
-                            + "giá niêm yết cao hơn món gốc"
+                    "Món nâng cấp phải có giá niêm yết cao hơn món gốc"
             );
         }
 
@@ -327,6 +309,14 @@ public class UpsellService {
         );
 
         m.put("upgradeType", r.getUpgradeType());
+        List<Map<String, Object>> link = jdbc.queryForList("""
+                SELECT experience_note AS "experienceNote"
+                FROM public.upsell_variant_links
+                WHERE base_coffee_id = ? AND variant_coffee_id = ?
+                  AND upgrade_type = ? AND enabled = true
+                LIMIT 1
+                """, r.getAnchorCoffee().getId(), r.getUpgradeCoffee().getId(), r.getUpgradeType());
+        m.put("experienceNote", link.isEmpty() ? null : link.get(0).get("experienceNote"));
         m.put("priority", r.getPriority());
         m.put("minCartAmount", r.getMinCartAmount());
         m.put("startsAt", r.getStartsAt());
@@ -421,7 +411,7 @@ public class UpsellService {
         if ("ACTIVE".equals(status)) {
             if (!isVerifiedVariant(r.getAnchorCoffee().getId(),
                     r.getUpgradeCoffee().getId(), r.getUpgradeType())) {
-                throw bad("Quy tắc này đổi loại cà phê, không phải upsell cùng món. Cần tạo phiên bản hợp lệ trước.");
+                throw bad("Quy tắc cần một món khác, giá cao hơn và có liên kết cùng gu trải nghiệm đã xác nhận.");
             }
             if (r.getUpgradeCoffee().getStatus()
                     != CoffeeStatus.AVAILABLE

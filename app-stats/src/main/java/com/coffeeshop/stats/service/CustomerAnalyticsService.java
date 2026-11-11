@@ -12,6 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import com.coffeeshop.stats.util.ShopTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +43,7 @@ public class CustomerAnalyticsService {
                 || to == null
                 || from.isAfter(to)
                 || from.isBefore(LocalDate.of(2000, 1, 1))
-                || to.isAfter(LocalDate.now().plusDays(1))
+                || to.isAfter(ShopTime.today().plusDays(1))
                 || from.plusYears(3).isBefore(to)) {
 
             throw new ResponseStatusException(

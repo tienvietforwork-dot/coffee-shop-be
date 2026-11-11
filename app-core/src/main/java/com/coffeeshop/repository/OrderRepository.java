@@ -14,6 +14,19 @@ import java.util.Optional;
 public interface OrderRepository extends JpaRepository<Order, Long> {
     Optional<Order> findByOrderCode(String orderCode);
 
+    Optional<Order> findFirstBySubscriptionIdOrderByIdDesc(Long subscriptionId);
+
+    long countBySubscriptionId(Long subscriptionId);
+
+    /** lịch hẹn: đơn mang đi / giao còn đang xử lý có giờ hẹn trong [from, to), hoặc không hẹn giờ (làm ngay) */
+    @Query("""
+            select o from Order o
+            where o.orderType in (com.coffeeshop.entity.enums.OrderType.DELIVERY, com.coffeeshop.entity.enums.OrderType.TAKE_AWAY)
+              and o.status in :active
+              and ((o.pickupTime >= :from and o.pickupTime < :to) or o.pickupTime is null)
+            order by o.id""")
+    List<Order> findSchedule(java.util.Collection<OrderStatus> active, LocalDateTime from, LocalDateTime to);
+
     List<Order> findByCustomerIdOrderByOrderedAtDesc(Long customerId);
 
     @Query("""

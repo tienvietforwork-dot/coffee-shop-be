@@ -3,6 +3,9 @@ package com.coffeeshop.crm.controller;
 import com.coffeeshop.crm.dto.response.CustomerPortalFeedbackResponse;
 import com.coffeeshop.crm.dto.response.CustomerPortalInteractionResponse;
 import com.coffeeshop.crm.dto.response.CustomerPortalReadReceiptResponse;
+import com.coffeeshop.crm.dto.response.CustomerPortalInteractionReadReceiptResponse;
+import com.coffeeshop.crm.dto.request.CustomerFeedbackReplyRequest;
+import com.coffeeshop.crm.dto.response.FeedbackResponseDto;
 import com.coffeeshop.crm.security.CrmPrincipal;
 import com.coffeeshop.crm.service.CustomerPortalService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -14,6 +17,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,6 +50,13 @@ public class CustomerPortalController {
         return ResponseEntity.ok(customerPortalService.interactions(principal(authentication), page, size));
     }
 
+    @PostMapping("/interactions/{interactionId}/read")
+    @Operation(summary = "Khách đánh dấu nội dung chăm sóc đã đọc")
+    public ResponseEntity<CustomerPortalInteractionReadReceiptResponse> markInteractionRead(
+            Authentication authentication, @PathVariable Long interactionId) {
+        return ResponseEntity.ok(customerPortalService.markInteractionRead(principal(authentication), interactionId));
+    }
+
     @PostMapping("/feedbacks/{feedbackId}/responses/{responseId}/read")
     @Operation(summary = "Khách đánh dấu câu trả lời đã đọc; chỉ ghi thời điểm đọc đầu tiên")
     public ResponseEntity<CustomerPortalReadReceiptResponse> markResponseRead(
@@ -53,6 +65,16 @@ public class CustomerPortalController {
             @PathVariable Long responseId) {
         return ResponseEntity.ok(customerPortalService.markResponseRead(
                 principal(authentication), feedbackId, responseId));
+    }
+
+    @PostMapping("/feedbacks/{feedbackId}/responses")
+    @Operation(summary = "Khách trả lời ngay trong luồng khiếu nại hoặc góp ý của mình")
+    public ResponseEntity<FeedbackResponseDto> respondToFeedback(
+            Authentication authentication,
+            @PathVariable Long feedbackId,
+            @Valid @RequestBody CustomerFeedbackReplyRequest request) {
+        return ResponseEntity.status(org.springframework.http.HttpStatus.CREATED)
+                .body(customerPortalService.customerRespond(principal(authentication), feedbackId, request));
     }
 
     private CrmPrincipal principal(Authentication authentication) {

@@ -6,7 +6,7 @@ Backend cho DATN "Coffee Shop Management System". Đây là 1 repo chứa **nhi�
 
 ```
 coffee-shop-be/
-├── app-core/            # Tiến Việt — Auth/Users, Products/Categories, Materials/kho, Orders/Shipments/Payments
+├── app-core/            # Tiến Việt — Auth/Users, Products/Categories, Materials (nguyên liệu), Orders/Shipments/Payments
 │   ├── pom.xml
 │   ├── Dockerfile
 │   └── src/...

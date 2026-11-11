@@ -7,6 +7,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDate;
+import com.coffeeshop.stats.util.ShopTime;
 import java.util.*;
 
 @Service
@@ -16,7 +17,7 @@ public class MerchandisingAnalyticsService {
 
     private MapSqlParameterSource period(LocalDate from, LocalDate to) {
         if (from == null || to == null || from.isAfter(to) || from.isBefore(LocalDate.of(2000,1,1))
-                || to.isAfter(LocalDate.now().plusDays(1)) || from.plusYears(3).isBefore(to)) {
+                || to.isAfter(ShopTime.today().plusDays(1)) || from.plusYears(3).isBefore(to)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Khoảng ngày không hợp lệ (tối đa 3 năm)");
         }
         return new MapSqlParameterSource().addValue("from", from.atStartOfDay())

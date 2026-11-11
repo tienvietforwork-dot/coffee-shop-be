@@ -7,6 +7,8 @@ import com.coffeeshop.crm.entity.Interaction;
 import com.coffeeshop.crm.exception.CrmNotFoundException;
 import com.coffeeshop.crm.repository.CustomerRepository;
 import com.coffeeshop.crm.repository.InteractionRepository;
+import com.coffeeshop.crm.repository.InteractionReminderNotificationRepository;
+import com.coffeeshop.crm.dto.response.InteractionReminderNotificationResponse;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import lombok.RequiredArgsConstructor;
@@ -15,10 +17,12 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** Ghi nhận và xử lý vòng đời tương tác: phân công, nhắc chăm sóc, kết quả và hiển thị cho khách. */
 @Service
 @RequiredArgsConstructor
 public class InteractionService {
     private final InteractionRepository interactionRepository;
+    private final InteractionReminderNotificationRepository reminderNotificationRepository;
     private final CustomerRepository customerRepository;
     @PersistenceContext private EntityManager entityManager;
 
@@ -35,6 +39,36 @@ public class InteractionService {
     @Transactional(readOnly = true)
     public Page<Interaction> dueReminders(java.time.LocalDateTime until, int page, int size) {
         return interactionRepository.findDueReminders(until, PageRequest.of(page, size));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<InteractionReminderNotificationResponse> reminderNotifications(boolean unreadOnly, int page, int size) {
+        var pageable = PageRequest.of(page, size);
+        var notifications = unreadOnly
+                ? reminderNotificationRepository.findAllByReadAtIsNullAndDelFlagFalseOrderByRemindAtAsc(pageable)
+                : reminderNotificationRepository.findAllByDelFlagFalseOrderByRemindAtDesc(pageable);
+        return notifications.map(InteractionReminderNotificationResponse::from);
+    }
+
+    @Transactional
+    public InteractionReminderNotificationResponse markReminderRead(Long notificationId) {
+        var notification = reminderNotificationRepository.findById(notificationId)
+                .orElseThrow(() -> new CrmNotFoundException("Không tìm thấy thông báo nhắc chăm sóc ID " + notificationId));
+        if (notification.getReadAt() == null) {
+            notification.setReadAt(java.time.LocalDateTime.now());
+            notification = reminderNotificationRepository.save(notification);
+        }
+        return InteractionReminderNotificationResponse.from(notification);
+    }
+
+    @Transactional
+    public int dispatchDueReminderNotifications() {
+        var due = interactionRepository.findDueRemindersWithoutNotification(java.time.LocalDateTime.now(), PageRequest.of(0, 500));
+        int created = 0;
+        for (Interaction interaction : due) {
+            created += reminderNotificationRepository.insertIfAbsent(interaction.getId(), interaction.getStaffId(), interaction.getRemindAt());
+        }
+        return created;
     }
 
     @Transactional(readOnly = true)
@@ -62,15 +96,26 @@ public class InteractionService {
         Interaction interaction = find(id);
         requireStaff(request.getStaffId());
         if (request.getChannel() != null) interaction.setChannel(request.getChannel());
-        if (request.getContent() != null) interaction.setContent(request.getContent());
+        if (request.getContent() != null && !request.getContent().equals(interaction.getContent())) {
+            interaction.setContent(request.getContent());
+            interaction.setCustomerReadAt(null);
+        }
         if (request.getOccurredAt() != null) interaction.setOccurredAt(request.getOccurredAt());
-        if (request.getOutcome() != null) interaction.setOutcome(request.getOutcome());
-        if (request.getVisibleToCustomer() != null) interaction.setVisibleToCustomer(request.getVisibleToCustomer());
+        if (request.getOutcome() != null && !request.getOutcome().equals(interaction.getOutcome())) {
+            interaction.setOutcome(request.getOutcome());
+            interaction.setCustomerReadAt(null);
+        }
+        if (request.getVisibleToCustomer() != null && !request.getVisibleToCustomer().equals(interaction.getVisibleToCustomer())) {
+            interaction.setVisibleToCustomer(request.getVisibleToCustomer());
+            interaction.setCustomerReadAt(null);
+        }
         if (request.getNote() != null) interaction.setNote(request.getNote());
         if (request.getStaffId() != null) interaction.setStaffId(request.getStaffId());
         if (Boolean.TRUE.equals(request.getClearReminder()) && request.getRemindAt() != null) {
             throw new IllegalArgumentException("Không thể gửi remindAt đồng thời với clearReminder=true");
         }
+        boolean reminderChanged = Boolean.TRUE.equals(request.getClearReminder())
+                || (request.getRemindAt() != null && !request.getRemindAt().equals(interaction.getRemindAt()));
         if (Boolean.TRUE.equals(request.getClearReminder())) {
             interaction.setRemindAt(null);
             if (request.getStatus() == null && "FOLLOW_UP".equals(interaction.getStatus())) {
@@ -86,12 +131,16 @@ public class InteractionService {
             interaction.setClosedAt("CLOSED".equals(request.getStatus()) ? java.time.LocalDateTime.now() : null);
             if ("CLOSED".equals(request.getStatus())) interaction.setRemindAt(null);
         }
+        if (reminderChanged || "CLOSED".equals(request.getStatus())) {
+            reminderNotificationRepository.acknowledgeOpenNotifications(interaction.getId());
+        }
         return interactionRepository.save(interaction);
     }
 
     @Transactional
     public Interaction close(Long id, InteractionCloseRequest request) {
         Interaction interaction = find(id);
+        reminderNotificationRepository.acknowledgeOpenNotifications(interaction.getId());
         interaction.setStatus("CLOSED");
         interaction.setClosedAt(java.time.LocalDateTime.now());
         interaction.setRemindAt(null);
@@ -102,6 +151,7 @@ public class InteractionService {
     @Transactional
     public void delete(Long id) {
         Interaction interaction = find(id);
+        reminderNotificationRepository.acknowledgeOpenNotifications(interaction.getId());
         interaction.setDelFlag(true);
         interaction.setDelUser(null);
         interactionRepository.save(interaction);

@@ -4,7 +4,6 @@ import com.coffeeshop.entity.enums.*;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLDelete;
-import org.hibernate.annotations.SQLRestriction;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -19,7 +18,8 @@ import java.util.List;
 @Builder
 @Entity
 @Table(name = "promotions")
-@SQLRestriction("del_flag = false")
+// No @SQLRestriction: app-promotions soft-deletes promotions that old orders still point to (orders.promotion_id),
+// and a filtered row breaks loading those orders. Queries for running promotions filter del_flag themselves.
 @SQLDelete(sql = "UPDATE promotions SET del_flag = true WHERE id = ?")
 public class Promotion extends BaseEntity {
     @Id

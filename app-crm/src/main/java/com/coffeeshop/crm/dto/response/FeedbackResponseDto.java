@@ -13,6 +13,7 @@ public record FeedbackResponseDto(
         String delUser,
         Long feedbackId,
         Long staffId,
+        String senderType,
         String message,
         LocalDateTime sentAt,
         LocalDateTime readAt
@@ -21,7 +22,7 @@ public record FeedbackResponseDto(
         return new FeedbackResponseDto(
                 response.getId(), response.getCreatedBy(), response.getCreatedAt(),
                 response.getUpdatedBy(), response.getUpdatedAt(), response.getDelFlag(), response.getDelUser(),
-                response.getFeedbackId(), response.getStaffId(), response.getMessage(), response.getSentAt(),
-                response.getReadAt());
+                response.getFeedbackId(), response.getStaffId(), response.getSenderType(), response.getMessage(),
+                response.getSentAt(), response.getReadAt());
     }
 }

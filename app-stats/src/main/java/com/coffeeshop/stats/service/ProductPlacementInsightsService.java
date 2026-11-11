@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+import com.coffeeshop.stats.util.ShopTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -56,7 +57,7 @@ public class ProductPlacementInsightsService {
             throw new IllegalArgumentException("Chỉ hỗ trợ BEST_SELLER, NEW_ARRIVAL và RECOMMENDED");
         }
         int capped = Math.max(1, Math.min(20, limit));
-        LocalDateTime start = LocalDateTime.now().minusDays(30);
+        LocalDateTime start = ShopTime.now().minusDays(30);
         // Only completed orders qualify; no estimation of bundle orders is performed.
         @SuppressWarnings("unchecked")
         List<Object[]> rows = entityManager.createNativeQuery("""

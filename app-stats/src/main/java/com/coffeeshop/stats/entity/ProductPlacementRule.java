@@ -61,6 +61,6 @@ public class ProductPlacementRule extends AuditableEntity {
         return active
                 && publicationStatus == PublicationStatus.PUBLISHED
                 && (startsAt == null || !startsAt.isAfter(now))
-                && (endsAt == null || !endsAt.isBefore(now));
+                && (endsAt == null || now.isBefore(endsAt));
     }
 }

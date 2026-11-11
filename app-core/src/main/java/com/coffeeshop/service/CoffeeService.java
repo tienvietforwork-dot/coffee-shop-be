@@ -5,10 +5,12 @@ import com.coffeeshop.dto.response.CoffeeResponse;
 import com.coffeeshop.dto.response.MenuResponse;
 import com.coffeeshop.entity.Coffee;
 import com.coffeeshop.entity.enums.CoffeeStatus;
+import com.coffeeshop.exception.BadRequestException;
 import com.coffeeshop.exception.ResourceNotFoundException;
 import com.coffeeshop.repository.CategoryRepository;
 import com.coffeeshop.repository.CoffeeRepository;
 import com.coffeeshop.repository.PromotionRepository;
+import com.coffeeshop.repository.RecipeRepository;
 import com.coffeeshop.security.CurrentUser;
 import com.coffeeshop.security.Perm;
 import org.springframework.security.access.AccessDeniedException;
@@ -20,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -32,13 +35,14 @@ public class CoffeeService {
     private final PromotionRepository promotionRepository;
     private final PricingService pricingService;
     private final ImageService imageService;
-    private final StockService stockService;
-    private final CoffeeStatusBackgroundService coffeeStatusBackgroundService;
+    private final RecipeRepository recipeRepository;
 
     @Transactional(readOnly = true)
     public List<CoffeeResponse> findAll() {
-        StockService.Snapshot stock = stockService.snapshot();
-        return coffeeRepository.findAllByOrderByNameAsc().stream().map(c -> CoffeeResponse.from(c, stock)).toList();
+        Set<Long> withRecipe = recipeRepository.findAllActiveWithMaterials().stream()
+                .map(r -> r.getCoffee().getId()).collect(Collectors.toSet());
+        return coffeeRepository.findAllByOrderByNameAsc().stream()
+                .map(c -> CoffeeResponse.from(c, withRecipe.contains(c.getId()))).toList();
     }
 
     @Transactional(readOnly = true)
@@ -50,14 +54,16 @@ public class CoffeeService {
     public CoffeeResponse create(CoffeeRequest request) {
         Coffee coffee = Coffee.builder().build();
         apply(coffee, request);
-        return toResponse(coffeeRepository.save(coffee));
+        coffee = coffeeRepository.save(coffee);
+        ensureCode(coffee);
+        return toResponse(coffee);
     }
 
     @Transactional
     public CoffeeResponse update(Long id, CoffeeRequest request) {
         Coffee coffee = get(id);
         apply(coffee, request);
-        coffeeStatusBackgroundService.requestRun();
+        ensureCode(coffee);
         return toResponse(coffee);
     }
 
@@ -69,8 +75,7 @@ public class CoffeeService {
             throw new AccessDeniedException("Cần quyền sửa thực đơn để ngừng bán / bán lại món");
         }
         coffee.setStatus(status);
-        coffee.setAutoSoldOut(false); // a status picked by hand is never reopened by stock
-        coffeeStatusBackgroundService.requestRun(); // ...but AVAILABLE with 0 cups is switched back to SOLD_OUT by the scan
+        coffee.setAutoSoldOut(false); // nhân viên tự đổi: hệ thống không tự mở bán lại
         return toResponse(coffee);
     }
 
@@ -87,7 +92,6 @@ public class CoffeeService {
                 .findByStatusInOrderByNameAsc(List.of(CoffeeStatus.AVAILABLE, CoffeeStatus.SOLD_OUT)).stream()
                 .collect(Collectors.groupingBy(c -> c.getCategory().getId()));
         var coffeePromos = pricingService.runningCoffeePromotions(now);
-        StockService.Snapshot stock = stockService.snapshot();
 
         List<MenuResponse.MenuCategory> categories = new ArrayList<>();
         for (var category : categoryRepository.findAllByOrderByDisplayOrderAscNameAsc()) {
@@ -99,8 +103,7 @@ public class CoffeeService {
                         return new MenuResponse.MenuCoffee(c.getId(), c.getName(), c.imageSrc(), c.getDescription(),
                                 c.getPrice(), best == null ? null : best.price(),
                                 best == null ? null : best.item().getPromotion().getName(),
-                                c.getStatus() == CoffeeStatus.AVAILABLE && !Integer.valueOf(0).equals(stock.servings(c.getId())),
-                                stock.servings(c.getId()), stock.perCup(c.getId()));
+                                c.getStatus() == CoffeeStatus.AVAILABLE);
                     }).toList()));
         }
         var orderPromos = promotionRepository.findRunningOrderPromotions(now).stream()
@@ -108,7 +111,7 @@ public class CoffeeService {
                         p.getDiscountType() == null ? "PERCENTAGE" : p.getDiscountType().name(),
                         p.getDiscountPercent(), p.getMinOrderAmount(), p.getEndDate()))
                 .toList();
-        return new MenuResponse(categories, orderPromos, stock.stock());
+        return new MenuResponse(categories, orderPromos);
     }
 
     Coffee get(Long id) {
@@ -116,13 +119,31 @@ public class CoffeeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy cà phê: " + id));
     }
 
+    /** Món chưa có mã: SP + id (SP001…); trùng với mã ai đó tự đặt thì thêm hậu tố -2, -3… */
+    private void ensureCode(Coffee coffee) {
+        if (coffee.getCode() != null) return;
+        String code = "SP%03d".formatted(coffee.getId());
+        for (int n = 2; coffeeRepository.existsByCodeIgnoreCase(code); n++) code = "SP%03d-%d".formatted(coffee.getId(), n);
+        coffee.setCode(code);
+    }
+
     private CoffeeResponse toResponse(Coffee coffee) {
-        return CoffeeResponse.from(coffee, stockService.snapshot());
+        return CoffeeResponse.from(coffee, coffee.getId() != null && recipeRepository.existsByCoffeeIdAndActiveTrue(coffee.getId()));
     }
 
     private void apply(Coffee coffee, CoffeeRequest request) {
         coffee.setCategory(categoryService.get(request.categoryId()));
-        coffee.setName(request.name().trim());
+        String name = request.name().trim();
+        if (!name.equalsIgnoreCase(coffee.getName()) && coffeeRepository.existsByNameIgnoreCase(name)) {
+            throw new BadRequestException("Món đã có trong thực đơn: " + name);
+        }
+        coffee.setName(name);
+        // mã trống: giữ mã đang có (món mới thì tự sinh sau khi lưu)
+        String code = request.code() == null || request.code().isBlank() ? null : request.code().trim().toUpperCase();
+        if (code != null && !code.equalsIgnoreCase(coffee.getCode())) {
+            if (coffeeRepository.existsByCodeIgnoreCase(code)) throw new BadRequestException("Mã sản phẩm đã dùng cho món khác: " + code);
+            coffee.setCode(code);
+        }
         Long oldImage = coffee.getImageId();
         if (request.imageId() != null) imageService.requireExists(request.imageId());
         coffee.setImageId(request.imageId());

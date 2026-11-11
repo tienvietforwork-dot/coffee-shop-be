@@ -28,8 +28,8 @@ public class CriteriaRuleDTO {
     private Integer minOrders;
 
     @Positive
-    @JsonAlias({"last_order_days", "max_recency_days"})
-    private Integer lastOrderDays;
+    @JsonAlias({"lastOrderDays", "last_order_days", "max_recency_days"})
+    private Integer inactiveDays;
 
     @Positive
     @JsonAlias("favorite_category_id")

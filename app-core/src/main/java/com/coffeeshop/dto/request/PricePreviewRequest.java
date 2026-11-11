@@ -11,5 +11,7 @@ public record PricePreviewRequest(
         @NotEmpty @Valid List<CartItemRequest> items,
         @NotNull OrderType orderType,
         String customerPhone,
-        String voucherCode) {
+        String voucherCode,
+        String deliveryAddress,
+        java.time.LocalDateTime deliveryTime) {
 }

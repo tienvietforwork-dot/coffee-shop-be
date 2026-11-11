@@ -44,4 +44,11 @@ public class Payment extends BaseEntity {
     @Builder.Default
     @Column(name = "refund_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal refundAmount = BigDecimal.ZERO;
+    /** lúc hoàn xong, mã giao dịch hoàn (VNPAY hoặc chuyển khoản tay), ghi chú (vì sao phải hoàn tay, số tài khoản khách…) */
+    @Column(name = "refunded_at")
+    private LocalDateTime refundedAt;
+    @Column(name = "refund_ref", length = 100)
+    private String refundRef;
+    @Column(name = "refund_note", columnDefinition = "TEXT")
+    private String refundNote;
 }

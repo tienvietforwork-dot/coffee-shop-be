@@ -7,11 +7,9 @@ import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
+/** Đơn giao do quán tự giao: địa chỉ, quãng đường + bậc phí ship, trạng thái giao. */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -31,10 +29,6 @@ public class Shipment extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "address_id", nullable = false)
     private CustomerAddress address;
-    @Column(length = 50)
-    private String carrier;
-    @Column(name = "tracking_code", length = 100)
-    private String trackingCode;
     @Builder.Default
     @Column(name = "shipping_fee", nullable = false, precision = 12, scale = 2)
     private BigDecimal shippingFee = BigDecimal.ZERO;
@@ -42,12 +36,23 @@ public class Shipment extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ShipmentStatus status = ShipmentStatus.PENDING;
-    @Column(name = "booked_at")
-    private LocalDateTime bookedAt;
-    @Column(name = "driver_accepted_at")
-    private LocalDateTime driverAcceptedAt;
     @Column(name = "delivered_at")
     private LocalDateTime deliveredAt;
     @Column(columnDefinition = "TEXT")
     private String note;
+    /** quãng đường quán → địa chỉ giao (km, qua API bản đồ; chỉ để ước tính, có thể null) */
+    @Column(name = "distance_km", precision = 6, scale = 2)
+    private BigDecimal distanceKm;
+    /** khu vực tính phí, vd "Phường Ba Đình, Thành phố Hà Nội" */
+    @Column(name = "zone_name", length = 100)
+    private String zoneName;
+    /** nhân viên được phân công giao (null = chưa phân công) */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shipper_id")
+    private Staff shipper;
+    @Column(name = "assigned_at")
+    private LocalDateTime assignedAt;
+    /** lúc người giao nhận đồ và bắt đầu đi */
+    @Column(name = "picked_up_at")
+    private LocalDateTime pickedUpAt;
 }

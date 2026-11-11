@@ -4,12 +4,15 @@ import com.coffeeshop.entity.enums.CoffeeStatus;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 
 public record CoffeeRequest(
         @NotNull Long categoryId,
+        /** mã sản phẩm; trống = tự sinh (SP + id) */
+        @Size(max = 20) @Pattern(regexp = "[A-Za-z0-9_.-]*", message = "Mã sản phẩm chỉ gồm chữ, số và - _ .") String code,
         @NotBlank @Size(max = 150) String name,
         /** uploaded photo (POST /api/images); when set, imageUrl is ignored */
         Long imageId,

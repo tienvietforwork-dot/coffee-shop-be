@@ -28,6 +28,9 @@ public class Coffee extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "category_id", nullable = false)
     private Category category;
+    /** Mã sản phẩm (SP001…), duy nhất trong các món chưa xóa; để trống khi tạo thì tự sinh theo id. */
+    @Column(length = 20)
+    private String code;
     @Column(nullable = false, length = 150)
     private String name;
     /** Uploaded photo (images.id); takes precedence over {@link #imageUrl}, which is only for external links. */
@@ -43,7 +46,7 @@ public class Coffee extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private CoffeeStatus status = CoffeeStatus.AVAILABLE;
-    /** true when SOLD_OUT was set by stock (StockService.syncCoffeeStatus), so it may reopen by itself; manual SOLD_OUT stays. */
+    /** hệ thống tự chuyển "Hết món" vì thiếu nguyên liệu — đủ lại thì tự mở bán; đổi trạng thái tay thì xóa cờ */
     @Builder.Default
     @Column(name = "auto_sold_out", nullable = false)
     private boolean autoSoldOut = false;

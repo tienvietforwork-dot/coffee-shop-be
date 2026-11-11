@@ -48,4 +48,7 @@ public class Interaction extends BaseEntity {
 
     @Column(name = "visible_to_customer", nullable = false)
     private Boolean visibleToCustomer = false;
+
+    @Column(name = "customer_read_at")
+    private LocalDateTime customerReadAt;
 }

@@ -5,6 +5,7 @@ import com.coffeeshop.crm.dto.response.CustomerInsightResponses.CustomerGrowthRe
 import com.coffeeshop.crm.dto.response.CustomerInsightResponses.CustomerMetricResponse;
 import com.coffeeshop.crm.dto.response.CustomerInsightResponses.CustomerValueResponse;
 import com.coffeeshop.crm.dto.response.CustomerInsightResponses.FeedbackSummaryResponse;
+import com.coffeeshop.crm.dto.response.CustomerInsightResponses.FeedbackTrendResponse;
 import com.coffeeshop.crm.dto.response.CustomerInsightResponses.GroupMetricResponse;
 import com.coffeeshop.crm.dto.response.CustomerInsightResponses.PeriodComparisonResponse;
 import com.coffeeshop.crm.dto.response.CustomerInsightResponses.PeriodMetricsResponse;
@@ -21,7 +22,6 @@ import java.util.List;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-import java.util.List;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
@@ -48,6 +48,12 @@ public class CustomerInsightController {
                                                @RequestParam(defaultValue = "50") int limit) {
         return ResponseEntity.ok(insightService.inactiveCustomers(inactiveDays, limit).stream()
                 .map(CustomerInsightController::toCustomerMetric).toList());
+    }
+
+    @GetMapping("/inactive-customers/count")
+    @Operation(summary = "Đếm tổng số khách lâu chưa mua hoặc chưa từng mua")
+    public ResponseEntity<Long> countInactiveCustomers(@RequestParam(defaultValue = "90") int inactiveDays) {
+        return ResponseEntity.ok(insightService.countInactiveCustomers(inactiveDays));
     }
 
     @GetMapping("/groups/{groupId}")
@@ -102,6 +108,16 @@ public class CustomerInsightController {
         return ResponseEntity.ok(insightService.feedbackSummary(fromDate, toDate).stream()
                 .map(row -> new FeedbackSummaryResponse(row.issueType(), row.category(), row.sentiment(), row.status(),
                         row.feedbackCount(), row.customerCount())).toList());
+    }
+
+    @GetMapping("/feedback-trends")
+    @Operation(summary = "Xu hướng số lượng phản hồi, khiếu nại theo ngày, tuần hoặc tháng")
+    public ResponseEntity<List<FeedbackTrendResponse>> feedbackTrends(@RequestParam(required = false) LocalDate fromDate,
+            @RequestParam(required = false) LocalDate toDate, @RequestParam(defaultValue = "month") String period) {
+        return ResponseEntity.ok(insightService.feedbackTrends(fromDate, toDate, period).stream()
+                .map(row -> new FeedbackTrendResponse(row.periodStart(), row.totalFeedback(), row.complaints(),
+                        row.suggestions(), row.praises(), row.negativeFeedback(), row.unresolvedFeedback(), row.customerCount()))
+                .toList());
     }
 
     @GetMapping("/customer-growth")

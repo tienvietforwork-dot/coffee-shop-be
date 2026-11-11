@@ -28,7 +28,52 @@ public class CustomerService {
         Customer customer = customerRepository.findByPhone(phone.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("Chưa có khách hàng với số " + phone));
         return CustomerLookupResponse.from(customer,
-                addressRepository.findByCustomerIdOrderByDefaultAddressDescIdDesc(customer.getId()));
+                addressRepository.findByCustomerIdAndDelFlagFalseOrderByDefaultAddressDescIdDesc(customer.getId()));
+    }
+
+    /**
+     * Sổ địa chỉ của khách đăng nhập: thêm ({@code id} null) / sửa. Địa chỉ đầu tiên, hoặc đánh dấu mặc định, thành địa chỉ
+     * mặc định (bỏ cờ ở địa chỉ khác).
+     */
+    @Transactional
+    public CustomerAddress saveMyAddress(Long customerId, Long id, String label, String recipientName, String recipientPhone,
+                                         String address, boolean makeDefault) {
+        if (customerId == null) throw new BadRequestException("Đăng nhập để lưu địa chỉ");
+        java.util.List<CustomerAddress> mine = addressRepository.findByCustomerIdAndDelFlagFalseOrderByDefaultAddressDescIdDesc(customerId);
+        CustomerAddress a = id == null ? CustomerAddress.builder().customer(byId(customerId)).build() : own(customerId, id);
+        a.setLabel(label == null || label.isBlank() ? null : label.trim());
+        a.setRecipientName(recipientName.trim());
+        a.setRecipientPhone(recipientPhone.trim());
+        a.setAddress(address.trim());
+        if (makeDefault || mine.isEmpty() || (id == null && mine.stream().noneMatch(CustomerAddress::isDefaultAddress))) {
+            mine.stream().filter(x -> !x.getId().equals(id)).forEach(x -> x.setDefaultAddress(false));
+            a.setDefaultAddress(true);
+        }
+        return addressRepository.save(a);
+    }
+
+    /** xóa địa chỉ của mình; xóa địa chỉ mặc định thì địa chỉ mới nhất còn lại thành mặc định */
+    @Transactional
+    public void deleteMyAddress(Long customerId, Long id) {
+        CustomerAddress a = own(customerId, id);
+        boolean wasDefault = a.isDefaultAddress();
+        addressRepository.delete(a);
+        if (wasDefault) {
+            addressRepository.findByCustomerIdAndDelFlagFalseOrderByDefaultAddressDescIdDesc(customerId).stream()
+                    .filter(x -> !x.getId().equals(id)).findFirst().ifPresent(x -> x.setDefaultAddress(true));
+        }
+    }
+
+    private CustomerAddress own(Long customerId, Long id) {
+        CustomerAddress a = addressRepository.findByIdAndDelFlagFalse(id).orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy địa chỉ: " + id));
+        if (customerId == null || !a.getCustomer().getId().equals(customerId)) throw new BadRequestException("Địa chỉ không thuộc về bạn");
+        return a;
+    }
+
+    /** id khách theo SĐT (null = chưa có) */
+    @Transactional(readOnly = true)
+    public Long idByPhone(String phone) {
+        return customerRepository.findByPhone(phone.trim()).map(Customer::getId).orElse(null);
     }
 
     @Transactional(readOnly = true)
@@ -55,7 +100,7 @@ public class CustomerService {
             throw new BadRequestException("Đơn giao hàng cần số điện thoại khách hàng");
         }
         if (addressId != null) {
-            CustomerAddress address = addressRepository.findById(addressId)
+            CustomerAddress address = addressRepository.findByIdAndDelFlagFalse(addressId)
                     .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy địa chỉ: " + addressId));
             if (!address.getCustomer().getId().equals(customer.getId())) {
                 throw new BadRequestException("Địa chỉ không thuộc về khách hàng này");
@@ -65,7 +110,16 @@ public class CustomerService {
         if (delivery == null) {
             throw new BadRequestException("Vui lòng nhập địa chỉ giao hàng");
         }
-        boolean first = addressRepository.findByCustomerIdOrderByDefaultAddressDescIdDesc(customer.getId()).isEmpty();
+        java.util.List<CustomerAddress> saved = addressRepository.findByCustomerIdAndDelFlagFalseOrderByDefaultAddressDescIdDesc(customer.getId());
+        // the same address again (e.g. picked from the saved ones): reuse it instead of saving a duplicate
+        String addr = delivery.address().trim(), name = delivery.recipientName().trim(), phone = delivery.recipientPhone().trim();
+        for (CustomerAddress a : saved) {
+            if (a.getAddress().trim().equalsIgnoreCase(addr) && a.getRecipientName().trim().equalsIgnoreCase(name)
+                    && a.getRecipientPhone().trim().equals(phone)) {
+                return a;
+            }
+        }
+        boolean first = saved.isEmpty();
         return addressRepository.save(CustomerAddress.builder()
                 .customer(customer)
                 .label(delivery.label())

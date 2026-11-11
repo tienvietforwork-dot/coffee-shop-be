@@ -1,0 +1,2405 @@
+{
+ "runAt": "2026-10-21T01:58:19.894Z",
+ "base": "http://localhost:8081/api",
+ "results": [
+  {
+   "no": 1,
+   "name": "Quản lý danh mục cà phê",
+   "steps": [
+    {
+     "title": "Thêm danh mục \"Cà phê muối\"",
+     "method": "POST",
+     "path": "/categories",
+     "input": "{\"name\":\"Cà phê muối\",\"description\":\"Cà phê phin với lớp kem muối kiểu Huế\",\"displayOrder\":5}",
+     "status": 201,
+     "actual": "id 5 · Cà phê muối",
+     "pass": true
+    },
+    {
+     "title": "Thêm trùng tên bị chặn",
+     "method": "POST",
+     "path": "/categories",
+     "input": "{\"name\":\"Cà phê muối\"}",
+     "status": 400,
+     "actual": "400: Danh mục đã tồn tại: Cà phê muối",
+     "pass": true
+    },
+    {
+     "title": "Sửa mô tả, thứ tự",
+     "method": "PUT",
+     "path": "/categories/5",
+     "input": "{\"name\":\"Cà phê muối\",\"description\":\"Phin Robusta + kem muối béo mặn\",\"displayOrder\":3}",
+     "status": 200,
+     "actual": "thứ tự 3",
+     "pass": true
+    },
+    {
+     "title": "Thêm danh mục thử",
+     "method": "POST",
+     "path": "/categories",
+     "input": "{\"name\":\"Danh mục thử xóa\"}",
+     "status": 201,
+     "actual": "id 6",
+     "pass": true
+    },
+    {
+     "title": "Xóa danh mục trống",
+     "method": "DELETE",
+     "path": "/categories/6",
+     "status": 204,
+     "actual": "xóa thành công",
+     "pass": true
+    },
+    {
+     "title": "Danh sách + tìm \"muối\"",
+     "method": "GET",
+     "path": "/categories",
+     "status": 200,
+     "actual": "5 danh mục, có \"Cà phê muối\"",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 2,
+   "name": "Quản lý cà phê & công thức pha chế",
+   "steps": [
+    {
+     "title": "Tải ảnh món (PNG)",
+     "method": "POST",
+     "path": "/images",
+     "status": 201,
+     "actual": "ảnh id 1 · /api/public/images/1",
+     "pass": true
+    },
+    {
+     "title": "Thêm trùng tên món đã có \"Cà phê muối\" bị chặn",
+     "method": "POST",
+     "path": "/coffees",
+     "input": "{\"categoryId\":5,\"name\":\"cà phê muối\",\"price\":35000}",
+     "status": 400,
+     "actual": "400: Món đã có trong thực đơn: cà phê muối",
+     "pass": true
+    },
+    {
+     "title": "Thêm món \"Cà phê muối Huế\" 35.000đ",
+     "method": "POST",
+     "path": "/coffees",
+     "input": "{\"categoryId\":5,\"name\":\"Cà phê muối Huế\",\"imageId\":1,\"price\":35000,\"description\":\"Phin Robusta, sữa đặc, phủ kem muối\",\"status\":\"AVAILABLE\"}",
+     "status": 201,
+     "actual": "id 13 · 35.000đ · ảnh có",
+     "pass": true
+    },
+    {
+     "title": "Lập công thức: 20g Robusta, 25ml sữa đặc, 30ml kem muối, 120g đá",
+     "method": "POST",
+     "path": "/coffees/13/recipes",
+     "input": "{\"brewMethod\":\"PHIN\",\"brewTimeMin\":5,\"activate\":true,\"description\":\"Ly 360ml\",\"materials\":[{\"materialId\":6,\"quantity\":20},{\"materialId\":8,\"quantity\":25},{\"materialId\":1,\"quantity\":30},{\"materialId\":14,\"quantity\":120}],\"steps\":[\"Pha phin 20g với 60ml nước 92°C\",\"Cho 25ml sữa đặc vào ly, đổ cà phê, khuấy đều\",\"Thêm đá\",\"Phủ 30ml kem muối\"]}",
+     "status": 201,
+     "actual": "công thức #13 · 4 NL · 4 bước · active=true",
+     "pass": true
+    },
+    {
+     "title": "Lập công thức nháp v2 (ít ngọt)",
+     "method": "POST",
+     "path": "/coffees/13/recipes",
+     "input": "{\"brewMethod\":\"PHIN\",\"activate\":false,\"materials\":[{\"materialId\":6,\"quantity\":20},{\"materialId\":8,\"quantity\":15},{\"materialId\":1,\"quantity\":30},{\"materialId\":14,\"quantity\":120}],\"steps\":[\"Như v1, giảm sữa\"]}",
+     "status": 201,
+     "actual": "#14 active=false",
+     "pass": true
+    },
+    {
+     "title": "Sửa công thức v2: 18ml sữa",
+     "method": "PUT",
+     "path": "/recipes/14",
+     "input": "{\"brewMethod\":\"PHIN\",\"materials\":[{\"materialId\":6,\"quantity\":20},{\"materialId\":8,\"quantity\":18},{\"materialId\":1,\"quantity\":30},{\"materialId\":14,\"quantity\":120}],\"steps\":[\"Như v1, 18ml sữa\"]}",
+     "status": 200,
+     "actual": "Cà phê Robusta rang xay 20, Sữa đặc 18, Kem muối 30, Đá viên 120",
+     "pass": true
+    },
+    {
+     "title": "Xóa công thức nháp v2",
+     "method": "DELETE",
+     "path": "/recipes/14",
+     "status": 204,
+     "actual": "xóa thành công",
+     "pass": true
+    },
+    {
+     "title": "Sửa giá món 35.000 → 39.000",
+     "method": "PUT",
+     "path": "/coffees/13",
+     "input": "{\"categoryId\":5,\"name\":\"Cà phê muối Huế\",\"imageId\":1,\"price\":39000,\"description\":\"Phin Robusta, sữa đặc, phủ kem muối\",\"status\":\"AVAILABLE\"}",
+     "status": 200,
+     "actual": "39.000đ",
+     "pass": true
+    },
+    {
+     "title": "Tạm hết món (SOLD_OUT) rồi mở bán lại",
+     "method": "PATCH",
+     "path": "/coffees/13/status",
+     "input": "{\"status\":\"SOLD_OUT\"}",
+     "status": 200,
+     "actual": "SOLD_OUT",
+     "pass": true
+    },
+    {
+     "title": "Mở bán lại",
+     "method": "PATCH",
+     "path": "/coffees/13/status",
+     "input": "{\"status\":\"AVAILABLE\"}",
+     "status": 200,
+     "actual": "AVAILABLE",
+     "pass": true
+    },
+    {
+     "title": "Danh sách món + tìm \"muối\"",
+     "method": "GET",
+     "path": "/coffees",
+     "status": 200,
+     "actual": "13 món",
+     "pass": true
+    },
+    {
+     "title": "Công thức đang dùng của các món",
+     "method": "GET",
+     "path": "/recipes",
+     "status": 200,
+     "actual": "13 công thức đang áp dụng",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 3,
+   "name": "Xem & lọc thực đơn",
+   "steps": [
+    {
+     "title": "Khách mở thực đơn (không cần đăng nhập)",
+     "method": "GET",
+     "path": "/public/menu",
+     "status": 200,
+     "actual": "5 danh mục, 13 món, có \"Cà phê muối Huế\" 39.000đ",
+     "pass": true
+    },
+    {
+     "title": "Quét QR bàn T05 → mở thực đơn tại bàn",
+     "method": "GET",
+     "path": "/public/tables/e09a1e392203",
+     "status": 200,
+     "actual": "bàn T05 · Tầng 2 – ban công",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 4,
+   "name": "Quản lý giỏ hàng",
+   "steps": [
+    {
+     "title": "Tạo giỏ tại bàn T05",
+     "method": "POST",
+     "path": "/public/carts",
+     "input": "{\"tableQr\":\"e09a1e392203\"}",
+     "status": 201,
+     "actual": "giỏ 6d9e556deead4ed7af0dcc1100a4b3a6 · bàn T05",
+     "pass": true
+    },
+    {
+     "title": "Thêm 2 Cà phê muối (ít đá)",
+     "method": "POST",
+     "path": "/public/carts/6d9e556deead4ed7af0dcc1100a4b3a6/items",
+     "input": "{\"coffeeId\":13,\"quantity\":2,\"note\":\"Ít đá\"}",
+     "status": 200,
+     "actual": "1 dòng · 78.000đ",
+     "pass": true
+    },
+    {
+     "title": "Thêm 1 Bạc xỉu",
+     "method": "POST",
+     "path": "/public/carts/6d9e556deead4ed7af0dcc1100a4b3a6/items",
+     "input": "{\"coffeeId\":1,\"quantity\":1}",
+     "status": 200,
+     "actual": "2 dòng · 117.000đ",
+     "pass": true
+    },
+    {
+     "title": "Thêm 1 Americano",
+     "method": "POST",
+     "path": "/public/carts/6d9e556deead4ed7af0dcc1100a4b3a6/items",
+     "input": "{\"coffeeId\":6,\"quantity\":1}",
+     "status": 200,
+     "actual": "3 dòng · 156.000đ",
+     "pass": true
+    },
+    {
+     "title": "Sửa Bạc xỉu thành 2 ly",
+     "method": "PUT",
+     "path": "/public/carts/6d9e556deead4ed7af0dcc1100a4b3a6/items/2",
+     "input": "{\"quantity\":2}",
+     "status": 200,
+     "actual": "195.000đ",
+     "pass": true
+    },
+    {
+     "title": "Bỏ Americano khỏi giỏ",
+     "method": "DELETE",
+     "path": "/public/carts/6d9e556deead4ed7af0dcc1100a4b3a6/items/3",
+     "status": 200,
+     "actual": "2 dòng · 156.000đ (2×39.000 + 2×39.000)",
+     "pass": true
+    },
+    {
+     "title": "Xem lại giỏ",
+     "method": "GET",
+     "path": "/public/carts/6d9e556deead4ed7af0dcc1100a4b3a6",
+     "status": 200,
+     "actual": "2× Cà phê muối Huế, 2× Bạc xỉu",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 5,
+   "name": "Đặt hàng & thanh toán (QR / online)",
+   "steps": [
+    {
+     "title": "Báo giá đơn tại bàn",
+     "method": "POST",
+     "path": "/public/carts/6d9e556deead4ed7af0dcc1100a4b3a6/quote",
+     "input": "{\"orderType\":\"DINE_IN\"}",
+     "status": 200,
+     "actual": "tạm tính 156.000đ · tổng 140.400đ",
+     "pass": true
+    },
+    {
+     "title": "Đặt đơn tại bàn, trả tiền mặt tại quầy",
+     "method": "POST",
+     "path": "/public/checkout",
+     "input": "{\"sessionCode\":\"6d9e556deead4ed7af0dcc1100a4b3a6\",\"orderType\":\"DINE_IN\",\"customerName\":\"Khách bàn T05\",\"paymentMethod\":\"CASH\",\"note\":\"Mang ra cùng lúc\"}",
+     "status": 201,
+     "actual": "CH261021U2C4 · PENDING · 140.400đ · QR",
+     "pass": true
+    },
+    {
+     "title": "Khách online tạo giỏ",
+     "method": "POST",
+     "path": "/public/carts",
+     "input": "{}",
+     "status": 201,
+     "actual": "29f989ea0540449189456bb56c5f6240",
+     "pass": true
+    },
+    {
+     "title": "Thêm 3 Cà phê muối + 2 Bạc xỉu",
+     "method": "POST",
+     "path": "/public/carts/29f989ea0540449189456bb56c5f6240/items",
+     "input": "{\"coffeeId\":13,\"quantity\":3}",
+     "status": 200,
+     "actual": "117.000đ",
+     "pass": true
+    },
+    {
+     "title": "(tiếp)",
+     "method": "POST",
+     "path": "/public/carts/29f989ea0540449189456bb56c5f6240/items",
+     "input": "{\"coffeeId\":1,\"quantity\":2}",
+     "status": 200,
+     "actual": "195.000đ",
+     "pass": true
+    },
+    {
+     "title": "Báo giá giao tới Quận 3 (dưới 200k → phí 15.000đ)",
+     "method": "POST",
+     "path": "/public/carts/29f989ea0540449189456bb56c5f6240/quote",
+     "input": "{\"orderType\":\"DELIVERY\",\"deliveryDistrict\":\"Quận 3\"}",
+     "status": 200,
+     "actual": "tạm tính 195.000đ · phí ship 15.000đ · tổng 190.500đ",
+     "pass": true
+    },
+    {
+     "title": "Quận ngoài vùng giao bị từ chối",
+     "method": "POST",
+     "path": "/public/carts/29f989ea0540449189456bb56c5f6240/quote",
+     "input": "{\"orderType\":\"DELIVERY\",\"deliveryDistrict\":\"Củ Chi\"}",
+     "status": 400,
+     "actual": "400 'Củ Chi' ngoài khu vực giao hàng của quán",
+     "pass": true
+    },
+    {
+     "title": "Đặt giao hàng, thanh toán VNPAY (ATM nội địa)",
+     "method": "POST",
+     "path": "/public/checkout",
+     "input": "{\"sessionCode\":\"29f989ea0540449189456bb56c5f6240\",\"orderType\":\"DELIVERY\",\"customerName\":\"Nguyễn Thị Thu Hà\",\"customerPhone\":\"0938456712\",\"deliveryDistrict\":\"Quận 3\",\"delivery\":{\"recipientName\":\"Nguyễn Thị Thu Hà\",\"recipientPhone\":\"0938456712\",\"address\":\"58 Võ Văn Tần, Phường Võ Thị Sáu, Quận 3, TP.HCM\"},\"paymentMethod\":\"BANK_TRANSFER\"}",
+     "status": 201,
+     "actual": "CH261021WTQ3 · 190.500đ · thanh toán PENDING",
+     "pass": true
+    },
+    {
+     "title": "Tạo link VNPAY (ký HMAC-SHA512, hết hạn 15 phút)",
+     "method": "POST",
+     "path": "/public/orders/CH261021WTQ3/pay",
+     "status": 200,
+     "actual": "CH261021WTQ3-1 · hết hạn 2026-10-21T09:12:55.7075062",
+     "pass": true
+    },
+    {
+     "title": "Khách bấm \"Thanh toán thành công\" trên cổng VNPAY (giả lập) → IPN về server",
+     "method": "POST",
+     "path": "/public/payments/sandbox/complete?result=00",
+     "status": 302,
+     "pass": true,
+     "actual": "redirect http://localhost:5173/payment/result?vnp_Amount=19050000&vnp_BankCode=VNBANK&vnp_CardType="
+    },
+    {
+     "title": "Trang kết quả kiểm chữ ký return URL",
+     "method": "GET",
+     "path": "/public/payments/vnpay/return?vnp_Amount=19050000&vnp_BankCode=VNBANK&vnp_CardType=QRCODE&vnp_OrderInfo=Thanh+toan+don+hang+CH261021WTQ3&vnp_PayDate=20261021085755&vnp_ResponseCode=00&vnp_TmnCode=COFFEEHL&vnp_TransactionNo=14000001&vnp_TransactionStatus=00&vnp_TxnRef=CH261021WTQ3-1&vnp_SecureHash=c2cd49af1654a79a092ac55a351c93c697db80055aef6a03d0ef762eb71d9be26229477f79ae736e1605c59e60d86243b336d450809cbc28dbd199f3bdbf2454",
+     "status": 200,
+     "actual": "chữ ký hợp lệ · SUCCESS · 190.500đ",
+     "pass": true
+    },
+    {
+     "title": "Đơn online đã được ghi nhận thanh toán",
+     "method": "GET",
+     "path": "/public/orders/CH261021WTQ3",
+     "status": 200,
+     "actual": "BANK_TRANSFER/PAID",
+     "pass": true
+    },
+    {
+     "title": "IPN giả mạo (sai chữ ký) bị từ chối",
+     "method": "GET",
+     "path": "/public/payments/vnpay/ipn?vnp_TxnRef=CH261021WTQ3-1&vnp_Amount=100&vnp_ResponseCode=00&vnp_SecureHash=abc",
+     "status": 200,
+     "actual": "RspCode 97 – Invalid signature",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 6,
+   "name": "Tạo đơn tại quầy",
+   "steps": [
+    {
+     "title": "Tra khách theo SĐT 0938456712",
+     "method": "GET",
+     "path": "/customers/lookup?phone=0938456712",
+     "status": 200,
+     "actual": "Nguyễn Thị Thu Hà · điểm 0",
+     "pass": true
+    },
+    {
+     "title": "Báo giá tại quầy",
+     "method": "POST",
+     "path": "/orders/quote",
+     "input": "{\"items\":[{\"coffeeId\":6,\"quantity\":2},{\"coffeeId\":13,\"quantity\":1}],\"orderType\":\"TAKE_AWAY\"}",
+     "status": 200,
+     "actual": "117.000đ",
+     "pass": true
+    },
+    {
+     "title": "Tạo đơn mang đi: 2 Americano + 1 Cà phê muối, tiền mặt",
+     "method": "POST",
+     "path": "/orders",
+     "input": "{\"items\":[{\"coffeeId\":6,\"quantity\":2},{\"coffeeId\":13,\"quantity\":1,\"note\":\"Nhiều kem\"}],\"orderType\":\"TAKE_AWAY\",\"customerPhone\":\"0938456712\",\"paymentMethod\":\"CASH\"}",
+     "status": 201,
+     "actual": "CH261021RZ2K · PREPARING · 117.000đ · CASH/PENDING",
+     "pass": true
+    },
+    {
+     "title": "Tạo đơn tại bàn, quẹt thẻ",
+     "method": "POST",
+     "path": "/orders",
+     "input": "{\"items\":[{\"coffeeId\":1,\"quantity\":1}],\"orderType\":\"DINE_IN\",\"tableId\":7,\"paymentMethod\":\"CARD\"}",
+     "status": 201,
+     "actual": "CH261021AKLM · 39.000đ",
+     "pass": true
+    },
+    {
+     "title": "Tìm đơn hôm nay kênh tại quầy",
+     "method": "GET",
+     "path": "/orders?channel=COUNTER&from=2026-10-21&to=2026-10-21",
+     "status": 200,
+     "actual": "2 đơn: CH261021AKLM, CH261021RZ2K",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 7,
+   "name": "Xử lý đơn hàng (xác nhận → hoàn tất)",
+   "steps": [
+    {
+     "title": "Lọc đơn chờ xác nhận",
+     "method": "GET",
+     "path": "/orders?status=PENDING&from=2026-10-21&to=2026-10-21",
+     "status": 200,
+     "actual": "CH261021WTQ3/ONLINE, CH261021U2C4/QR",
+     "pass": true
+    },
+    {
+     "title": "Xác nhận đơn QR bàn T05 (→ đang pha chế, trừ kho theo công thức)",
+     "method": "POST",
+     "path": "/orders/1/confirm",
+     "status": 200,
+     "actual": "PREPARING",
+     "pass": true
+    },
+    {
+     "title": "Pha xong → sẵn sàng",
+     "method": "POST",
+     "path": "/orders/1/ready",
+     "status": 200,
+     "actual": "READY",
+     "pass": true
+    },
+    {
+     "title": "Thu tiền mặt tại quầy",
+     "method": "POST",
+     "path": "/orders/1/collect-payment",
+     "status": 200,
+     "actual": "CASH/PAID",
+     "pass": true
+    },
+    {
+     "title": "Hoàn tất đơn",
+     "method": "POST",
+     "path": "/orders/1/complete",
+     "status": 200,
+     "actual": "COMPLETED",
+     "pass": true
+    },
+    {
+     "title": "Lịch sử trạng thái đơn",
+     "method": "GET",
+     "path": "/orders/1/history",
+     "status": 200,
+     "actual": "PENDING → PREPARING → READY → COMPLETED",
+     "pass": true
+    },
+    {
+     "title": "Đơn tại quầy CH261021RZ2K vào thẳng bếp (không cần xác nhận)",
+     "method": "GET",
+     "path": "/orders/3",
+     "status": 200,
+     "actual": "PREPARING",
+     "pass": true
+    },
+    {
+     "title": "ready đơn CH261021RZ2K",
+     "method": "POST",
+     "path": "/orders/3/ready",
+     "status": 200,
+     "actual": "READY",
+     "pass": true
+    },
+    {
+     "title": "complete đơn CH261021RZ2K",
+     "method": "POST",
+     "path": "/orders/3/complete",
+     "status": 200,
+     "actual": "COMPLETED",
+     "pass": true
+    },
+    {
+     "title": "Đơn tại quầy CH261021AKLM vào thẳng bếp (không cần xác nhận)",
+     "method": "GET",
+     "path": "/orders/4",
+     "status": 200,
+     "actual": "PREPARING",
+     "pass": true
+    },
+    {
+     "title": "ready đơn CH261021AKLM",
+     "method": "POST",
+     "path": "/orders/4/ready",
+     "status": 200,
+     "actual": "READY",
+     "pass": true
+    },
+    {
+     "title": "complete đơn CH261021AKLM",
+     "method": "POST",
+     "path": "/orders/4/complete",
+     "status": 200,
+     "actual": "COMPLETED",
+     "pass": true
+    },
+    {
+     "title": "Tồn Robusta giảm theo công thức đã bán",
+     "method": "GET",
+     "path": "/materials/6/batches",
+     "status": 200,
+     "actual": "10000g + 7790g",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 8,
+   "name": "Hủy đơn & hoàn tiền",
+   "steps": [
+    {
+     "title": "Khách đặt mang đi, tiền mặt",
+     "method": "POST",
+     "path": "/public/checkout",
+     "input": "{\"sessionCode\":\"d52534f423ec4c49b8059b220119052f\",\"orderType\":\"TAKE_AWAY\",\"customerName\":\"Anh Bảo\",\"customerPhone\":\"0977123456\",\"paymentMethod\":\"CASH\"}",
+     "status": 201,
+     "actual": "CH261021JYC4",
+     "pass": true
+    },
+    {
+     "title": "Khách tự hủy khi đơn còn chờ xác nhận",
+     "method": "POST",
+     "path": "/public/orders/CH261021JYC4/cancel",
+     "input": "{\"reason\":\"Đặt nhầm món\"}",
+     "status": 200,
+     "actual": "CANCELLED",
+     "pass": true
+    },
+    {
+     "title": "Đơn mang đi trả VNPAY",
+     "method": "POST",
+     "path": "/public/checkout",
+     "input": "{\"sessionCode\":\"0ffc9933548840dea9fe7c62923c1293\",\"orderType\":\"TAKE_AWAY\",\"customerName\":\"Chị Linh\",\"customerPhone\":\"0966332211\",\"paymentMethod\":\"E_WALLET\"}",
+     "status": 201,
+     "actual": "CH261021H3SY",
+     "pass": true
+    },
+    {
+     "title": "Quán từ chối đơn đã thanh toán (hết kem muối) → tự hoàn tiền qua VNPAY",
+     "method": "POST",
+     "path": "/orders/7/reject",
+     "input": "{\"reason\":\"Hết kem muối\"}",
+     "status": 200,
+     "actual": "REJECTED · E_WALLET/REFUNDED",
+     "pass": true
+    },
+    {
+     "title": "Hoàn 39.000đ cho đơn tại quầy đã hoàn tất (1 ly làm sai)",
+     "method": "POST",
+     "path": "/payments/3/refund",
+     "input": "{\"amount\":39000}",
+     "status": 200,
+     "actual": "PAID · hoàn 39.000đ",
+     "pass": true
+    },
+    {
+     "title": "Không hoàn quá số đã trả",
+     "method": "POST",
+     "path": "/payments/3/refund",
+     "input": "{\"amount\":9999999}",
+     "status": 400,
+     "actual": "400: Số tiền hoàn vượt quá số đã thu",
+     "pass": true
+    },
+    {
+     "title": "Không hủy được đơn đã hoàn tất",
+     "method": "POST",
+     "path": "/orders/4/cancel",
+     "input": "{\"reason\":\"Thử\"}",
+     "status": 400,
+     "actual": "400 (đơn đã hoàn tất không hủy được) Không thể thực hiện khi đơn đang ở trạng thái COMPLETED",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 9,
+   "name": "Theo dõi trạng thái đơn hàng",
+   "steps": [
+    {
+     "title": "Khách tra cứu đơn online bằng mã",
+     "method": "GET",
+     "path": "/public/orders/CH261021WTQ3",
+     "status": 200,
+     "actual": "COMPLETED · DELIVERED · 2 món",
+     "pass": true
+    },
+    {
+     "title": "Mã đơn sai → 404",
+     "method": "GET",
+     "path": "/public/orders/KHONGCO123",
+     "status": 404,
+     "actual": "404",
+     "pass": true
+    },
+    {
+     "title": "Khách đăng nhập xem lịch sử đơn của mình",
+     "method": "GET",
+     "path": "/account/orders",
+     "status": 200,
+     "actual": "2 đơn: CH261021RZ2K/COMPLETED, CH261021WTQ3/COMPLETED",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 10,
+   "name": "Điều phối giao hàng",
+   "steps": [
+    {
+     "title": "Xác nhận đơn giao hàng (đã trả online)",
+     "method": "POST",
+     "path": "/orders/2/confirm",
+     "status": 200,
+     "actual": "PREPARING",
+     "pass": true
+    },
+    {
+     "title": "Pha xong",
+     "method": "POST",
+     "path": "/orders/2/ready",
+     "status": 200,
+     "actual": "READY",
+     "pass": true
+    },
+    {
+     "title": "Danh sách chuyến giao chờ đặt xe",
+     "method": "GET",
+     "path": "/shipments",
+     "status": 200,
+     "actual": "CH261021WTQ3/PENDING",
+     "pass": true
+    },
+    {
+     "title": "Lọc chuyến giao (FE lọc theo trạng thái)",
+     "method": "GET",
+     "path": "/shipments",
+     "status": 200,
+     "actual": "CH261021Q4TG/DELIVERED, CH261021WTQ3/DELIVERED",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 11,
+   "name": "Ghi nhận & xử lý sự cố đơn hàng",
+   "steps": [
+    {
+     "title": "Ghi nhận sự cố: giao trễ 25 phút đơn online",
+     "method": "POST",
+     "path": "/orders/2/incidents",
+     "input": "{\"type\":\"LATE\",\"severity\":\"MEDIUM\",\"reason\":\"Tài xế lạc đường\",\"description\":\"Khách gọi phàn nàn lúc 10:40\"}",
+     "status": 201,
+     "actual": "#1 · LATE · OPEN",
+     "pass": true
+    },
+    {
+     "title": "Sự cố của đơn",
+     "method": "GET",
+     "path": "/orders/2/incidents",
+     "status": 200,
+     "actual": "1 sự cố",
+     "pass": true
+    },
+    {
+     "title": "Xử lý: xin lỗi + tặng voucher 20.000đ hạn 30 ngày",
+     "method": "POST",
+     "path": "/incidents/1/resolve",
+     "input": "{\"resolution\":\"Gọi xin lỗi khách, tặng voucher\",\"voucherValue\":20000,\"voucherMinOrderValue\":50000,\"voucherCount\":1,\"voucherValidDays\":30}",
+     "status": 200,
+     "actual": "RESOLVED · voucher [{\"code\":\"DBPACDVP\",\"discountValue\":20000,\"expiresAt\":\"2026-11-20T08:57:57.7296333\"}]",
+     "pass": true
+    },
+    {
+     "title": "Danh sách sự cố (lọc FE theo trạng thái)",
+     "method": "GET",
+     "path": "/incidents",
+     "status": 200,
+     "actual": "CH261021WTQ3/LATE/RESOLVED",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 12,
+   "name": "Quản lý bàn & mã QR",
+   "steps": [
+    {
+     "title": "Thêm bàn T05 tầng 2, 4 chỗ",
+     "method": "POST",
+     "path": "/tables",
+     "input": "{\"tableNo\":\"T05\",\"area\":\"Tầng 2\",\"capacity\":4,\"status\":\"AVAILABLE\"}",
+     "status": 201,
+     "actual": "id 7 · QR 7cc8b82aefa6",
+     "pass": true
+    },
+    {
+     "title": "Sửa sức chứa 6 chỗ",
+     "method": "PUT",
+     "path": "/tables/7",
+     "input": "{\"tableNo\":\"T05\",\"area\":\"Tầng 2 – ban công\",\"capacity\":6,\"status\":\"AVAILABLE\"}",
+     "status": 200,
+     "actual": "Tầng 2 – ban công · 6 chỗ",
+     "pass": true
+    },
+    {
+     "title": "Đổi mã QR (QR cũ bị chụp lại)",
+     "method": "POST",
+     "path": "/tables/7/regenerate-qr",
+     "status": 200,
+     "actual": "QR mới e09a1e392203",
+     "pass": true
+    },
+    {
+     "title": "QR cũ không còn mở được thực đơn",
+     "method": "GET",
+     "path": "/public/tables/7cc8b82aefa6",
+     "status": 404,
+     "actual": "404",
+     "pass": true
+    },
+    {
+     "title": "Thêm bàn thử",
+     "method": "POST",
+     "path": "/tables",
+     "input": "{\"tableNo\":\"TMP\",\"capacity\":2}",
+     "status": 201,
+     "actual": "id 8",
+     "pass": true
+    },
+    {
+     "title": "Xóa bàn thử",
+     "method": "DELETE",
+     "path": "/tables/8",
+     "status": 204,
+     "actual": "xóa thành công",
+     "pass": true
+    },
+    {
+     "title": "Danh sách bàn + tìm \"T05\"",
+     "method": "GET",
+     "path": "/tables",
+     "status": 200,
+     "actual": "7 bàn",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 13,
+   "name": "Quản lý nguyên liệu & quy cách đóng gói",
+   "steps": [
+    {
+     "title": "Danh sách nguyên liệu",
+     "method": "GET",
+     "path": "/materials",
+     "status": 200,
+     "actual": "17 nguyên liệu",
+     "pass": true
+    },
+    {
+     "title": "Thêm \"Sữa yến mạch Oatside\" + quy cách Hộp 1 L, Thùng 6 hộp",
+     "method": "POST",
+     "path": "/materials",
+     "input": "{\"name\":\"Sữa yến mạch Oatside\",\"unit\":\"ml\",\"minStock\":2000,\"expiryWarningDays\":5,\"kind\":\"RAW\",\"packages\":[{\"name\":\"Hộp 1 L\",\"size\":1000},{\"name\":\"Thùng 6 hộp\",\"size\":6000}]}",
+     "status": 201,
+     "actual": "id 18 · Hộp 1 L=1000, Thùng 6 hộp=6000",
+     "pass": true
+    },
+    {
+     "title": "Thêm quy cách \"Bao 5 kg\" cho Robusta",
+     "method": "PUT",
+     "path": "/materials/6",
+     "input": "{\"name\":\"Cà phê Robusta rang xay\",\"unit\":\"g\",\"minStock\":2000,\"kind\":\"RAW\",\"packages\":[{\"name\":\"Bao 5 kg\",\"size\":5000},{\"name\":\"Gói 1 kg\",\"size\":1000}]}",
+     "status": 200,
+     "actual": "Bao 5 kg, Gói 1 kg",
+     "pass": true
+    },
+    {
+     "title": "Thêm quy cách \"Hộp 1 L\" cho Whipping cream",
+     "method": "PUT",
+     "path": "/materials/16",
+     "input": "{\"name\":\"Whipping cream\",\"unit\":\"ml\",\"minStock\":1000,\"kind\":\"RAW\",\"packages\":[{\"name\":\"Hộp 1 L\",\"size\":1000}]}",
+     "status": 200,
+     "actual": "Hộp 1 L",
+     "pass": true
+    },
+    {
+     "title": "Sửa tồn tối thiểu Sữa yến mạch = 3000 ml",
+     "method": "PUT",
+     "path": "/materials/18",
+     "input": "{\"name\":\"Sữa yến mạch Oatside\",\"unit\":\"ml\",\"minStock\":3000,\"expiryWarningDays\":5,\"kind\":\"RAW\",\"packages\":[{\"name\":\"Hộp 1 L\",\"size\":1000},{\"name\":\"Thùng 6 hộp\",\"size\":6000}]}",
+     "status": 200,
+     "actual": "minStock 3000",
+     "pass": true
+    },
+    {
+     "title": "Thêm nguyên liệu thử để xóa",
+     "method": "POST",
+     "path": "/materials",
+     "input": "{\"name\":\"Bột cacao thử\",\"unit\":\"g\",\"kind\":\"RAW\"}",
+     "status": 201,
+     "actual": "id 19",
+     "pass": true
+    },
+    {
+     "title": "Xóa nguyên liệu chưa dùng",
+     "method": "DELETE",
+     "path": "/materials/19",
+     "status": 204,
+     "actual": "xóa thành công",
+     "pass": true
+    },
+    {
+     "title": "Xóa nguyên liệu đang có lô = chuyển \"Ngừng dùng\" (giữ lô, lịch sử)",
+     "method": "DELETE",
+     "path": "/materials/17",
+     "status": 204,
+     "actual": "204",
+     "pass": true
+    },
+    {
+     "title": "Nguyên liệu ngừng dùng vẫn còn trong danh sách với trạng thái INACTIVE",
+     "method": "GET",
+     "path": "/materials",
+     "status": 200,
+     "actual": "Muối: INACTIVE",
+     "pass": true
+    },
+    {
+     "title": "Dùng lại nguyên liệu",
+     "method": "PUT",
+     "path": "/materials/17",
+     "input": "{\"name\":\"Muối\",\"unit\":\"g\",\"minStock\":200,\"kind\":\"RAW\",\"status\":\"ACTIVE\"}",
+     "status": 200,
+     "actual": "ACTIVE",
+     "pass": true
+    },
+    {
+     "title": "Xem các lô của Robusta",
+     "method": "GET",
+     "path": "/materials/6/batches",
+     "status": 200,
+     "actual": "lô #1 còn 8000g HSD 2026-12-20",
+     "pass": true
+    },
+    {
+     "title": "Danh sách sau khi sửa + tìm \"yến mạch\"",
+     "method": "GET",
+     "path": "/materials",
+     "status": 200,
+     "actual": "19 nguyên liệu",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 14,
+   "name": "Cảnh báo tồn kho thấp & lô hết hạn",
+   "steps": [
+    {
+     "title": "Danh sách cảnh báo",
+     "method": "GET",
+     "path": "/inventory/alerts",
+     "status": 200,
+     "actual": "{\"lowStock\":[{\"id\":12,\"name\":\"Cốt dừa\",\"unit\":\"ml\",\"stockQuantity\":800,\"minStock\":1000,\"status\":\"ACTIVE\",\"lowStock\":true,\"kind\":\"RAW\",\"expiringSoon\":false}],\"expiringBatches\":[{\"id\":9,\"materialId\":14,\"materialName\":\"Đá viên\",\"unit\":\"g\",\"importQuantity\":30000,\"remainingQuantity\":27610,\"unitCost\":2,\"e…",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 15,
+   "name": "Quản lý nhà cung cấp",
+   "steps": [
+    {
+     "title": "Thêm NCC cà phê (công nợ 15 ngày)",
+     "method": "POST",
+     "path": "/suppliers",
+     "input": "{\"name\":\"Công ty TNHH Cà phê Đất Bazan\",\"contactName\":\"Anh Nguyễn Văn Phúc\",\"phone\":\"0905123789\",\"email\":\"sales@datbazan.vn\",\"address\":\"123 Lê Duẩn, P. Tân Lợi, TP. Buôn Ma Thuột, Đắk Lắk\",\"taxCode\":\"6001234567\",\"paymentTermDays\":15,\"materials\":[{\"materialId\":6,\"unitPrice\":230}]}",
+     "status": 201,
+     "actual": "id 1 · Công ty TNHH Cà phê Đất Bazan · nợ 15 ngày · 1 NL",
+     "pass": true
+    },
+    {
+     "title": "Thêm NCC sữa & kem (công nợ 7 ngày)",
+     "method": "POST",
+     "path": "/suppliers",
+     "input": "{\"name\":\"NPP Sữa Hoàng Gia\",\"contactName\":\"Chị Trần Thị Mai\",\"phone\":\"0283 8456 123\",\"address\":\"45 Cộng Hòa, P.4, Q. Tân Bình, TP.HCM\",\"taxCode\":\"0312987654\",\"paymentTermDays\":7,\"materials\":[{\"materialId\":16,\"unitPrice\":145},{\"materialId\":8,\"unitPrice\":59},{\"materialId\":18,\"unitPrice\":62}]}",
+     "status": 201,
+     "actual": "id 2 · 3 NL",
+     "pass": true
+    },
+    {
+     "title": "Thêm NCC thử",
+     "method": "POST",
+     "path": "/suppliers",
+     "input": "{\"name\":\"NCC thử xóa\",\"phone\":\"0900000000\"}",
+     "status": 201,
+     "actual": "id 3",
+     "pass": true
+    },
+    {
+     "title": "Sửa SĐT, ghi chú NCC sữa",
+     "method": "PUT",
+     "path": "/suppliers/2",
+     "input": "{\"name\":\"NPP Sữa Hoàng Gia\",\"contactName\":\"Chị Trần Thị Mai\",\"phone\":\"0908456123\",\"address\":\"45 Cộng Hòa, P.4, Q. Tân Bình, TP.HCM\",\"taxCode\":\"0312987654\",\"paymentTermDays\":7,\"note\":\"Giao 7h–9h sáng\",\"materials\":[{\"materialId\":16,\"unitPrice\":145},{\"materialId\":8,\"unitPrice\":59},{\"materialId\":18,\"unitPrice\":62}]}",
+     "status": 200,
+     "actual": "SĐT mới 0908456123",
+     "pass": true
+    },
+    {
+     "title": "Xóa NCC chưa có giao dịch",
+     "method": "DELETE",
+     "path": "/suppliers/3",
+     "status": 204,
+     "actual": "xóa thành công",
+     "pass": true
+    },
+    {
+     "title": "Danh sách + tìm \"Bazan\"",
+     "method": "GET",
+     "path": "/suppliers",
+     "status": 200,
+     "actual": "3 NCC",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 16,
+   "name": "Quản lý phiếu đặt hàng nhà cung cấp",
+   "steps": [
+    {
+     "title": "Lập phiếu đặt Robusta 2 bao 5 kg × 230đ/g, VAT 8%, hẹn giao 2 ngày",
+     "method": "POST",
+     "path": "/purchase-orders",
+     "input": "{\"supplierId\":1,\"expectedDate\":\"2026-10-23\",\"vatRate\":8,\"note\":\"Rang vừa, xay pha phin\",\"items\":[{\"materialId\":6,\"packageId\":3,\"packageCount\":2,\"unitPrice\":230}]}",
+     "status": 201,
+     "actual": "DH261021-001 · DRAFT · 2.484.000đ (10.000g × 230 = 2.300.000 + VAT 184.000)",
+     "pass": true
+    },
+    {
+     "title": "Lập phiếu đặt sữa: 12 hộp whipping + 6 hộp yến mạch, VAT 8%",
+     "method": "POST",
+     "path": "/purchase-orders",
+     "input": "{\"supplierId\":2,\"expectedDate\":\"2026-10-22\",\"vatRate\":8,\"items\":[{\"materialId\":16,\"packageId\":5,\"packageCount\":12,\"unitPrice\":145},{\"materialId\":18,\"packageId\":6,\"packageCount\":6,\"unitPrice\":62}]}",
+     "status": 201,
+     "actual": "DH261021-002 · 2.280.960đ (1.740.000 + 372.000 = 2.112.000 + VAT 168.960)",
+     "pass": true
+    },
+    {
+     "title": "Sửa phiếu nháp: thêm chiết khấu 50.000đ",
+     "method": "PUT",
+     "path": "/purchase-orders/2",
+     "input": "{\"supplierId\":2,\"expectedDate\":\"2026-10-22\",\"vatRate\":8,\"discountAmount\":50000,\"items\":[{\"materialId\":16,\"packageId\":5,\"packageCount\":12,\"unitPrice\":145},{\"materialId\":18,\"packageId\":6,\"packageCount\":6,\"unitPrice\":62}]}",
+     "status": 200,
+     "actual": "tổng mới 2.226.960đ",
+     "pass": true
+    },
+    {
+     "title": "Gửi NCC phiếu cà phê",
+     "method": "POST",
+     "path": "/purchase-orders/1/send",
+     "status": 200,
+     "actual": "ORDERED",
+     "pass": true
+    },
+    {
+     "title": "Gửi NCC phiếu sữa",
+     "method": "POST",
+     "path": "/purchase-orders/2/send",
+     "status": 200,
+     "actual": "ORDERED",
+     "pass": true
+    },
+    {
+     "title": "Không sửa được phiếu đã gửi",
+     "method": "PUT",
+     "path": "/purchase-orders/1",
+     "input": "{\"supplierId\":1,\"items\":[{\"materialId\":6,\"quantity\":1000}]}",
+     "status": 400,
+     "actual": "400: Chỉ sửa được phiếu nháp",
+     "pass": true
+    },
+    {
+     "title": "Lập phiếu nháp thử",
+     "method": "POST",
+     "path": "/purchase-orders",
+     "input": "{\"supplierId\":2,\"items\":[{\"materialId\":18,\"quantity\":2000,\"unitPrice\":62}]}",
+     "status": 201,
+     "actual": "DH261021-003",
+     "pass": true
+    },
+    {
+     "title": "Xóa phiếu nháp",
+     "method": "DELETE",
+     "path": "/purchase-orders/3",
+     "status": 204,
+     "actual": "xóa thành công",
+     "pass": true
+    },
+    {
+     "title": "Lập + gửi phiếu sẽ hủy",
+     "method": "POST",
+     "path": "/purchase-orders",
+     "input": "{\"supplierId\":2,\"items\":[{\"materialId\":18,\"quantity\":6000,\"unitPrice\":62}]}",
+     "status": 201,
+     "actual": "DH261021-003",
+     "pass": true
+    },
+    {
+     "title": "Gửi phiếu",
+     "method": "POST",
+     "path": "/purchase-orders/4/send",
+     "status": 200,
+     "actual": "ORDERED",
+     "pass": true
+    },
+    {
+     "title": "Hủy phiếu đã gửi (chưa nhận gì)",
+     "method": "POST",
+     "path": "/purchase-orders/4/cancel",
+     "input": "{\"reason\":\"NCC báo hết hàng yến mạch\"}",
+     "status": 200,
+     "actual": "CANCELLED",
+     "pass": true
+    },
+    {
+     "title": "Lọc phiếu theo trạng thái \"Đã đặt\"",
+     "method": "GET",
+     "path": "/purchase-orders?status=ORDERED",
+     "status": 200,
+     "actual": "2 phiếu ORDERED",
+     "pass": true
+    },
+    {
+     "title": "Lọc phiếu theo NCC Bazan",
+     "method": "GET",
+     "path": "/purchase-orders?supplierId=1",
+     "status": 200,
+     "actual": "1 phiếu của Bazan",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 17,
+   "name": "Nhập kho (theo phiếu đặt / nhập lẻ)",
+   "steps": [
+    {
+     "title": "Mở phiếu đặt cà phê để nhận hàng",
+     "method": "GET",
+     "path": "/purchase-orders/1",
+     "status": 200,
+     "actual": "Cà phê Robusta rang xay: 2 Bao 5 kg",
+     "pass": true
+    },
+    {
+     "title": "Nhận đủ 2 bao Robusta, HĐ 1C26TDB/0000456, HSD 6 tháng",
+     "method": "POST",
+     "path": "/purchase-orders/1/receipts",
+     "input": "{\"delivererName\":\"Anh Lâm (xe tải NCC)\",\"invoiceSeries\":\"1C26TDB\",\"invoiceNo\":\"0000456\",\"invoiceDate\":\"2026-10-21\",\"vatRate\":8,\"lines\":[{\"itemId\":1,\"documentCount\":2,\"receivedCount\":2,\"expiryDate\":\"2027-04-19\"}]}",
+     "status": 201,
+     "actual": "PN261021-001 · 2.484.000đ · hạn trả 2026-11-05",
+     "pass": true
+    },
+    {
+     "title": "Mở phiếu đặt sữa",
+     "method": "GET",
+     "path": "/purchase-orders/2",
+     "status": 200,
+     "actual": "Whipping cream: 12 Hộp 1 L; Sữa yến mạch Oatside: 6 Hộp 1 L",
+     "pass": true
+    },
+    {
+     "title": "Nhận hàng sữa: whipping chứng từ 12, nhận 11, trả 1 hộp móp; yến mạch nhận 4/6",
+     "method": "POST",
+     "path": "/purchase-orders/2/receipts",
+     "input": "{\"delivererName\":\"Chị Mai\",\"invoiceSeries\":\"1C26THG\",\"invoiceNo\":\"0012890\",\"invoiceDate\":\"2026-10-21\",\"vatRate\":8,\"discountAmount\":50000,\"lines\":[{\"itemId\":4,\"documentCount\":12,\"receivedCount\":11,\"rejectedCount\":1,\"rejectReason\":\"Hộp móp, rỉ\",\"expiryDate\":\"2026-12-20\",\"temperature\":5},{\"itemId\":5,\"documentCount\":4,\"receivedCount\":4,\"expiryDate\":\"2027-01-19\"}]}",
+     "status": 201,
+     "actual": "PN261021-002 · tiền hàng 1.843.000đ · tổng 1.936.440đ",
+     "pass": true
+    },
+    {
+     "title": "Phiếu đặt sữa chuyển \"Nhận một phần\"",
+     "method": "GET",
+     "path": "/purchase-orders/2",
+     "status": 200,
+     "actual": "PARTIALLY_RECEIVED",
+     "pass": true
+    },
+    {
+     "title": "Nhập lẻ không có phiếu đặt: 5 kg đường Biên Hòa, trả tiền mặt ngay",
+     "method": "POST",
+     "path": "/goods-receipts",
+     "input": "{\"supplierId\":2,\"delivererName\":\"Mua tại chợ Tân Định\",\"paidAmount\":125000,\"paymentMethod\":\"CASH\",\"lines\":[{\"materialId\":10,\"receivedCount\":5000,\"unitPrice\":25,\"expiryDate\":\"2027-10-21\"}]}",
+     "status": 201,
+     "actual": "PN261021-003 · 125.000đ · còn nợ 0đ",
+     "pass": true
+    },
+    {
+     "title": "Nhập lẻ bắt buộc chọn NCC",
+     "method": "POST",
+     "path": "/goods-receipts",
+     "input": "{\"lines\":[{\"materialId\":10,\"receivedCount\":1000,\"unitPrice\":25}]}",
+     "status": 400,
+     "actual": "400: Chọn nhà cung cấp",
+     "pass": true
+    },
+    {
+     "title": "Nhập lẻ nhầm 1 kg muối",
+     "method": "POST",
+     "path": "/goods-receipts",
+     "input": "{\"supplierId\":2,\"lines\":[{\"materialId\":17,\"receivedCount\":1000,\"unitPrice\":10}]}",
+     "status": 201,
+     "actual": "PN261021-004",
+     "pass": true
+    },
+    {
+     "title": "Hủy phiếu nhập nhầm (lô chưa dùng → trả lại kho, công nợ)",
+     "method": "POST",
+     "path": "/goods-receipts/4/cancel",
+     "input": "{\"reason\":\"Nhập nhầm số lượng\"}",
+     "status": 200,
+     "actual": "CANCELLED",
+     "pass": true
+    },
+    {
+     "title": "Tìm phiếu nhập theo NCC + khoảng ngày",
+     "method": "GET",
+     "path": "/goods-receipts?supplierId=2&from=2026-10-21&to=2026-10-21",
+     "status": 200,
+     "actual": "3 phiếu: PN261021-004/CANCELLED, PN261021-003/COMPLETED, PN261021-002/COMPLETED",
+     "pass": true
+    },
+    {
+     "title": "Tồn Robusta tăng 10.000 g",
+     "method": "GET",
+     "path": "/materials/6/batches",
+     "status": 200,
+     "actual": "10000g @230 + 8000g @250",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 18,
+   "name": "Hủy nguyên liệu / sơ chế nguyên liệu",
+   "steps": [
+    {
+     "title": "Lô whipping vừa nhập",
+     "method": "GET",
+     "path": "/materials/16/batches",
+     "status": 200,
+     "actual": "#19: 10000, #11: 4000",
+     "pass": true
+    },
+    {
+     "title": "Hủy 250 ml whipping bị đổ khi đánh kem",
+     "method": "POST",
+     "path": "/inventory/dispose",
+     "input": "{\"batchId\":19,\"quantity\":250,\"reason\":\"SPILLED\",\"note\":\"Đổ khi đánh kem muối\"}",
+     "status": 200,
+     "actual": "DISPOSAL -250 ml · SPILLED",
+     "pass": true
+    },
+    {
+     "title": "Xuất dùng nội bộ 100 ml (thử món mới)",
+     "method": "POST",
+     "path": "/inventory/export",
+     "input": "{\"batchId\":19,\"quantity\":100,\"reason\":\"INTERNAL_USE\",\"note\":\"R&D món kem muối dừa\"}",
+     "status": 200,
+     "actual": "EXPORT -100 ml",
+     "pass": true
+    },
+    {
+     "title": "Không hủy quá tồn của lô",
+     "method": "POST",
+     "path": "/inventory/dispose",
+     "input": "{\"batchId\":19,\"quantity\":999999,\"reason\":\"SPOILED\"}",
+     "status": 400,
+     "actual": "400: Lô #19 chỉ còn 9650 ml",
+     "pass": true
+    },
+    {
+     "title": "Sơ chế 1 mẻ \"Kem muối\" (trừ whipping, sữa, muối theo định mức)",
+     "method": "POST",
+     "path": "/inventory/produce",
+     "input": "{\"materialId\":1,\"batches\":1,\"note\":\"Mẻ sáng\"}",
+     "status": 201,
+     "actual": "{\"id\":23,\"materialId\":1,\"materialName\":\"Kem muối\",\"unit\":\"ml\",\"importQuantity\":900,\"remainingQuantity\":900,\"unitCost\":77.39,\"expiryDate\":\"2026-10-23\",\"status\":\"AVAILABLE\",\"createdAt\":\"2026-10-21T08:57…",
+     "pass": true
+    },
+    {
+     "title": "Lịch sử kho: lọc giao dịch whipping",
+     "method": "GET",
+     "path": "/inventory/transactions?materialId=16",
+     "status": 200,
+     "actual": "PRODUCTION_USE -500; EXPORT/INTERNAL_USE -100; DISPOSAL/SPILLED -250; SUPPLIER_RETURN/RETURN_SUPPLIER -1000; IMPORT 11000",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 19,
+   "name": "Kiểm kê & điều chỉnh tồn kho",
+   "steps": [
+    {
+     "title": "Lập phiếu kiểm kê cuối ngày: Robusta, Đường, Đá viên",
+     "method": "POST",
+     "path": "/stocktakes",
+     "input": "{\"members\":\"Lê Hoàng Yến, Trần Minh Khoa\",\"materialIds\":[6,10,14]}",
+     "status": 201,
+     "actual": "KK261021-001 · 5 lô · sổ: 8000/10000/30000/5000/5000",
+     "pass": true
+    },
+    {
+     "title": "Nhập số đếm thực tế (lô đầu thiếu 150)",
+     "method": "PUT",
+     "path": "/stocktakes/1",
+     "input": "{\"members\":\"Lê Hoàng Yến, Trần Minh Khoa\",\"counts\":[{\"itemId\":1,\"countedQuantity\":7850,\"quality\":\"GOOD\",\"reason\":\"Hao hụt khi xay, rơi vãi\"},{\"itemId\":2,\"countedQuantity\":10000,\"quality\":\"GOOD\"},{\"itemId\":3,\"countedQuantity\":30000,\"quality\":\"GOOD\"},{\"itemId\":4,\"countedQuantity\":5000,\"quality\":\"GOOD\"},{\"itemId\":5,\"countedQuantity\":5000,\"quality\":\"GOOD\"}]}",
+     "status": 200,
+     "actual": "8000→7850, 10000→10000, 30000→30000, 5000→5000, 5000→5000",
+     "pass": true
+    },
+    {
+     "title": "Quản lý duyệt cân bằng kho",
+     "method": "POST",
+     "path": "/stocktakes/1/balance",
+     "input": "{\"resolution\":\"Ghi nhận hao hụt định mức\"}",
+     "status": 200,
+     "actual": "BALANCED",
+     "pass": true
+    },
+    {
+     "title": "Lập phiếu kiểm kê thử",
+     "method": "POST",
+     "path": "/stocktakes",
+     "input": "{\"materialIds\":[17]}",
+     "status": 201,
+     "actual": "KK261021-002",
+     "pass": true
+    },
+    {
+     "title": "Hủy phiếu kiểm kê",
+     "method": "POST",
+     "path": "/stocktakes/2/cancel",
+     "status": 200,
+     "actual": "CANCELLED",
+     "pass": true
+    },
+    {
+     "title": "Lọc phiếu đã cân bằng",
+     "method": "GET",
+     "path": "/stocktakes?status=BALANCED",
+     "status": 200,
+     "actual": "KK261021-001",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 20,
+   "name": "Quản lý nhân viên",
+   "steps": [
+    {
+     "title": "Thêm nhân viên pha chế",
+     "method": "POST",
+     "path": "/staff",
+     "input": "{\"fullName\":\"Trần Minh Khoa\",\"position\":\"Pha chế\",\"phone\":\"0907112233\",\"email\":\"khoa.tm@coffeeholic.vn\",\"hireDate\":\"2026-10-01\",\"workStatus\":\"ACTIVE\"}",
+     "status": 201,
+     "actual": "id 6 · Trần Minh Khoa · Pha chế",
+     "pass": true
+    },
+    {
+     "title": "Thêm nhân viên thu ngân",
+     "method": "POST",
+     "path": "/staff",
+     "input": "{\"fullName\":\"Lê Hoàng Yến\",\"position\":\"Thu ngân\",\"phone\":\"0912556677\",\"hireDate\":\"2026-09-15\",\"workStatus\":\"ACTIVE\"}",
+     "status": 201,
+     "actual": "id 7 · Lê Hoàng Yến",
+     "pass": true
+    },
+    {
+     "title": "Thêm trùng SĐT bị chặn",
+     "method": "POST",
+     "path": "/staff",
+     "input": "{\"fullName\":\"Trùng\",\"phone\":\"0907112233\"}",
+     "status": 400,
+     "actual": "400: Số điện thoại đã được dùng: 0907112233",
+     "pass": true
+    },
+    {
+     "title": "Sửa: Khoa chuyển sang tạm nghỉ rồi đi làm lại",
+     "method": "PUT",
+     "path": "/staff/6",
+     "input": "{\"fullName\":\"Trần Minh Khoa\",\"position\":\"Pha chế chính\",\"phone\":\"0907112233\",\"email\":\"khoa.tm@coffeeholic.vn\",\"hireDate\":\"2026-10-01\",\"workStatus\":\"ACTIVE\"}",
+     "status": 200,
+     "actual": "chức vụ Pha chế chính",
+     "pass": true
+    },
+    {
+     "title": "Thêm nhân viên thời vụ để xóa",
+     "method": "POST",
+     "path": "/staff",
+     "input": "{\"fullName\":\"Phạm Văn Tèo\",\"position\":\"Phục vụ\",\"phone\":\"0933001122\"}",
+     "status": 201,
+     "actual": "id 8",
+     "pass": true
+    },
+    {
+     "title": "Xóa nhân viên thời vụ (chuyển trạng thái Nghỉ việc, giữ lịch sử)",
+     "method": "DELETE",
+     "path": "/staff/8",
+     "status": 204,
+     "actual": "xóa thành công",
+     "pass": true
+    },
+    {
+     "title": "Danh sách + tìm \"Khoa\" (lọc ở FE)",
+     "method": "GET",
+     "path": "/staff",
+     "status": 200,
+     "actual": "8 NV, tìm thấy Khoa, Tèo ở trạng thái RESIGNED",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 21,
+   "name": "Quản lý tài khoản người dùng",
+   "steps": [
+    {
+     "title": "Tạo tài khoản cho thu ngân Yến (gắn hồ sơ NV)",
+     "method": "POST",
+     "path": "/users",
+     "input": "{\"username\":\"yen.lh\",\"password\":\"Yen@2026\",\"fullName\":\"Lê Hoàng Yến\",\"phone\":\"0912556677\",\"active\":true,\"roles\":[\"STAFF\"],\"staffId\":7}",
+     "status": 201,
+     "actual": "id 6 · yen.lh · STAFF",
+     "pass": true
+    },
+    {
+     "title": "Thu ngân Yến đăng nhập",
+     "method": "POST",
+     "path": "/auth/login",
+     "input": "{\"username\":\"yen.lh\",\"password\":\"Yen@2026\"}",
+     "status": 200,
+     "actual": "17 quyền nhân viên",
+     "pass": true
+    },
+    {
+     "title": "Nhân viên không vào được màn Tài khoản (403)",
+     "method": "GET",
+     "path": "/users",
+     "status": 403,
+     "actual": "403 – đúng phân quyền",
+     "pass": true
+    },
+    {
+     "title": "Tạo tài khoản pha chế Khoa",
+     "method": "POST",
+     "path": "/users",
+     "input": "{\"username\":\"khoa.tm\",\"password\":\"Khoa@2026\",\"fullName\":\"Trần Minh Khoa\",\"active\":true,\"roles\":[\"STAFF\"],\"staffId\":6}",
+     "status": 201,
+     "actual": "id 7",
+     "pass": true
+    },
+    {
+     "title": "Khóa tài khoản Khoa",
+     "method": "PUT",
+     "path": "/users/7",
+     "input": "{\"username\":\"khoa.tm\",\"fullName\":\"Trần Minh Khoa\",\"active\":false,\"roles\":[\"STAFF\"],\"staffId\":6}",
+     "status": 200,
+     "actual": "active=false",
+     "pass": true
+    },
+    {
+     "title": "Tài khoản bị khóa không đăng nhập được",
+     "method": "POST",
+     "path": "/auth/login",
+     "input": "{\"username\":\"khoa.tm\",\"password\":\"Khoa@2026\"}",
+     "status": 400,
+     "actual": "400: Tài khoản đã bị khóa",
+     "pass": true
+    },
+    {
+     "title": "Mở lại tài khoản Khoa",
+     "method": "PUT",
+     "path": "/users/7",
+     "input": "{\"username\":\"khoa.tm\",\"fullName\":\"Trần Minh Khoa\",\"active\":true,\"roles\":[\"STAFF\"],\"staffId\":6}",
+     "status": 200,
+     "actual": "active=true",
+     "pass": true
+    },
+    {
+     "title": "Tạo tài khoản thử để xóa",
+     "method": "POST",
+     "path": "/users",
+     "input": "{\"username\":\"tam.thoi\",\"password\":\"Tam@2026\",\"active\":true,\"roles\":[\"STAFF\"]}",
+     "status": 201,
+     "actual": "id 8",
+     "pass": true
+    },
+    {
+     "title": "Xóa tài khoản thử",
+     "method": "DELETE",
+     "path": "/users/8",
+     "status": 204,
+     "actual": "xóa thành công",
+     "pass": true
+    },
+    {
+     "title": "Danh sách tài khoản + tìm \"yen\"",
+     "method": "GET",
+     "path": "/users",
+     "status": 200,
+     "actual": "7 tài khoản",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 22,
+   "name": "Phân quyền theo vai trò",
+   "steps": [
+    {
+     "title": "Xem 3 vai trò cố định",
+     "method": "GET",
+     "path": "/roles",
+     "status": 200,
+     "actual": "ADMIN(42), STAFF(17), CUSTOMER(1)",
+     "pass": true
+    },
+    {
+     "title": "Xem danh sách quyền màn hình",
+     "method": "GET",
+     "path": "/permissions",
+     "status": 200,
+     "actual": "43 quyền, ví dụ dashboard, orders, orders.refund, cash-shifts",
+     "pass": true
+    },
+    {
+     "title": "Cấp thêm quyền \"suppliers\" cho Nhân viên",
+     "method": "PUT",
+     "path": "/roles/2/permissions",
+     "input": "{\"permissionCodes\":[\"cash-shifts\",\"categories\",\"crm.customers\",\"crm.feedbacks\",\"crm.interactions\",\"dashboard\",\"incidents\",\"invoices\",\"materials\",\"menu\",\"orders\",\"pos\",\"shipments\",\"stock\",\"stock-history\",\"stocktakes\",\"tables\",\"suppliers\"]}",
+     "status": 200,
+     "actual": "STAFF có quyền suppliers",
+     "pass": true
+    },
+    {
+     "title": "Thu hồi lại quyền \"suppliers\"",
+     "method": "PUT",
+     "path": "/roles/2/permissions",
+     "input": "{\"permissionCodes\":[\"cash-shifts\",\"categories\",\"crm.customers\",\"crm.feedbacks\",\"crm.interactions\",\"dashboard\",\"incidents\",\"invoices\",\"materials\",\"menu\",\"orders\",\"pos\",\"shipments\",\"stock\",\"stock-history\",\"stocktakes\",\"tables\"]}",
+     "status": 200,
+     "actual": "STAFF còn 17 quyền như cũ",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 23,
+   "name": "Đăng ký / đăng nhập & hồ sơ cá nhân",
+   "steps": [
+    {
+     "title": "Quản lý đăng nhập admin / admin123",
+     "method": "POST",
+     "path": "/auth/login",
+     "input": "{\"username\":\"admin\",\"password\":\"admin123\"}",
+     "status": 200,
+     "actual": "nhận JWT, vai trò ADMIN, 42 quyền",
+     "pass": true
+    },
+    {
+     "title": "Đăng nhập sai mật khẩu bị từ chối",
+     "method": "POST",
+     "path": "/auth/login",
+     "input": "{\"username\":\"admin\",\"password\":\"sai-mat-khau\"}",
+     "status": 401,
+     "actual": "401 – không cấp token",
+     "pass": true
+    },
+    {
+     "title": "Khách đăng ký bằng SĐT 0938 456 712",
+     "method": "POST",
+     "path": "/auth/register",
+     "input": "{\"phone\":\"0938456712\",\"password\":\"Khach@2026\",\"fullName\":\"Nguyễn Thị Thu Hà\",\"email\":\"thuha.nguyen@gmail.com\"}",
+     "status": 201,
+     "actual": "tạo tài khoản khách 0938456712, nhận JWT",
+     "pass": true
+    },
+    {
+     "title": "Đăng ký trùng SĐT bị từ chối",
+     "method": "POST",
+     "path": "/auth/register",
+     "input": "{\"phone\":\"0938456712\",\"password\":\"Khach@2026\"}",
+     "status": 400,
+     "actual": "400: Số điện thoại đã có tài khoản, vui lòng đăng nhập",
+     "pass": true
+    },
+    {
+     "title": "Khách xem hồ sơ",
+     "method": "GET",
+     "path": "/account",
+     "status": 200,
+     "actual": "Nguyễn Thị Thu Hà · 0938456712 · điểm 0",
+     "pass": true
+    },
+    {
+     "title": "Khách cập nhật email",
+     "method": "PUT",
+     "path": "/account",
+     "input": "{\"fullName\":\"Nguyễn Thị Thu Hà\",\"email\":\"thuha.ntt@outlook.com\"}",
+     "status": 200,
+     "actual": "email mới thuha.ntt@outlook.com",
+     "pass": true
+    },
+    {
+     "title": "Khách đổi mật khẩu",
+     "method": "PUT",
+     "path": "/auth/me/password",
+     "input": "{\"currentPassword\":\"Khach@2026\",\"newPassword\":\"ThuHa#0938\"}",
+     "status": 204,
+     "actual": "đổi thành công",
+     "pass": true
+    },
+    {
+     "title": "Đăng nhập lại bằng mật khẩu mới",
+     "method": "POST",
+     "path": "/auth/login",
+     "input": "{\"username\":\"0938456712\",\"password\":\"ThuHa#0938\"}",
+     "status": 200,
+     "actual": "đăng nhập được bằng mật khẩu mới",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 24,
+   "name": "Theo dõi tổng quan vận hành",
+   "steps": [
+    {
+     "title": "Tổng quan hôm nay",
+     "method": "GET",
+     "path": "/dashboard",
+     "status": 200,
+     "actual": "{\"todayOrders\":7,\"todayRevenue\":719500,\"activeOrders\":0,\"lowStockCount\":1,\"expiringBatchCount\":4,\"topCoffeesThisWeek\":[{\"coffeeId\":13,\"name\":\"Cà phê muối Huế\",\"quantity\":12},{\"coffeeId\":1,\"name\":\"Bạc xỉu\",\"quantity\":5},{\"coffeeId\":6,\"name\":\"Americano\",\"quantity\":2}]}",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 25,
+   "name": "Tích hợp & đối soát thanh toán online (VNPAY)",
+   "steps": [
+    {
+     "title": "Danh sách giao dịch VNPAY hôm nay",
+     "method": "GET",
+     "path": "/payment-transactions?from=2026-10-21&to=2026-10-21",
+     "status": 200,
+     "actual": "CH261021H3SY-1-R1/REFUND/SUCCESS/78.000đ; CH261021H3SY-1/PAY/SUCCESS/78.000đ; CH261021WTQ3-1/PAY/SUCCESS/190.500đ",
+     "pass": true
+    },
+    {
+     "title": "Lọc giao dịch lệch trạng thái",
+     "method": "GET",
+     "path": "/payment-transactions?from=2026-10-21&to=2026-10-21&mismatch=true",
+     "status": 200,
+     "actual": "0 giao dịch lệch",
+     "pass": true
+    },
+    {
+     "title": "Truy vấn lại trạng thái (querydr)",
+     "method": "POST",
+     "path": "/payment-transactions/2/requery",
+     "status": 200,
+     "actual": "SUCCESS",
+     "pass": true
+    },
+    {
+     "title": "Đánh dấu đã đối soát với file VNPAY",
+     "method": "POST",
+     "path": "/payment-transactions/2/reconcile",
+     "input": "{\"note\":\"Khớp file đối soát ngày 2026-10-21\"}",
+     "status": 200,
+     "actual": "đã đối soát bởi admin",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 26,
+   "name": "Tích hợp đối tác giao hàng (báo giá, đặt xe, webhook)",
+   "steps": [
+    {
+     "title": "Báo giá Ahamove (SGN-BIKE)",
+     "method": "GET",
+     "path": "/shipments/1/ahamove/estimate",
+     "status": 200,
+     "actual": "31.000đ · 5 km · ~30 phút",
+     "pass": true
+    },
+    {
+     "title": "Đặt xe Ahamove",
+     "method": "POST",
+     "path": "/shipments/1/ahamove/book",
+     "status": 200,
+     "actual": "BOOKED · mã SIM8A6E96833",
+     "pass": true
+    },
+    {
+     "title": "Webhook sai token bị chặn",
+     "method": "POST",
+     "path": "/public/delivery/ahamove/webhook?token=sai",
+     "input": "{\"_id\":\"SIM8A6E96833\",\"status\":\"ACCEPTED\"}",
+     "status": 401,
+     "actual": "401",
+     "pass": true
+    },
+    {
+     "title": "Webhook: tài xế nhận đơn",
+     "method": "POST",
+     "path": "/public/delivery/ahamove/webhook?token=coffeeholic-webhook",
+     "input": "{\"_id\":\"SIM8A6E96833\",\"status\":\"ACCEPTED\",\"supplier_name\":\"Trần Văn Tài\",\"supplier_id\":\"84909888777\"}",
+     "status": 200,
+     "actual": "ok",
+     "pass": true
+    },
+    {
+     "title": "Webhook: đang giao",
+     "method": "POST",
+     "path": "/public/delivery/ahamove/webhook?token=coffeeholic-webhook",
+     "input": "{\"_id\":\"SIM8A6E96833\",\"status\":\"IN PROCESS\"}",
+     "status": 200,
+     "actual": "ok",
+     "pass": true
+    },
+    {
+     "title": "Lịch sử chuyến",
+     "method": "GET",
+     "path": "/shipments/1/events",
+     "status": 200,
+     "actual": "STAFF:BOOKED → PARTNER:DRIVER_ACCEPTED → PARTNER:DELIVERING",
+     "pass": true
+    },
+    {
+     "title": "Webhook: giao thành công",
+     "method": "POST",
+     "path": "/public/delivery/ahamove/webhook?token=coffeeholic-webhook",
+     "input": "{\"_id\":\"SIM8A6E96833\",\"status\":\"COMPLETED\",\"path\":[{\"status\":\"COMPLETED\"}]}",
+     "status": 200,
+     "actual": "ok",
+     "pass": true
+    },
+    {
+     "title": "Đơn giao xong",
+     "method": "GET",
+     "path": "/orders/2",
+     "status": 200,
+     "actual": "COMPLETED · chuyến DELIVERED · tài xế Trần Văn Tài",
+     "pass": true
+    },
+    {
+     "title": "Đơn giao Bình Thạnh 6 ly, trả tiền mặt khi nhận (COD)",
+     "method": "POST",
+     "path": "/public/checkout",
+     "input": "{\"sessionCode\":\"d89b4647261e4cb0befbf2672047447c\",\"orderType\":\"DELIVERY\",\"customerName\":\"Văn phòng Lotus\",\"customerPhone\":\"0918777666\",\"deliveryDistrict\":\"Bình Thạnh\",\"delivery\":{\"recipientName\":\"Chị Ngọc – lễ tân\",\"recipientPhone\":\"0918777666\",\"address\":\"208 Nguyễn Hữu Cảnh, P.22, Bình Thạnh\"},\"paymentMethod\":\"CASH\"}",
+     "status": 201,
+     "actual": "CH261021Q4TG · 232.600đ (6×39.000 + ship 22.000đ)",
+     "pass": true
+    },
+    {
+     "title": "confirm",
+     "method": "POST",
+     "path": "/orders/5/confirm",
+     "status": 200,
+     "actual": "PREPARING",
+     "pass": true
+    },
+    {
+     "title": "ready",
+     "method": "POST",
+     "path": "/orders/5/ready",
+     "status": 200,
+     "actual": "READY",
+     "pass": true
+    },
+    {
+     "title": "Gọi xe ngoài (Grab) – nhập tay mã chuyến, tài xế lấy hàng",
+     "method": "PATCH",
+     "path": "/shipments/2",
+     "input": "{\"status\":\"DELIVERING\",\"carrier\":\"GrabExpress\",\"trackingCode\":\"GRAB-26-88123\",\"note\":\"Tài xế Minh 0909xxx\"}",
+     "status": 200,
+     "actual": "DELIVERING · GrabExpress",
+     "pass": true
+    },
+    {
+     "title": "Đơn chuyển \"Đang giao\"",
+     "method": "GET",
+     "path": "/orders/5",
+     "status": 200,
+     "actual": "DELIVERING",
+     "pass": true
+    },
+    {
+     "title": "Cập nhật đã giao",
+     "method": "PATCH",
+     "path": "/shipments/2",
+     "input": "{\"status\":\"DELIVERED\",\"carrier\":\"GrabExpress\",\"trackingCode\":\"GRAB-26-88123\"}",
+     "status": 200,
+     "actual": "DELIVERED",
+     "pass": true
+    },
+    {
+     "title": "Đơn tự hoàn tất, tiền COD ghi nhận đã thu",
+     "method": "GET",
+     "path": "/orders/5",
+     "status": 200,
+     "actual": "COMPLETED · CASH/PAID",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 27,
+   "name": "Hóa đơn điện tử",
+   "steps": [
+    {
+     "title": "Khách online yêu cầu xuất hóa đơn công ty",
+     "method": "POST",
+     "path": "/public/orders/CH261021WTQ3/invoice-request",
+     "input": "{\"buyerTaxCode\":\"0316789012\",\"buyerCompany\":\"Công ty TNHH Giải pháp Số Thu Hà\",\"buyerAddress\":\"58 Võ Văn Tần, P. Võ Thị Sáu, Q.3, TP.HCM\",\"buyerName\":\"Nguyễn Thị Thu Hà\",\"buyerEmail\":\"ketoan@thuha-digital.vn\"}",
+     "status": 200,
+     "actual": "PENDING · Công ty TNHH Giải pháp Số Thu Hà",
+     "pass": true
+    },
+    {
+     "title": "Phát hành ngay (job phát hành chạy tay)",
+     "method": "POST",
+     "path": "/invoices/issue-now",
+     "status": 200,
+     "actual": "5 hóa đơn",
+     "pass": true
+    },
+    {
+     "title": "Tìm hóa đơn hôm nay",
+     "method": "GET",
+     "path": "/invoices?from=2026-10-21&to=2026-10-21",
+     "status": 200,
+     "actual": "2C26MCH-00000005/ORIGINAL/ISSUED/232.600đ; 2C26MCH-00000004/ORIGINAL/ISSUED/190.500đ; 2C26MCH-00000003/ORIGINAL/ISSUED/39.000đ; 2C26MCH-00000002/ORIGINAL/ISSUED/78.000đ; 2C26MCH-00000001/ORIGINAL/ISSUED/140.400đ",
+     "pass": true
+    },
+    {
+     "title": "Tìm theo MST",
+     "method": "GET",
+     "path": "/invoices?from=2026-10-21&to=2026-10-21&keyword=0316789012",
+     "status": 200,
+     "actual": "1 kết quả",
+     "pass": true
+    },
+    {
+     "title": "Xem chi tiết hóa đơn",
+     "method": "GET",
+     "path": "/invoices/4",
+     "status": 200,
+     "actual": "mã CQT M2-26-0B61A-00000004 · tra cứu 5DF7B07F99B2 · 4 dòng",
+     "pass": true
+    },
+    {
+     "title": "Sai tên công ty → lập hóa đơn thay thế",
+     "method": "POST",
+     "path": "/invoices/4/replace",
+     "input": "{\"buyer\":{\"buyerTaxCode\":\"0316789012\",\"buyerCompany\":\"Công ty TNHH Giải pháp Số Thu Hà Việt Nam\",\"buyerAddress\":\"58 Võ Văn Tần, P. Võ Thị Sáu, Q.3, TP.HCM\"},\"reason\":\"Sai tên đơn vị\"}",
+     "status": 200,
+     "actual": "REPLACEMENT · PENDING",
+     "pass": true
+    },
+    {
+     "title": "Phát hành hóa đơn thay thế",
+     "method": "POST",
+     "path": "/invoices/issue-now",
+     "status": 200,
+     "actual": "1",
+     "pass": true
+    },
+    {
+     "title": "Hóa đơn gốc chuyển \"Đã bị thay thế\", hóa đơn hoàn tiền là \"Điều chỉnh\"",
+     "method": "GET",
+     "path": "/invoices?from=2026-10-21&to=2026-10-21",
+     "status": 200,
+     "actual": "CH261021WTQ3:REPLACEMENT/ISSUED; CH261021Q4TG:ORIGINAL/ISSUED; CH261021WTQ3:ORIGINAL/REPLACED; CH261021AKLM:ORIGINAL/ISSUED; CH261021RZ2K:ORIGINAL/ISSUED; CH261021U2C4:ORIGINAL/ISSUED",
+     "pass": true
+    },
+    {
+     "title": "Khách tra cứu hóa đơn của đơn",
+     "method": "GET",
+     "path": "/public/orders/CH261021WTQ3/invoices",
+     "status": 200,
+     "actual": "ORIGINAL/REPLACED/00000004, REPLACEMENT/ISSUED/00000006",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 28,
+   "name": "Quản lý khu vực & phí giao hàng",
+   "steps": [
+    {
+     "title": "Thêm khu vực \"Trung tâm\": Q.1, Q.3, Phú Nhuận – 15.000đ, free ship từ 200.000đ",
+     "method": "POST",
+     "path": "/delivery-zones",
+     "input": "{\"name\":\"Trung tâm\",\"districts\":[\"Quận 1\",\"Quận 3\",\"Phú Nhuận\"],\"fee\":15000,\"freeShipThreshold\":200000,\"minOrderAmount\":50000,\"estimatedMinutes\":25,\"active\":true,\"sortOrder\":1}",
+     "status": 201,
+     "actual": "id 1 · Quận 1, Quận 3, Phú Nhuận",
+     "pass": true
+    },
+    {
+     "title": "Thêm khu vực \"Vùng ven\": Bình Thạnh, Tân Bình, Q.10 – 25.000đ",
+     "method": "POST",
+     "path": "/delivery-zones",
+     "input": "{\"name\":\"Vùng ven\",\"districts\":[\"Bình Thạnh\",\"Tân Bình\",\"Quận 10\"],\"fee\":25000,\"minOrderAmount\":80000,\"estimatedMinutes\":40,\"active\":true,\"sortOrder\":2}",
+     "status": 201,
+     "actual": "id 2",
+     "pass": true
+    },
+    {
+     "title": "Sửa phí vùng ven 25.000 → 22.000đ",
+     "method": "PUT",
+     "path": "/delivery-zones/2",
+     "input": "{\"name\":\"Vùng ven\",\"districts\":[\"Bình Thạnh\",\"Tân Bình\",\"Quận 10\"],\"fee\":22000,\"minOrderAmount\":80000,\"estimatedMinutes\":40,\"active\":true,\"sortOrder\":2}",
+     "status": 200,
+     "actual": "22.000đ",
+     "pass": true
+    },
+    {
+     "title": "Thêm khu vực thử",
+     "method": "POST",
+     "path": "/delivery-zones",
+     "input": "{\"name\":\"Thử\",\"districts\":[\"Quận 12\"],\"fee\":40000}",
+     "status": 201,
+     "actual": "id 3",
+     "pass": true
+    },
+    {
+     "title": "Xóa khu vực thử",
+     "method": "DELETE",
+     "path": "/delivery-zones/3",
+     "status": 204,
+     "actual": "xóa thành công",
+     "pass": true
+    },
+    {
+     "title": "Khách xem quận giao được",
+     "method": "GET",
+     "path": "/public/delivery-zones",
+     "status": 200,
+     "actual": "Trung tâm: 15.000đ; Vùng ven: 22.000đ",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 29,
+   "name": "Phiếu trả hàng nhà cung cấp",
+   "steps": [
+    {
+     "title": "Mở phiếu nhập sữa",
+     "method": "GET",
+     "path": "/goods-receipts/2",
+     "status": 200,
+     "actual": "Whipping cream nhận 11000; Sữa yến mạch Oatside nhận 4000",
+     "pass": true
+    },
+    {
+     "title": "Lập phiếu trả tạm: 1 hộp whipping bị tách nước (trừ công nợ)",
+     "method": "POST",
+     "path": "/supplier-returns",
+     "input": "{\"goodsReceiptId\":2,\"reason\":\"Kem tách nước khi mở hộp\",\"settlement\":\"DEBT\",\"items\":[{\"receiptItemId\":2,\"count\":1}]}",
+     "status": 201,
+     "actual": "TH261021-001 · DRAFT · 156.600đ",
+     "pass": true
+    },
+    {
+     "title": "Sửa phiếu tạm: thêm số HĐ điều chỉnh giảm",
+     "method": "PUT",
+     "path": "/supplier-returns/1",
+     "input": "{\"goodsReceiptId\":2,\"reason\":\"Kem tách nước khi mở hộp\",\"settlement\":\"DEBT\",\"adjustmentInvoiceNo\":\"0012955\",\"items\":[{\"receiptItemId\":2,\"count\":1}]}",
+     "status": 200,
+     "actual": "HĐ điều chỉnh 0012955",
+     "pass": true
+    },
+    {
+     "title": "Hoàn tất trả hàng (trừ kho 1.000 ml)",
+     "method": "POST",
+     "path": "/supplier-returns/1/complete",
+     "status": 200,
+     "actual": "COMPLETED · 156.600đ",
+     "pass": true
+    },
+    {
+     "title": "Lập phiếu trả tạm khác",
+     "method": "POST",
+     "path": "/supplier-returns",
+     "input": "{\"goodsReceiptId\":2,\"reason\":\"Thử\",\"settlement\":\"REFUND\",\"refundMethod\":\"CASH\",\"items\":[{\"receiptItemId\":3,\"count\":1}]}",
+     "status": 201,
+     "actual": "TH261021-002",
+     "pass": true
+    },
+    {
+     "title": "Hủy phiếu trả tạm",
+     "method": "POST",
+     "path": "/supplier-returns/2/cancel",
+     "input": "{\"reason\":\"Kiểm lại thấy hàng tốt\"}",
+     "status": 200,
+     "actual": "CANCELLED",
+     "pass": true
+    },
+    {
+     "title": "Không trả quá số đã nhận",
+     "method": "POST",
+     "path": "/supplier-returns",
+     "input": "{\"goodsReceiptId\":2,\"reason\":\"Quá\",\"settlement\":\"DEBT\",\"items\":[{\"receiptItemId\":2,\"count\":50}]}",
+     "status": 400,
+     "actual": "400: 'Whipping cream' chỉ còn trả được 10000 ml",
+     "pass": true
+    },
+    {
+     "title": "Lọc phiếu trả theo NCC",
+     "method": "GET",
+     "path": "/supplier-returns?supplierId=2",
+     "status": 200,
+     "actual": "TH261021-002/CANCELLED, TH261021-001/COMPLETED",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 30,
+   "name": "Công nợ & thanh toán nhà cung cấp",
+   "steps": [
+    {
+     "title": "Xem công nợ các NCC",
+     "method": "GET",
+     "path": "/supplier-debts",
+     "status": 200,
+     "actual": "Công ty TNHH Cà phê Đất Bazan: 2.484.000đ (hạn 2026-11-05); NPP Sữa Hoàng Gia: 1.779.840đ (hạn 2026-10-28)",
+     "pass": true
+    },
+    {
+     "title": "Chi tiền mặt trả Bazan 1.000.000đ cho phiếu nhập",
+     "method": "POST",
+     "path": "/supplier-payments",
+     "input": "{\"supplierId\":1,\"amount\":1000000,\"method\":\"CASH\",\"payeeName\":\"Anh Lâm\",\"goodsReceiptId\":1,\"note\":\"Trả đợt 1\"}",
+     "status": 201,
+     "actual": "PC261021-002 · 1.000.000đ",
+     "pass": true
+    },
+    {
+     "title": "Chuyển khoản trả Bazan phần còn lại",
+     "method": "POST",
+     "path": "/supplier-payments",
+     "input": "{\"supplierId\":1,\"amount\":1484000,\"method\":\"BANK_TRANSFER\",\"reference\":\"FT26294718263\",\"goodsReceiptId\":1}",
+     "status": 201,
+     "actual": "PC261021-003 · 1.484.000đ",
+     "pass": true
+    },
+    {
+     "title": "Không chi vượt công nợ",
+     "method": "POST",
+     "path": "/supplier-payments",
+     "input": "{\"supplierId\":1,\"amount\":99000000,\"method\":\"CASH\",\"goodsReceiptId\":1}",
+     "status": 400,
+     "actual": "400: Phiếu nhập PN261021-001 chỉ còn nợ 0đ",
+     "pass": true
+    },
+    {
+     "title": "Hủy phiếu chi lập nhầm (chuyển khoản)",
+     "method": "POST",
+     "path": "/supplier-payments/3/cancel",
+     "input": "{\"reason\":\"Sai số tham chiếu\"}",
+     "status": 200,
+     "actual": "CANCELLED",
+     "pass": true
+    },
+    {
+     "title": "Sổ chi tiết công nợ Bazan",
+     "method": "GET",
+     "path": "/supplier-debts/1/ledger",
+     "status": 200,
+     "actual": "đầu kỳ 0đ + tăng 2.484.000đ − giảm 1.000.000đ = cuối kỳ 1.484.000đ",
+     "pass": true
+    },
+    {
+     "title": "Xuất Excel sổ chi tiết",
+     "method": "GET",
+     "path": "/supplier-debts/1/ledger.xlsx",
+     "status": 200,
+     "actual": "file xlsx 4242 byte",
+     "pass": true
+    },
+    {
+     "title": "Tìm phiếu chi theo NCC + ngày",
+     "method": "GET",
+     "path": "/supplier-payments?supplierId=1&from=2026-10-21&to=2026-10-21",
+     "status": 200,
+     "actual": "PC261021-003/CANCELLED, PC261021-002/COMPLETED",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 31,
+   "name": "Báo cáo xuất – nhập – tồn kho",
+   "steps": [
+    {
+     "title": "Chốt tồn hôm nay (job 23:55 chạy tay)",
+     "method": "POST",
+     "path": "/reports/inventory/close-day",
+     "status": 200,
+     "actual": "19 nguyên liệu",
+     "pass": true
+    },
+    {
+     "title": "Báo cáo từ đầu tháng",
+     "method": "GET",
+     "path": "/reports/inventory?from=2026-10-01&to=2026-10-21",
+     "status": 200,
+     "actual": "đầu kỳ 0đ + nhập 10.649.651đ − xuất 432.880đ = cuối kỳ 10.216.771đ · 18 dòng",
+     "pass": true
+    },
+    {
+     "title": "Tồn theo ngày của Robusta",
+     "method": "GET",
+     "path": "/reports/inventory/daily?from=2026-10-01&to=2026-10-21&materialId=6",
+     "status": 200,
+     "actual": "2026-10-21: 17610",
+     "pass": true
+    },
+    {
+     "title": "Xuất Excel",
+     "method": "GET",
+     "path": "/reports/inventory.xlsx?from=2026-10-01&to=2026-10-21",
+     "status": 200,
+     "actual": "xlsx 5697 byte",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 32,
+   "name": "Mở / chốt ca thu ngân",
+   "steps": [
+    {
+     "title": "Gợi ý tiền đầu ca",
+     "method": "GET",
+     "path": "/cash-shifts/suggested-opening",
+     "status": 200,
+     "actual": "0đ",
+     "pass": true
+    },
+    {
+     "title": "Thu ngân Yến mở ca với 1.500.000đ",
+     "method": "POST",
+     "path": "/cash-shifts/open",
+     "input": "{\"openingCash\":1500000,\"note\":\"Ca sáng\"}",
+     "status": 201,
+     "actual": "CA261021-01 · đầu ca 1.500.000đ",
+     "pass": true
+    },
+    {
+     "title": "Không mở ca thứ 2 khi đang có ca",
+     "method": "POST",
+     "path": "/cash-shifts/open",
+     "input": "{\"openingCash\":0}",
+     "status": 400,
+     "actual": "400 Đang có ca chưa chốt — chốt ca đó trước khi mở ca mới",
+     "pass": true
+    },
+    {
+     "title": "Chi trong ca: mua đá 2 bao",
+     "method": "POST",
+     "path": "/cash-shifts/current/movements",
+     "input": "{\"type\":\"OUT\",\"amount\":50000,\"reason\":\"Mua 2 bao đá 20kg\"}",
+     "status": 200,
+     "actual": "chi 89.000đ",
+     "pass": true
+    },
+    {
+     "title": "Thu khác: khách gửi trả tiền thiếu hôm qua",
+     "method": "POST",
+     "path": "/cash-shifts/current/movements",
+     "input": "{\"type\":\"IN\",\"amount\":20000,\"reason\":\"Khách bàn 3 trả bù\"}",
+     "status": 200,
+     "actual": "thu 20.000đ",
+     "pass": true
+    },
+    {
+     "title": "Xem ca hiện tại (tiền mặt lý thuyết)",
+     "method": "GET",
+     "path": "/cash-shifts/current",
+     "status": 200,
+     "actual": "CA261021-01 · đơn 5 · tiền mặt bán 490.000đ · lý thuyết 1.921.000đ",
+     "pass": true
+    },
+    {
+     "title": "Chốt ca: đếm theo mệnh giá, để lại 1.000.000đ ca sau, nộp phần còn lại",
+     "method": "POST",
+     "path": "/cash-shifts/current/close",
+     "input": "{\"denominations\":{\"1000\":1,\"20000\":1,\"200000\":2,\"500000\":3},\"nextOpeningCash\":1000000,\"receivedBy\":\"Nguyễn Minh Anh (quản lý)\",\"note\":\"Ca sáng 21/10\"}",
+     "status": 200,
+     "actual": "thực đếm 1.921.000đ · lệch 0đ · nộp 921.000đ",
+     "pass": true
+    },
+    {
+     "title": "Lịch sử ca",
+     "method": "GET",
+     "path": "/cash-shifts?from=2026-10-21&to=2026-10-21",
+     "status": 200,
+     "actual": "CA261021-01/đã chốt",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 33,
+   "name": "Ca làm việc & chấm công nhân viên",
+   "steps": [
+    {
+     "title": "Thêm ca mẫu \"Ca gãy trưa\" 11:00–14:00",
+     "method": "POST",
+     "path": "/work-shifts",
+     "input": "{\"name\":\"Ca gãy trưa\",\"startTime\":\"11:00\",\"endTime\":\"14:00\",\"graceMinutes\":5,\"color\":\"#f59e0b\"}",
+     "status": 201,
+     "actual": "id 1 · 180 phút",
+     "pass": true
+    },
+    {
+     "title": "Sửa ca: cho trễ 10 phút",
+     "method": "PUT",
+     "path": "/work-shifts/1",
+     "input": "{\"id\":1,\"name\":\"Ca gãy trưa\",\"startTime\":\"11:00\",\"endTime\":\"14:00\",\"graceMinutes\":10,\"color\":\"#f59e0b\"}",
+     "status": 200,
+     "actual": "10 phút",
+     "pass": true
+    },
+    {
+     "title": "Thêm ca phủ giờ hiện tại để chấm công",
+     "method": "POST",
+     "path": "/work-shifts",
+     "input": "{\"name\":\"Ca test\",\"startTime\":\"07:00\",\"endTime\":\"10:00\",\"graceMinutes\":5}",
+     "status": 201,
+     "actual": "07:00:00–10:00:00",
+     "pass": true
+    },
+    {
+     "title": "Xếp ca cho Yến + Khoa hôm nay và ngày mai",
+     "method": "POST",
+     "path": "/shift-assignments",
+     "input": "{\"staffIds\":[7,6],\"dates\":[\"2026-10-21\",\"2026-10-22\"],\"shiftId\":2,\"position\":\"Thu ngân\"}",
+     "status": 201,
+     "actual": "4 phân ca",
+     "pass": true
+    },
+    {
+     "title": "Lịch tuần",
+     "method": "GET",
+     "path": "/shift-assignments?from=2026-10-21&to=2026-10-27",
+     "status": 200,
+     "actual": "4 ca trong tuần",
+     "pass": true
+    },
+    {
+     "title": "Yến xem ca của mình hôm nay",
+     "method": "GET",
+     "path": "/attendance/today",
+     "status": 200,
+     "actual": "Ca test SCHEDULED",
+     "pass": true
+    },
+    {
+     "title": "Yến chấm vào",
+     "method": "POST",
+     "path": "/attendance/1/check-in",
+     "status": 200,
+     "actual": "WORKING lúc 2026-10-21T08:58:13.6092793",
+     "pass": true
+    },
+    {
+     "title": "Yến chấm ra",
+     "method": "POST",
+     "path": "/attendance/1/check-out",
+     "status": 200,
+     "actual": "DONE lúc 2026-10-21T08:58:13.6226351",
+     "pass": true
+    },
+    {
+     "title": "Quản lý sửa công: Khoa quên chấm, ghi nghỉ có phép",
+     "method": "PUT",
+     "path": "/shift-assignments/3/attendance",
+     "input": "{\"leaveType\":\"P\",\"note\":\"Xin nghỉ ốm, có giấy\"}",
+     "status": 200,
+     "actual": "LEAVE",
+     "pass": true
+    },
+    {
+     "title": "Bỏ phân ca ngày mai của Khoa",
+     "method": "DELETE",
+     "path": "/shift-assignments/4",
+     "status": 204,
+     "actual": "xóa thành công",
+     "pass": true
+    },
+    {
+     "title": "Bảng chấm công tháng",
+     "method": "GET",
+     "path": "/timesheets?month=2026-10",
+     "status": 200,
+     "actual": "Lê Hoàng Yến: xếp 2 ca, làm 1 ca (0 giờ), trễ 1, nghỉ P 0, KL 0, vắng 0 | Trần Minh Khoa: xếp 1 ca, làm 0 ca (0 giờ), trễ 0, nghỉ P 1, KL 0, vắng 0",
+     "pass": true
+    },
+    {
+     "title": "Xuất Excel bảng chấm công (mẫu 01a-LĐTL)",
+     "method": "GET",
+     "path": "/timesheets.xlsx?month=2026-10",
+     "status": 200,
+     "actual": "xlsx 4726 byte",
+     "pass": true
+    },
+    {
+     "title": "Xóa ca mẫu \"Ca gãy trưa\" (chưa dùng)",
+     "method": "DELETE",
+     "path": "/work-shifts/1",
+     "status": 204,
+     "actual": "xóa thành công",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 34,
+   "name": "Giá vốn món theo công thức",
+   "steps": [
+    {
+     "title": "Tính lại giá vốn (job mỗi giờ chạy tay)",
+     "method": "POST",
+     "path": "/coffee-costs/recalculate",
+     "status": 200,
+     "actual": "13 món đổi giá vốn",
+     "pass": true
+    },
+    {
+     "title": "Bảng giá vốn",
+     "method": "GET",
+     "path": "/coffee-costs",
+     "status": 200,
+     "actual": "Americano: vốn 8.300đ/ly, bán 39.000đ, food cost 21.3%; Bạc xỉu: vốn 7.483đ/ly, bán 39.000đ, food cost 19.2%; Cà phê muối Huế: vốn 9.140đ/ly, bán 39.000đ, food cost 23.4%",
+     "pass": true
+    },
+    {
+     "title": "Điều chỉnh giá bán Cà phê muối 39.000 → 42.000đ",
+     "method": "PUT",
+     "path": "/coffee-costs/13/price",
+     "input": "{\"price\":42000}",
+     "status": 200,
+     "actual": "food cost còn 21.8%",
+     "pass": true
+    },
+    {
+     "title": "Lịch sử giá vốn",
+     "method": "GET",
+     "path": "/coffee-costs/13/history",
+     "status": 200,
+     "actual": "9.140đ/39.000đ → 9.140đ/42.000đ",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 35,
+   "name": "Gửi email/SMS xác nhận đơn & OTP",
+   "steps": [
+    {
+     "title": "Mẫu tin",
+     "method": "GET",
+     "path": "/notifications/templates",
+     "status": 200,
+     "actual": "ORDER_CONFIRMED, ORDER_READY, ORDER_DELIVERING, ORDER_COMPLETED, ORDER_CANCELLED",
+     "pass": true
+    },
+    {
+     "title": "Gắn ID mẫu ZNS đã duyệt cho tin xác nhận",
+     "method": "PUT",
+     "path": "/notifications/templates/ORDER_CONFIRMED",
+     "input": "{\"znsTemplateId\":\"298765\",\"smsFallback\":true}",
+     "status": 200,
+     "actual": "ZNS 298765",
+     "pass": true
+    },
+    {
+     "title": "Nhật ký gửi tin hôm nay",
+     "method": "GET",
+     "path": "/notifications/messages?from=2026-10-21&to=2026-10-21",
+     "status": 200,
+     "actual": "ORDER_CANCELLED/SMS/SENT; ORDER_CANCELLED/SMS/SENT; ORDER_COMPLETED/SMS/SENT; ORDER_DELIVERING/SMS/SENT; ORDER_CONFIRMED/ZNS/SENT; ORDER_COMPLETED/SMS/SENT; ORDER_DELIVERING/SMS/SENT; ORDER_CONFIRMED/ZNS/SENT",
+     "pass": true
+    },
+    {
+     "title": "Lọc theo SĐT khách",
+     "method": "GET",
+     "path": "/notifications/messages?from=2026-10-21&to=2026-10-21&phone=0938456712",
+     "status": 200,
+     "actual": "3 tin: ORDER_COMPLETED/SMS/SENT, ORDER_DELIVERING/SMS/SENT, ORDER_CONFIRMED/ZNS/SENT",
+     "pass": true
+    },
+    {
+     "title": "Không gửi lại tin đã gửi thành công",
+     "method": "POST",
+     "path": "/notifications/messages/8/resend",
+     "status": 400,
+     "actual": "400: Chỉ gửi lại tin lỗi",
+     "pass": true
+    }
+   ]
+  },
+  {
+   "no": 36,
+   "name": "Nhật ký thao tác hệ thống",
+   "steps": [
+    {
+     "title": "Bộ lọc: người dùng, module",
+     "method": "GET",
+     "path": "/audit-logs/filters",
+     "status": 200,
+     "actual": "0938456712, admin, khoa.tm, yen.lh · 35 module",
+     "pass": true
+    },
+    {
+     "title": "Tìm thao tác của yen.lh hôm nay",
+     "method": "GET",
+     "path": "/audit-logs?from=2026-10-21&to=2026-10-21&username=yen.lh&size=50",
+     "status": 200,
+     "actual": "28 thao tác, vd check-out /api/attendance/1/check-out; check-in /api/attendance/1/check-in; CREATE /api/cash-shifts/current/close",
+     "pass": true
+    },
+    {
+     "title": "Lọc thao tác lỗi",
+     "method": "GET",
+     "path": "/audit-logs?from=2026-10-21&to=2026-10-21&failed=true&size=50",
+     "status": 200,
+     "actual": "16 thao tác lỗi (các ca test chặn sai)",
+     "pass": true
+    },
+    {
+     "title": "Tìm theo từ khóa \"purchase-orders\"",
+     "method": "GET",
+     "path": "/audit-logs?from=2026-10-21&to=2026-10-21&keyword=purchase-orders&size=50",
+     "status": 200,
+     "actual": "13 kết quả",
+     "pass": true
+    },
+    {
+     "title": "Xuất Excel nhật ký",
+     "method": "GET",
+     "path": "/audit-logs/export.xlsx?from=2026-10-21&to=2026-10-21",
+     "status": 200,
+     "actual": "xlsx 15418 byte",
+     "pass": true
+    }
+   ]
+  }
+ ]
+}
