@@ -5,7 +5,10 @@ import lombok.*;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.SQLRestriction;
 
-/** Nguyên liệu: only a name and a unit; how much a coffee needs lives in its recipe (recipe_materials). No stock is kept. */
+/**
+ * Nguyên liệu dạng thô: tên, đơn vị và số lượng hiện có. Định lượng mỗi ly nằm ở công thức (recipe_materials);
+ * bắt đầu pha một đơn thì tự trừ, món thiếu nguyên liệu tự "Hết món" (StockService).
+ */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -23,4 +26,8 @@ public class Material extends BaseEntity {
     private String name;
     @Column(nullable = false, length = 20)
     private String unit;
+    /** số lượng hiện có, theo {@link #unit} */
+    @Builder.Default
+    @Column(nullable = false, precision = 12, scale = 2)
+    private java.math.BigDecimal quantity = java.math.BigDecimal.ZERO;
 }

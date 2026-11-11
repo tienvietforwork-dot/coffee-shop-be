@@ -4,7 +4,6 @@ import com.coffeeshop.entity.enums.*;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLDelete;
-import org.hibernate.annotations.SQLRestriction;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -19,7 +18,8 @@ import java.util.List;
 @Builder
 @Entity
 @Table(name = "customer_addresses")
-@SQLRestriction("del_flag = false")
+// No @SQLRestriction: past shipments keep pointing to an address the customer later removed from the address book;
+// the address-book queries filter del_flag themselves.
 @SQLDelete(sql = "UPDATE customer_addresses SET del_flag = true WHERE id = ?")
 public class CustomerAddress extends BaseEntity {
     @Id

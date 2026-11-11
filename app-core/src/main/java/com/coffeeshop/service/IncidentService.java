@@ -56,9 +56,9 @@ public class IncidentService {
     @Transactional(readOnly = true)
     public List<VoucherOptionResponse> voucherOptions() {
         LocalDateTime now = LocalDateTime.now();
-        return voucherRepository.findByStatusOrderByNameAsc(VoucherTypeStatus.ACTIVE).stream()
+        return voucherRepository.findByStatusAndDelFlagFalseOrderByNameAsc(VoucherTypeStatus.ACTIVE).stream()
                 .map(v -> new VoucherOptionResponse(v.getId(), v.getName(), v.getDiscountValue(), v.getMinOrderValue(),
-                        v.getQuantity(), v.getValidDays(), remaining(v, now)))
+                        v.slots(), v.getValidDays(), remaining(v, now)))
                 .toList();
     }
 
@@ -76,12 +76,18 @@ public class IncidentService {
     public IncidentResponse resolve(Long id, IncidentResolveRequest request) {
         Incident incident = incidentRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy sự cố: " + id));
-        if (incident.getStatus() == IncidentStatus.RESOLVED) throw new BadRequestException("Sự cố đã được xử lý");
         LocalDateTime now = LocalDateTime.now();
-        incident.setHandledBy(staffService.current());
-        incident.setResolution(request.resolution().trim());
-        incident.setStatus(IncidentStatus.RESOLVED);
-        incident.setResolvedAt(now);
+        if (incident.getStatus() == IncidentStatus.RESOLVED) {
+            // đã xử lý nhưng chưa đền bù: chỉ phát thêm voucher, giữ nguyên phương án xử lý
+            if (request.voucherId() == null || !voucherDetailRepository.findByIncidentId(id).isEmpty()) {
+                throw new BadRequestException("Sự cố đã được xử lý");
+            }
+        } else {
+            incident.setHandledBy(staffService.current());
+            incident.setResolution(request.resolution().trim());
+            incident.setStatus(IncidentStatus.RESOLVED);
+            incident.setResolvedAt(now);
+        }
 
         List<VoucherDetail> vouchers = new ArrayList<>();
         if (request.voucherId() != null) {
@@ -112,7 +118,7 @@ public class IncidentService {
     }
 
     private long remaining(Voucher voucher, LocalDateTime now) {
-        return Math.max(0, voucher.getQuantity() - voucherDetailRepository.countTakenSlots(voucher.getId(), now));
+        return Math.max(0, voucher.slots() - voucherDetailRepository.countTakenSlots(voucher.getId(), now));
     }
 
     private String newCode() {

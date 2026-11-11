@@ -4,7 +4,6 @@ import com.coffeeshop.entity.enums.VoucherTypeStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLDelete;
-import org.hibernate.annotations.SQLRestriction;
 
 import java.math.BigDecimal;
 
@@ -20,7 +19,8 @@ import java.math.BigDecimal;
 @Builder
 @Entity
 @Table(name = "vouchers")
-@SQLRestriction("del_flag = false")
+// No @SQLRestriction: app-promotions soft-deletes voucher types whose issued vouchers (voucher_details) stay on orders
+// and incidents; the issuing queries filter del_flag themselves.
 @SQLDelete(sql = "UPDATE vouchers SET del_flag = true WHERE id = ?")
 public class Voucher extends BaseEntity {
     @Id
@@ -34,9 +34,11 @@ public class Voucher extends BaseEntity {
     @Builder.Default
     @Column(name = "min_order_value", nullable = false, precision = 12, scale = 2)
     private BigDecimal minOrderValue = BigDecimal.ZERO;
-    /** Số lượt được dùng tối đa (gồm cả lượt đang giữ chỗ). */
-    @Column(nullable = false)
+    /** Số lượt được dùng tối đa (gồm cả lượt đang giữ chỗ) — kiểu cũ; app-promotions now counts this down as stock. */
     private Integer quantity;
+    /** Số lượt tối đa do app-promotions đặt; khi có thì thay cho {@link #quantity}. */
+    @Column(name = "max_quantity")
+    private Integer maxQuantity;
     /** Hạn mặc định khi phát, tính từ lúc phát; null = không hết hạn. */
     @Column(name = "valid_days")
     private Integer validDays;
@@ -44,4 +46,10 @@ public class Voucher extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private VoucherTypeStatus status = VoucherTypeStatus.ACTIVE;
+
+    /** Số lượt tối đa của loại voucher: max_quantity, chưa có thì quantity. */
+    public int slots() {
+        if (maxQuantity != null) return maxQuantity;
+        return quantity == null ? 0 : quantity;
+    }
 }

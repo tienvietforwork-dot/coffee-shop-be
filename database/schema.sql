@@ -185,7 +185,7 @@ CREATE TABLE coffees (
     description TEXT,
     status      VARCHAR(20)   NOT NULL DEFAULT 'AVAILABLE'
                 CHECK (status IN ('AVAILABLE', 'SOLD_OUT', 'HIDDEN', 'DISCONTINUED')),
-    auto_sold_out BOOLEAN     NOT NULL DEFAULT FALSE,  -- không còn dùng (app-core bỏ tồn kho); giữ vì app-promotions / app-stats còn map cột này
+    auto_sold_out BOOLEAN     NOT NULL DEFAULT FALSE,  -- hệ thống tự "Hết món" vì thiếu nguyên liệu (xem material_quantity.sql)
     created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
     created_at TIMESTAMP    NOT NULL DEFAULT now(),
     updated_by VARCHAR(50),
@@ -196,7 +196,7 @@ CREATE TABLE coffees (
 CREATE INDEX idx_coffees_category ON coffees (category_id);
 CREATE INDEX idx_coffees_image ON coffees (image_id);
 
--- Nguyên liệu: chỉ tên + đơn vị (không theo dõi tồn kho); định lượng nằm ở recipe_materials
+-- Nguyên liệu: tên + đơn vị + số lượng (cột quantity thêm ở cuối file); định lượng nằm ở recipe_materials
 CREATE TABLE materials (
     id             BIGSERIAL PRIMARY KEY,
     name           VARCHAR(100)  NOT NULL,
@@ -996,11 +996,11 @@ CREATE TABLE IF NOT EXISTS notification_messages (
 CREATE INDEX IF NOT EXISTS idx_notification_messages_created ON notification_messages (created_at);
 
 
--- Phí giao hàng theo km (quán tự giao) — xem delivery_fee_by_distance.sql
+-- Giao hàng (quán tự giao): cửa hàng, miễn phí từ, đơn tối thiểu — phí theo khu vực ở cuối file (delivery_areas.sql)
 CREATE TABLE IF NOT EXISTS delivery_settings (
     id                  BIGINT PRIMARY KEY CHECK (id = 1),     -- 1 dòng duy nhất
     enabled             BOOLEAN       NOT NULL DEFAULT TRUE,   -- false = tạm ngưng nhận đơn giao
-    shop_address        VARCHAR(255)  NOT NULL,                -- điểm xuất phát để đo km
+    shop_address        VARCHAR(255)  NOT NULL,                -- điểm xuất phát của người giao
     shop_lat            DOUBLE PRECISION,
     shop_lng            DOUBLE PRECISION,
     free_ship_threshold NUMERIC(12,2) CHECK (free_ship_threshold >= 0), -- miễn phí ship từ
@@ -1013,52 +1013,94 @@ CREATE TABLE IF NOT EXISTS delivery_settings (
     del_user   VARCHAR(50)
 );
 
--- bậc phí: quãng đường trong (from_km, to_km] → phí; xa hơn bậc cuối = ngoài phạm vi giao
-CREATE TABLE IF NOT EXISTS delivery_fee_tiers (
-    id      BIGSERIAL PRIMARY KEY,
-    from_km NUMERIC(6,2)  NOT NULL CHECK (from_km >= 0),
-    to_km   NUMERIC(6,2)  NOT NULL,
-    fee     NUMERIC(12,2) NOT NULL CHECK (fee >= 0),
-    CHECK (to_km > from_km)
-);
-
 -- Giờ mở cửa — xem delivery_time_slots.sql
 ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS open_time  VARCHAR(5);   -- 'HH:mm' giờ VN; NULL = mở cả ngày
 ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS close_time VARCHAR(5);   -- < open_time = đóng sau nửa đêm
 
--- Option giá + khung giờ — xem delivery_fee_options.sql
-CREATE TABLE IF NOT EXISTS delivery_fee_plans (
-    id         BIGSERIAL PRIMARY KEY,
-    name       VARCHAR(60) NOT NULL,
-    is_default BOOLEAN     NOT NULL DEFAULT FALSE
-);
-CREATE UNIQUE INDEX IF NOT EXISTS uq_delivery_fee_plans_default ON delivery_fee_plans (is_default) WHERE is_default;
-ALTER TABLE delivery_fee_tiers ADD COLUMN IF NOT EXISTS plan_id BIGINT REFERENCES delivery_fee_plans (id);
-CREATE INDEX IF NOT EXISTS idx_delivery_fee_tiers_plan ON delivery_fee_tiers (plan_id);
-
-CREATE TABLE IF NOT EXISTS delivery_time_slots (
-    id         BIGSERIAL PRIMARY KEY,
-    start_time VARCHAR(5)  NOT NULL,                         -- 'HH:mm' giờ VN
-    end_time   VARCHAR(5)  NOT NULL,                         -- < start_time = qua nửa đêm
-    days       VARCHAR(20),                                  -- 1 (thứ 2) … 7 (CN), dấu phẩy; NULL = mọi ngày
-    plan_id    BIGINT      NOT NULL REFERENCES delivery_fee_plans (id),
-    CHECK (start_time <> end_time)
-);
-
--- Thời tiết xấu — xem delivery_weather.sql
-ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS weather_enabled         BOOLEAN       NOT NULL DEFAULT FALSE;
-ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS weather_stop_rain_mm    NUMERIC(5,1)  CHECK (weather_stop_rain_mm > 0);
-
--- mưa từ min_rain_mm mm/h → cộng surcharge (lấy bậc cao nhất đạt)
-CREATE TABLE IF NOT EXISTS delivery_weather_tiers (
-    id          BIGSERIAL PRIMARY KEY,
-    min_rain_mm NUMERIC(5,1)  NOT NULL CHECK (min_rain_mm > 0),
-    surcharge   NUMERIC(12,2) NOT NULL CHECK (surcharge >= 0)
-);
-
--- Ghi chú phí giao hàng — xem delivery_fee_notes.sql
-ALTER TABLE delivery_fee_plans ADD COLUMN IF NOT EXISTS note         VARCHAR(255);
-ALTER TABLE delivery_settings  ADD COLUMN IF NOT EXISTS weather_note VARCHAR(255);
-
 -- Ước tính giờ giao — xem delivery_eta.sql
-ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS minutes_per_km NUMERIC(4,1) CHECK (minutes_per_km > 0);
+ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS speed_kmh NUMERIC(5,1) CHECK (speed_kmh > 0);
+
+-- Mã sản phẩm, giá niêm yết từng dòng đơn, voucher trên đơn — xem product_code_order_discount.sql
+ALTER TABLE coffees     ADD COLUMN IF NOT EXISTS code             VARCHAR(20);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_coffees_code ON coffees (upper(code)) WHERE NOT del_flag;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS list_price       NUMERIC(12,2) CHECK (list_price >= 0);
+ALTER TABLE orders      ADD COLUMN IF NOT EXISTS voucher_code     VARCHAR(30);
+ALTER TABLE orders      ADD COLUMN IF NOT EXISTS voucher_discount NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (voucher_discount >= 0);
+
+-- Số lượng nguyên liệu, tự trừ theo đơn, tự hết món — xem material_quantity.sql
+ALTER TABLE materials ADD COLUMN IF NOT EXISTS quantity       NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE orders    ADD COLUMN IF NOT EXISTS stock_deducted BOOLEAN       NOT NULL DEFAULT FALSE;
+
+-- Phí giao hàng theo khu vực (tỉnh + phường), miễn phí cho nhóm khách — xem delivery_areas.sql
+CREATE TABLE IF NOT EXISTS delivery_provinces (
+    id     BIGSERIAL PRIMARY KEY,
+    name   VARCHAR(100)  NOT NULL,                       -- "Thành phố Hà Nội" (danh mục 34 tỉnh / thành)
+    fee    NUMERIC(12,2) NOT NULL CHECK (fee >= 0),      -- phí ship mặc định cho mọi phường / xã của tỉnh
+    active BOOLEAN       NOT NULL DEFAULT TRUE           -- false = tạm ngưng giao tới tỉnh này
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_delivery_provinces_name ON delivery_provinces (lower(name));
+
+-- phường / xã khác tỉnh: phí riêng (fee) hoặc không giao (blocked)
+CREATE TABLE IF NOT EXISTS delivery_wards (
+    id          BIGSERIAL PRIMARY KEY,
+    province_id BIGINT        NOT NULL REFERENCES delivery_provinces (id) ON DELETE CASCADE,
+    name        VARCHAR(100)  NOT NULL,
+    fee         NUMERIC(12,2) CHECK (fee >= 0),          -- NULL = theo phí tỉnh
+    blocked     BOOLEAN       NOT NULL DEFAULT FALSE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_delivery_wards_name ON delivery_wards (province_id, lower(name));
+
+-- nhóm khách CRM (customer_groups.id, phân cách dấu phẩy) được miễn phí giao hàng: Thân thiết, VIP…
+ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS free_ship_group_ids VARCHAR(255);
+
+-- Người giao hàng: phân công, giờ nhận đồ — xem delivery_shippers.sql
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS shipper_id   BIGINT REFERENCES staff (id);
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS assigned_at  TIMESTAMP;
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS picked_up_at TIMESTAMP;   -- lúc người giao nhận đồ, bắt đầu đi
+CREATE INDEX IF NOT EXISTS idx_shipments_shipper ON shipments (shipper_id) WHERE NOT del_flag;
+
+-- Gói giao định kỳ — xem delivery_subscriptions.sql
+CREATE TABLE IF NOT EXISTS delivery_subscriptions (
+    id            BIGSERIAL PRIMARY KEY,
+    code          VARCHAR(20)  NOT NULL,
+    customer_id   BIGINT       NOT NULL REFERENCES customers (id),
+    address_id    BIGINT       NOT NULL REFERENCES customer_addresses (id),
+    frequency     VARCHAR(10)  NOT NULL CHECK (frequency IN ('DAILY', 'WEEKLY')),
+    days          VARCHAR(20),                                  -- WEEKLY: 1 (thứ 2) … 7 (CN), dấu phẩy
+    delivery_time VARCHAR(5)   NOT NULL,                        -- 'HH:mm' giờ VN, giờ giao cố định
+    start_date    DATE         NOT NULL,
+    end_date      DATE,                                         -- NULL = không hạn
+    status        VARCHAR(10)  NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'PAUSED', 'CANCELLED')),
+    note          TEXT,
+    last_run_date DATE,                                         -- ngày gần nhất đã tạo (thử tạo) đơn
+    last_error    VARCHAR(255),                                 -- lỗi lần tạo đơn gần nhất
+    created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
+    created_at TIMESTAMP    NOT NULL DEFAULT now(),
+    updated_by VARCHAR(50),
+    updated_at TIMESTAMP,
+    del_flag   BOOLEAN      NOT NULL DEFAULT FALSE,
+    del_user   VARCHAR(50)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_delivery_subscriptions_code ON delivery_subscriptions (code) WHERE NOT del_flag;
+CREATE INDEX IF NOT EXISTS idx_delivery_subscriptions_customer ON delivery_subscriptions (customer_id);
+
+CREATE TABLE IF NOT EXISTS delivery_subscription_items (
+    id              BIGSERIAL PRIMARY KEY,
+    subscription_id BIGINT       NOT NULL REFERENCES delivery_subscriptions (id) ON DELETE CASCADE,
+    coffee_id       BIGINT       NOT NULL REFERENCES coffees (id),
+    quantity        INT          NOT NULL CHECK (quantity BETWEEN 1 AND 99),
+    note            VARCHAR(255)
+);
+
+-- đơn tự tạo từ gói
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS subscription_id BIGINT REFERENCES delivery_subscriptions (id);
+CREATE INDEX IF NOT EXISTS idx_orders_subscription ON orders (subscription_id) WHERE subscription_id IS NOT NULL;
+
+-- Hoàn tiền tay khi cổng không hoàn được — xem refund_pending.sql
+-- REFUND_PENDING: đã trả online, đơn bị từ chối / hủy, cổng không hoàn được → nhân viên chuyển khoản trả tay
+ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_status_check;
+ALTER TABLE payments ADD CONSTRAINT payments_status_check
+    CHECK (status IN ('PENDING', 'PAID', 'FAILED', 'REFUNDED', 'REFUND_PENDING'));
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMP;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS refund_ref  VARCHAR(100);   -- mã giao dịch hoàn (VNPAY / chuyển khoản tay)
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS refund_note TEXT;

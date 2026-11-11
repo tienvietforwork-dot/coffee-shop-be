@@ -372,6 +372,34 @@ public class DistanceGateway {
         return null;
     }
 
+    /** đường đi xe qua lần lượt các điểm: đường vẽ trên bản đồ + tổng km / phút */
+    public record Path(List<Point> line, double km, int minutes) {
+    }
+
+    /**
+     * Tuyến đường thật qua các điểm theo thứ tự (OSRM, không cần key). Lỗi mạng / quá nhiều điểm: null — khi đó bản đồ
+     * nối thẳng các điểm.
+     */
+    public Path path(List<Point> stops) {
+        if (stops.size() < 2 || stops.size() > 25) return null;
+        try {
+            StringBuilder coords = new StringBuilder();
+            for (Point p : stops) {
+                if (!coords.isEmpty()) coords.append(';');
+                coords.append(String.format(Locale.ROOT, "%.6f,%.6f", p.lng(), p.lat()));
+            }
+            URI uri = URI.create(props.getOsrmUrl() + "/route/v1/driving/" + coords + "?overview=full&geometries=geojson");
+            JsonNode route = getJson(uri).path("routes").path(0);
+            if (route.isMissingNode()) return null;
+            List<Point> line = new ArrayList<>();
+            for (JsonNode c : route.path("geometry").path("coordinates")) line.add(new Point(c.get(1).asDouble(), c.get(0).asDouble()));
+            return new Path(line, route.path("distance").asDouble() / 1000.0, (int) Math.round(route.path("duration").asDouble() / 60.0));
+        } catch (RuntimeException e) {
+            log.warn("OSRM path failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private Route osrmRoute(Point from, Point to) {
         URI uri = URI.create(String.format(Locale.ROOT, "%s/route/v1/driving/%.6f,%.6f;%.6f,%.6f?overview=false",
                 props.getOsrmUrl(), from.lng(), from.lat(), to.lng(), to.lat()));

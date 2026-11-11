@@ -46,6 +46,7 @@ public class OnlinePaymentService {
     public static final String PROVIDER = "VNPAY";
 
     private final PaymentTransactionRepository txRepository;
+    private final com.coffeeshop.repository.PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
     private final VnpayGateway gateway;
     private final NotificationService notificationService;
@@ -165,29 +166,53 @@ public class OnlinePaymentService {
      */
     @Transactional
     public boolean refundIfOnline(Payment payment, BigDecimal amount) {
-        if (amount == null || amount.signum() <= 0) return false;
+        Refund r = tryRefund(payment, amount);
+        if (r.failed()) throw new BadRequestException(r.error());
+        return r.online();
+    }
+
+    /**
+     * Kết quả hoàn tiền qua cổng: {@code online} = khoản này trả qua VNPAY; {@code error} khác null = VNPAY từ chối /
+     * không phản hồi (giao dịch hoàn vẫn được ghi lại để đối soát); {@code ref} = mã giao dịch hoàn của VNPAY.
+     */
+    public record Refund(boolean online, String error, String ref) {
+        public boolean failed() {
+            return error != null;
+        }
+    }
+
+    /** Như {@link #refundIfOnline} nhưng không ném lỗi — để từ chối / hủy đơn vẫn đi tiếp khi cổng không hoàn được. */
+    @Transactional
+    public Refund tryRefund(Payment payment, BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0) return new Refund(false, null, null);
         PaymentTransaction paid = txRepository.findByPaymentIdOrderByIdDesc(payment.getId()).stream()
                 .filter(t -> "PAY".equals(t.getType()) && t.getStatus() == PaymentTransactionStatus.SUCCESS).findFirst().orElse(null);
-        if (paid == null) return false;
+        if (paid == null) return new Refund(false, null, null);
         boolean full = amount.compareTo(paid.getAmount()) >= 0 && payment.getRefundAmount().signum() == 0;
         String ref = paid.getTxnRef() + "-R" + (txRepository.findByPaymentIdOrderByIdDesc(payment.getId()).size());
         PaymentTransaction refund = txRepository.save(PaymentTransaction.builder().payment(payment).provider(PROVIDER)
                 .type("REFUND").txnRef(ref).amount(amount).bankCode(paid.getBankCode()).gatewayDate(VnpayGateway.now())
                 .createdAt(LocalDateTime.now()).build());
-        VnpayGateway.Answer a = gateway.simulated()
-                ? new VnpayGateway.Answer("00", "05", "R" + paid.getProviderTxnNo(), paid.getBankCode(), "simulated refund")
-                : gateway.refund(paid.getTxnRef(), amount, full, paid.getProviderTxnNo(), paid.getGatewayDate(),
-                CurrentUser.username(), "127.0.0.1");
+        VnpayGateway.Answer a;
+        try {
+            a = gateway.simulated()
+                    ? new VnpayGateway.Answer("00", "05", "R" + paid.getProviderTxnNo(), paid.getBankCode(), "simulated refund")
+                    : gateway.refund(paid.getTxnRef(), amount, full, paid.getProviderTxnNo(), paid.getGatewayDate(),
+                    CurrentUser.username() == null ? "system" : CurrentUser.username(), "127.0.0.1");
+        } catch (RuntimeException e) {
+            log.warn("VNPAY refund {} failed: {}", ref, e.getMessage());
+            refund.setStatus(PaymentTransactionStatus.FAILED);
+            refund.setCompletedAt(LocalDateTime.now());
+            return new Refund(true, "VNPAY không phản hồi khi hoàn tiền", null);
+        }
         refund.setResponseCode(a.responseCode());
         refund.setTransactionStatus(a.transactionStatus());
         refund.setProviderTxnNo(a.transactionNo());
         refund.setRawResponse(a.raw());
         refund.setCompletedAt(LocalDateTime.now());
         refund.setStatus(a.ok() ? PaymentTransactionStatus.SUCCESS : PaymentTransactionStatus.FAILED);
-        if (!a.ok()) {
-            throw new BadRequestException("VNPAY không hoàn tiền được: " + PaymentTransactionResponse.responseText(a.responseCode()));
-        }
-        return true;
+        if (!a.ok()) return new Refund(true, "VNPAY không hoàn tiền được: " + PaymentTransactionResponse.responseText(a.responseCode()), null);
+        return new Refund(true, null, PROVIDER + "-" + a.transactionNo());
     }
 
     /** the order is closed: links still open are closed too */
@@ -203,11 +228,15 @@ public class OnlinePaymentService {
 
     // ---- job: giao dịch quá hạn ------------------------------------------------
 
-    /** Links past their expiry: asked once more, then closed. Returns the orders still unpaid, to be cancelled. */
+    /**
+     * Links past their expiry: asked once more, then closed. Returns the orders still unpaid, to be cancelled —
+     * those plus orders left unpaid past the same window with no open link (link never opened, or payment failed).
+     */
     @Transactional
     public List<Long> expire() {
         Set<Long> orders = new TreeSet<>();
-        for (PaymentTransaction t : txRepository.findExpired(LocalDateTime.now())) {
+        LocalDateTime now = LocalDateTime.now();
+        for (PaymentTransaction t : txRepository.findExpired(now)) {
             if (!gateway.simulated()) requery(t, "127.0.0.1");
             if (t.getStatus() == PaymentTransactionStatus.PENDING) {
                 t.setStatus(PaymentTransactionStatus.EXPIRED);
@@ -216,6 +245,7 @@ public class OnlinePaymentService {
             Payment p = t.getPayment();
             if (p.getStatus() == PaymentStatus.PENDING && p.getOrder().getStatus() == OrderStatus.PENDING) orders.add(p.getOrder().getId());
         }
+        orders.addAll(txRepository.findUnpaidOnlineOrders(now.minusMinutes(gateway.expireMinutes()), now));
         return new ArrayList<>(orders);
     }
 
@@ -280,9 +310,75 @@ public class OnlinePaymentService {
             p.setPaidAt(now);
             p.setTransactionCode(PROVIDER + "-" + transactionNo);
             notificationService.notifyOrderChanged(OrderResponse.from(p.getOrder()));
+        } else if (p.getStatus() == PaymentStatus.FAILED
+                && (p.getOrder().getStatus() == OrderStatus.REJECTED || p.getOrder().getStatus() == OrderStatus.CANCELLED)) {
+            // khách trả xong sau khi đơn đã bị từ chối / hủy: ghi nhận tiền vào rồi hoàn lại ngay
+            log.warn("VNPAY paid {} after order {} was closed: refunding", t.getTxnRef(), p.getOrder().getOrderCode());
+            p.setStatus(PaymentStatus.PAID);
+            p.setPaidAt(now);
+            p.setTransactionCode(PROVIDER + "-" + transactionNo);
+            settleRefund(p, p.getAmount(), tryRefund(p, p.getAmount()));
+            notificationService.notifyOrderChanged(OrderResponse.from(p.getOrder()));
         } else {
             log.warn("VNPAY paid {} but payment #{} is {}", t.getTxnRef(), p.getId(), p.getStatus());
         }
+    }
+
+    /**
+     * Ghi kết quả hoàn {@code amount} vào khoản thanh toán: hoàn được → cộng số đã hoàn (đủ thì REFUNDED); cổng từ chối →
+     * REFUND_PENDING để nhân viên chuyển khoản tay ({@link #markRefundedManually}).
+     */
+    public void settleRefund(Payment p, BigDecimal amount, Refund r) {
+        if (r.failed()) {
+            p.setStatus(PaymentStatus.REFUND_PENDING);
+            p.setRefundNote(r.error() + " — cần chuyển khoản trả khách " + amount.stripTrailingZeros().toPlainString() + "đ");
+            return;
+        }
+        p.setRefundAmount(p.getRefundAmount().add(amount).min(p.getAmount()));
+        if (p.getRefundAmount().compareTo(p.getAmount()) >= 0) p.setStatus(PaymentStatus.REFUNDED);
+        p.setRefundedAt(LocalDateTime.now());
+        if (r.ref() != null) p.setRefundRef(r.ref());
+    }
+
+    /** nhân viên đã chuyển khoản trả khách cho khoản đang chờ hoàn tay */
+    @Transactional
+    public Payment markRefundedManually(Long paymentId, String reference, String note) {
+        Payment p = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new com.coffeeshop.exception.ResourceNotFoundException("Không tìm thấy thanh toán: " + paymentId));
+        if (p.getStatus() != PaymentStatus.REFUND_PENDING) throw new BadRequestException("Khoản này không ở trạng thái chờ hoàn tiền");
+        if (reference == null || reference.isBlank()) throw new BadRequestException("Nhập mã giao dịch chuyển khoản trả khách");
+        p.setRefundAmount(p.getAmount());
+        p.setStatus(PaymentStatus.REFUNDED);
+        p.setRefundedAt(LocalDateTime.now());
+        p.setRefundRef(reference.trim());
+        String by = CurrentUser.username() == null ? "" : " (" + CurrentUser.username() + ")";
+        p.setRefundNote((p.getRefundNote() == null ? "" : p.getRefundNote() + "\n") + "Đã hoàn tay" + by
+                + (note == null || note.isBlank() ? "" : ": " + note.trim()));
+        notificationService.notifyOrderChanged(OrderResponse.from(p.getOrder()));
+        return p;
+    }
+
+    /** thử hoàn lại qua VNPAY cho khoản đang chờ hoàn tay */
+    @Transactional
+    public Payment retryRefund(Long paymentId) {
+        Payment p = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new com.coffeeshop.exception.ResourceNotFoundException("Không tìm thấy thanh toán: " + paymentId));
+        if (p.getStatus() != PaymentStatus.REFUND_PENDING) throw new BadRequestException("Khoản này không ở trạng thái chờ hoàn tiền");
+        BigDecimal left = p.getAmount().subtract(p.getRefundAmount());
+        Refund r = tryRefund(p, left);
+        if (r.failed()) {
+            p.setRefundNote(r.error() + " — cần chuyển khoản trả khách " + left.stripTrailingZeros().toPlainString() + "đ");
+            return p;
+        }
+        settleRefund(p, left, r);
+        notificationService.notifyOrderChanged(OrderResponse.from(p.getOrder()));
+        return p;
+    }
+
+    /** các khoản đang chờ hoàn tay, cũ nhất trước */
+    @Transactional(readOnly = true)
+    public List<Payment> refundPending() {
+        return paymentRepository.findByStatusOrderByIdAsc(PaymentStatus.REFUND_PENDING);
     }
 
     /** null when the gateway and the shop agree */

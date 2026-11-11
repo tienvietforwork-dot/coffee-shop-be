@@ -26,22 +26,21 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Phí ship theo km (bậc phí, miễn phí từ, đơn tối thiểu, ngoài phạm vi); quán tự giao: bắt đầu giao → đã giao. */
+/** Phí ship theo khu vực (tỉnh, phường phí riêng / không giao, miễn phí từ, đơn tối thiểu); quán tự giao: bắt đầu giao → đã giao. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @WithMockUser(authorities = {"delivery-zones", "pos", "shipments", "orders"})
 class DeliveryFlowTest {
 
-    static final DistanceGateway.Point SHOP = new DistanceGateway.Point(10.0, 106.0);
-    static final DistanceGateway.Point NEAR = new DistanceGateway.Point(10.01, 106.0);
-    static final DistanceGateway.Point MID = new DistanceGateway.Point(10.04, 106.0);
-    static final DistanceGateway.Point FAR = new DistanceGateway.Point(10.2, 106.0);
+    static final String BA_DINH = "12 Điện Biên Phủ, Phường Ba Đình, Thành phố Hà Nội";
+    static final String SOC_SON = "1 Núi Đôi, Xã Sóc Sơn, Thành phố Hà Nội";
+    static final String HOAN_KIEM = "5 Tràng Tiền, Phường Hoàn Kiếm, TP. Hà Nội";
+    static final String SAI_GON = "12 Lê Lợi, Phường Sài Gòn, Thành phố Hồ Chí Minh";
 
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
@@ -51,37 +50,24 @@ class DeliveryFlowTest {
     @Autowired CustomerAddressRepository addressRepository;
     @Autowired OrderRepository orderRepository;
     @Autowired ShipmentRepository shipmentRepository;
-    @Autowired DeliveryTimeSlotRepository slotRepository;
-    @Autowired DeliveryFeePlanRepository planRepository;
+    @Autowired DeliveryProvinceRepository provinceRepository;
     @MockBean DistanceGateway distance;
-    @MockBean com.coffeeshop.integration.weather.WeatherGateway weather;
 
     Coffee latte;
 
     @BeforeEach
     void setUp() throws Exception {
         when(distance.provider()).thenReturn("test");
-        when(distance.geocode(eq("Quán"), any())).thenReturn(SHOP);
-        when(distance.geocode(eq("Gần"), any())).thenReturn(NEAR);
-        when(distance.geocode(eq("Vừa"), any())).thenReturn(MID);
-        when(distance.geocode(eq("Xa"), any())).thenReturn(FAR);
-        when(distance.route(any(), eq(NEAR))).thenReturn(new DistanceGateway.Route(2.4, 8));
-        when(distance.route(any(), eq(MID))).thenReturn(new DistanceGateway.Route(4.2, 15));
-        when(distance.route(any(), eq(FAR))).thenReturn(new DistanceGateway.Route(22, 60));
+        when(distance.geocode(any(), any())).thenReturn(new DistanceGateway.Point(21.03, 105.85));
+        when(distance.route(any(), any())).thenReturn(new DistanceGateway.Route(4.2, 15));
         Category c = categoryRepository.save(Category.builder().name("Cat " + UUID.randomUUID()).build());
         latte = coffeeRepository.save(Coffee.builder().category(c).name("Latte " + UUID.randomUUID()).price(new BigDecimal("40000")).build());
-        slotRepository.deleteAll();
-        call(body(put("/api/delivery-weather"), Map.of("enabled", false, "rainTiers", List.of())));
-        planRepository.deleteAll();
+        provinceRepository.deleteAll();
         call(body(put("/api/delivery-settings"), Map.of("shopAddress", "Quán", "freeShipThreshold", 150000,
                 "minOrderAmount", 50000, "openTime", "06:00", "closeTime", "22:00")));
-        // the first option is the default one
-        JsonNode def = call(body(post("/api/delivery-fee-plans"), plan("Mặc định", 15000, 25000)));
-        assertThat(def.get("isDefault").asBoolean()).isTrue();
-    }
-
-    private Map<String, Object> plan(String name, int upTo3, int upTo7) {
-        return Map.of("name", name, "tiers", List.of(Map.of("fromKm", 0, "toKm", 3, "fee", upTo3), Map.of("fromKm", 3, "toKm", 7, "fee", upTo7)));
+        call(body(post("/api/delivery-areas"), Map.of("name", "Thành phố Hà Nội", "fee", 15000, "active", true,
+                "wards", List.of(Map.of("name", "Xã Sóc Sơn", "fee", 35000, "blocked", false),
+                        Map.of("name", "Phường Hoàn Kiếm", "blocked", true)))));
     }
 
     private MockHttpServletRequestBuilder body(MockHttpServletRequestBuilder b, Object o) throws Exception {
@@ -100,123 +86,50 @@ class DeliveryFlowTest {
     }
 
     @Test
-    void shippingFeeFollowsTheDistanceTier() throws Exception {
-        JsonNode near = call(body(post("/api/orders/quote"), quote(2, "Gần")));
-        assertThat(near.get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
-        assertThat(near.get("deliveryDistanceKm").decimalValue()).isEqualByComparingTo("2.4");
-        assertThat(near.get("deliveryTier").asText()).isEqualTo("0–3 km");
-        assertThat(call(body(post("/api/orders/quote"), quote(2, "Vừa"))).get("shippingFee").decimalValue()).isEqualByComparingTo("25000");
+    void shippingFeeFollowsTheProvinceAndWard() throws Exception {
+        JsonNode q = call(body(post("/api/orders/quote"), quote(2, BA_DINH)));
+        assertThat(q.get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
+        assertThat(q.get("deliveryZone").asText()).isEqualTo("Phường Ba Đình, Thành phố Hà Nội");
+        assertThat(q.get("deliveryDistanceKm").decimalValue()).isEqualByComparingTo("4.2");
+        // phường có phí riêng
+        assertThat(call(body(post("/api/orders/quote"), quote(2, SOC_SON))).get("shippingFee").decimalValue()).isEqualByComparingTo("35000");
         // 4 × 40.000 = 160.000 ≥ 150.000: miễn phí ship
-        assertThat(call(body(post("/api/orders/quote"), quote(4, "Vừa"))).get("shippingFee").decimalValue()).isEqualByComparingTo("0");
-        // below the minimum, and beyond the last tier
-        mvc.perform(body(post("/api/orders/quote"), quote(1, "Gần"))).andExpect(status().isBadRequest());
-        mvc.perform(body(post("/api/orders/quote"), quote(2, "Xa"))).andExpect(status().isBadRequest());
-        // "từ X km" levels + "không giao quá": the ranges are worked out on save
-        JsonNode x = call(body(post("/api/delivery-fee-plans"), Map.of("name", "X", "maxKm", 10,
-                "tiers", List.of(Map.of("fromKm", 4, "fee", 2), Map.of("fromKm", 0, "fee", 1)))));
-        assertThat(x.get("maxKm").decimalValue()).isEqualByComparingTo("10");
-        assertThat(x.get("tiers").get(0).get("toKm").decimalValue()).isEqualByComparingTo("4");
-        assertThat(x.get("tiers").get(1).get("toKm").decimalValue()).isEqualByComparingTo("10");
-        // first level from 0 km; "không giao quá" beyond the last level
-        mvc.perform(body(post("/api/delivery-fee-plans"), Map.of("name", "Y", "maxKm", 10, "tiers", List.of(Map.of("fromKm", 1, "fee", 1)))))
+        assertThat(call(body(post("/api/orders/quote"), quote(4, SOC_SON))).get("shippingFee").decimalValue()).isEqualByComparingTo("0");
+        // dưới đơn tối thiểu, phường bị chặn ("TP." = "Thành phố"), tỉnh không giao
+        mvc.perform(body(post("/api/orders/quote"), quote(1, BA_DINH))).andExpect(status().isBadRequest());
+        mvc.perform(body(post("/api/orders/quote"), quote(2, HOAN_KIEM))).andExpect(status().isBadRequest());
+        mvc.perform(body(post("/api/orders/quote"), quote(2, SAI_GON))).andExpect(status().isBadRequest());
+        // không đo được quãng đường vẫn tính phí
+        when(distance.route(any(), any())).thenThrow(new IllegalStateException("offline"));
+        assertThat(call(body(post("/api/orders/quote"), quote(2, BA_DINH))).get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
+    }
+
+    @Test
+    void theAreaCheckAndPublicSettingsListWhereTheShopDelivers() throws Exception {
+        assertThat(call(get("/api/public/delivery-area").param("ward", "Phường Ba Đình").param("province", "Thành phố Hà Nội"))
+                .get("outside").asBoolean()).isFalse();
+        JsonNode blocked = call(get("/api/public/delivery-area").param("ward", "Phường Hoàn Kiếm").param("province", "Thành phố Hà Nội"));
+        assertThat(blocked.get("outside").asBoolean()).isTrue();
+        assertThat(call(get("/api/public/delivery-area").param("ward", "Phường Sài Gòn").param("province", "Thành phố Hồ Chí Minh"))
+                .get("message").asText()).contains("Hà Nội");
+        assertThat(call(get("/api/public/delivery-settings")).get("provinces").get(0).asText()).isEqualTo("Thành phố Hà Nội");
+        // the same province twice is refused
+        mvc.perform(body(post("/api/delivery-areas"), Map.of("name", "TP. Hà Nội", "fee", 1, "active", true, "wards", List.of())))
                 .andExpect(status().isBadRequest());
-        mvc.perform(body(post("/api/delivery-fee-plans"), Map.of("name", "Z", "maxKm", 3, "tiers",
-                List.of(Map.of("fromKm", 0, "fee", 1), Map.of("fromKm", 5, "fee", 2))))).andExpect(status().isBadRequest());
-    }
-
-    private Map<String, Object> quoteAt(int cups, String address, String time) {
-        return Map.of("items", List.of(Map.of("coffeeId", latte.getId(), "quantity", cups)), "orderType", "DELIVERY",
-                "deliveryAddress", address, "deliveryTime", "2030-01-07T" + time + ":00"); // a Monday
-    }
-
-    private Map<String, Object> slot(String from, String to, long planId, List<Integer> days) {
-        return Map.of("startTime", from, "endTime", to, "planId", planId, "days", days);
-    }
-
-    @Test
-    void eachTimeSlotUsesItsOptionAndTheDefaultCoversTheRest() throws Exception {
-        long peak = call(body(post("/api/delivery-fee-plans"), plan("Cao điểm", 20000, 30000))).get("id").asLong();
-        long early = call(body(post("/api/delivery-fee-plans"), Map.of("name", "Sáng sớm",
-                "tiers", List.of(Map.of("fromKm", 0, "toKm", 3, "fee", 18000))))).get("id").asLong();
-        call(body(post("/api/delivery-time-slots"), slot("17:00", "20:00", peak, List.of())));
-        call(body(post("/api/delivery-time-slots"), slot("06:00", "08:00", early, List.of(1, 2, 3, 4, 5))));
-        // an option is reusable in several slots
-        call(body(post("/api/delivery-time-slots"), slot("11:00", "13:00", peak, List.of(6, 7))));
-
-        // outside every slot: option mặc định
-        JsonNode noon = call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00")));
-        assertThat(noon.get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
-        assertThat(noon.has("deliveryOption")).isFalse();
-        JsonNode evening = call(body(post("/api/orders/quote"), quoteAt(2, "Vừa", "18:30")));
-        assertThat(evening.get("shippingFee").decimalValue()).isEqualByComparingTo("30000");
-        assertThat(evening.get("deliveryOption").asText()).isEqualTo("Cao điểm");
-        assertThat(evening.get("deliveryNote").asText()).isEqualTo("Phí giao hàng khung giờ Cao điểm");
-        assertThat(noon.has("deliveryNote")).isFalse();
-        // 6–8h on a Monday: Sáng sớm; its only range stops at 3 km, so 4.2 km is out of range then
-        assertThat(call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "07:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("18000");
-        mvc.perform(body(post("/api/orders/quote"), quoteAt(2, "Vừa", "07:00"))).andExpect(status().isBadRequest());
-
-        // overlapping slots are refused; an option in use, or the default one, cannot be deleted
-        mvc.perform(body(post("/api/delivery-time-slots"), slot("19:00", "21:00", early, List.of()))).andExpect(status().isBadRequest());
-        // outside the opening hours (06:00–22:00)
-        mvc.perform(body(post("/api/delivery-time-slots"), slot("05:00", "07:00", early, List.of()))).andExpect(status().isBadRequest());
-        mvc.perform(body(post("/api/delivery-time-slots"), slot("21:00", "23:00", early, List.of()))).andExpect(status().isBadRequest());
-        mvc.perform(delete("/api/delivery-fee-plans/" + peak)).andExpect(status().isBadRequest());
-        long def = planRepository.findFirstByDefaultPlanTrue().orElseThrow().getId();
-        mvc.perform(delete("/api/delivery-fee-plans/" + def)).andExpect(status().isBadRequest());
-        assertThat(call(get("/api/delivery-time-slots")).size()).isEqualTo(3);
-
-        // another option becomes the default; the old one loses the flag; the default cannot just be unset
-        call(body(put("/api/delivery-fee-plans/" + early), Map.of("name", "Sáng sớm", "isDefault", true,
-                "tiers", List.of(Map.of("fromKm", 0, "toKm", 3, "fee", 18000)))));
-        assertThat(planRepository.findFirstByDefaultPlanTrue().orElseThrow().getId()).isEqualTo(early);
-        assertThat(planRepository.findById(def).orElseThrow().isDefaultPlan()).isFalse();
-        mvc.perform(body(put("/api/delivery-fee-plans/" + early), Map.of("name", "Sáng sớm", "isDefault", false,
-                "tiers", List.of(Map.of("fromKm", 0, "toKm", 3, "fee", 18000))))).andExpect(status().isBadRequest());
-        mvc.perform(delete("/api/delivery-fee-plans/" + early)).andExpect(status().isBadRequest());
-        assertThat(call(get("/api/public/delivery-settings")).get("openTime").asText()).startsWith("06:00");
-    }
-
-    private void rain(double mmPerHour, int code) {
-        when(weather.at(org.mockito.ArgumentMatchers.anyDouble(), org.mockito.ArgumentMatchers.anyDouble(), any()))
-                .thenReturn(new com.coffeeshop.integration.weather.WeatherGateway.Weather(null, code, 27, mmPerHour, 10));
-    }
-
-    @Test
-    void badWeatherAddsTheRainSurchargeOrStopsDeliveries() throws Exception {
-        call(body(put("/api/delivery-weather"), Map.of("enabled", true, "stopRainMm", 30,
-                "rainTiers", List.of(Map.of("minRainMm", 2, "surcharge", 5000), Map.of("minRainMm", 10, "surcharge", 10000)))));
-        rain(0.5, 61);
-        assertThat(call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
-        rain(5, 63); // bậc 2 mm/h
-        JsonNode q = call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00")));
-        assertThat(q.get("shippingFee").decimalValue()).isEqualByComparingTo("20000");
-        assertThat(q.get("weatherSurcharge").decimalValue()).isEqualByComparingTo("5000");
-        assertThat(q.get("deliveryNote").asText()).startsWith("Phụ phí do thời tiết xấu");
-        rain(12, 65); // bậc 10 mm/h; free ship (4 × 40.000 ≥ 150.000) still pays the surcharge
-        assertThat(call(body(post("/api/orders/quote"), quoteAt(4, "Gần", "12:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("10000");
-        rain(3, 95); // giông: không ai đi giao
-        mvc.perform(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00"))).andExpect(status().isBadRequest());
-        rain(35, 65); // ≥ 30 mm/h: no deliveries
-        mvc.perform(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00"))).andExpect(status().isBadRequest());
-        // switched off: no effect
-        call(body(put("/api/delivery-weather"), Map.of("enabled", false, "rainTiers", List.of())));
-        assertThat(call(body(post("/api/orders/quote"), quoteAt(2, "Gần", "12:00"))).get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
     }
 
     @Test
     void theCounterOrderIsPricedByTheAddressItGoesTo() throws Exception {
         JsonNode order = call(body(post("/api/orders"), Map.of("items", List.of(Map.of("coffeeId", latte.getId(), "quantity", 2)),
                 "orderType", "DELIVERY", "customerPhone", "0912345678", "paymentMethod", "CASH",
-                "delivery", Map.of("recipientName", "Lan", "recipientPhone", "0912345678", "address", "Vừa"))));
+                "delivery", Map.of("recipientName", "Lan", "recipientPhone", "0912345678", "address", SOC_SON))));
         Shipment s = shipmentRepository.findAll().stream().filter(x -> x.getOrder().getId().equals(order.get("id").asLong())).findFirst().orElseThrow();
-        assertThat(s.getShippingFee()).isEqualByComparingTo("25000");
-        assertThat(s.getDistanceKm()).isEqualByComparingTo("4.2");
-        assertThat(s.getZoneName()).isEqualTo("3–7 km");
+        assertThat(s.getShippingFee()).isEqualByComparingTo("35000");
+        assertThat(s.getZoneName()).isEqualTo("Xã Sóc Sơn, Thành phố Hà Nội");
         // the same address again (picked from the saved ones) is reused, not saved twice
         JsonNode again = call(body(post("/api/orders"), Map.of("items", List.of(Map.of("coffeeId", latte.getId(), "quantity", 2)),
                 "orderType", "DELIVERY", "customerPhone", "0912345678", "paymentMethod", "CASH",
-                "delivery", Map.of("recipientName", "Lan", "recipientPhone", "0912345678", "address", "Vừa"))));
+                "delivery", Map.of("recipientName", "Lan", "recipientPhone", "0912345678", "address", SOC_SON))));
         Shipment s2 = shipmentRepository.findAll().stream().filter(x -> x.getOrder().getId().equals(again.get("id").asLong())).findFirst().orElseThrow();
         assertThat(s2.getAddress().getId()).isEqualTo(s.getAddress().getId());
     }

@@ -13,7 +13,7 @@ import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.List;
 
-/** Giao hàng (quán tự giao): cửa hàng & giờ mở cửa, option giá theo km, khung giờ; gợi ý địa chỉ; lịch sử đơn giao. */
+/** Giao hàng (quán tự giao): cửa hàng & giờ mở cửa, khu vực giao + phí ship theo tỉnh / phường; gợi ý địa chỉ; lịch sử đơn giao. */
 @RestController
 @RequiredArgsConstructor
 public class DeliveryController {
@@ -21,24 +21,19 @@ public class DeliveryController {
     private final DeliveryFeeService feeService;
     private final ShipmentService shipmentService;
 
-    /** what the checkout needs: địa chỉ quán, giờ mở cửa, miễn phí từ, đơn tối thiểu */
+    /** what the checkout needs: địa chỉ quán, giờ mở cửa, miễn phí từ, đơn tối thiểu, các tỉnh giao được */
     public record PublicConfig(String shopAddress, LocalTime openTime, LocalTime closeTime, BigDecimal freeShipThreshold,
-                               BigDecimal minOrderAmount, BigDecimal minutesPerKm) {
+                               BigDecimal minOrderAmount, BigDecimal speedKmh, List<String> provinces) {
     }
 
     @GetMapping("/api/public/delivery-settings")
     public PublicConfig publicConfig() {
         var s = feeService.settings();
-        return new PublicConfig(s.shopAddress(), s.openTime(), s.closeTime(), s.freeShipThreshold(), s.minOrderAmount(), s.minutesPerKm());
+        return new PublicConfig(s.shopAddress(), s.openTime(), s.closeTime(), s.freeShipThreshold(), s.minOrderAmount(), s.speedKmh(),
+                feeService.areas().stream().filter(DeliveryFeeService.Area::active).map(DeliveryFeeService.Area::name).toList());
     }
 
-    /** quãng đường quán → địa chỉ (form thêm / sửa địa chỉ giao hàng) */
-    @GetMapping("/api/public/delivery-distance")
-    public DeliveryFeeService.Distance distance(@RequestParam String address) {
-        return feeService.distanceTo(address);
-    }
-
-    /** phường / xã đã chọn có nằm ngoài khu vực giao không (trước khi nhập số nhà) */
+    /** phường / xã đã chọn có giao được không, phí bao nhiêu (trước khi nhập số nhà) */
     @GetMapping("/api/public/delivery-area")
     public DeliveryFeeService.AreaCheck area(@RequestParam String ward, @RequestParam(required = false) String province) {
         return feeService.checkArea(ward, province);
@@ -63,74 +58,32 @@ public class DeliveryController {
         return feeService.saveSettings(request);
     }
 
-    // ---- thời tiết xấu ----
+    // ---- khu vực giao: tỉnh + phí, phường phí riêng / không giao ----
 
-    @GetMapping("/api/delivery-weather")
+    @GetMapping("/api/delivery-areas")
     @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    public DeliveryFeeService.WeatherSettings weather() {
-        return feeService.weatherSettings();
+    public List<DeliveryFeeService.Area> areas() {
+        return feeService.areas();
     }
 
-    @PutMapping("/api/delivery-weather")
-    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    public DeliveryFeeService.WeatherSettings saveWeather(@RequestBody DeliveryFeeService.WeatherSettings request) {
-        return feeService.saveWeather(request);
-    }
-
-    // ---- option giá ----
-
-    @GetMapping("/api/delivery-fee-plans")
-    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    public List<DeliveryFeeService.Plan> plans() {
-        return feeService.plans();
-    }
-
-    @PostMapping("/api/delivery-fee-plans")
+    @PostMapping("/api/delivery-areas")
     @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
     @ResponseStatus(HttpStatus.CREATED)
-    public DeliveryFeeService.Plan createPlan(@RequestBody DeliveryFeeService.Plan request) {
-        return feeService.savePlan(null, request);
+    public DeliveryFeeService.Area createArea(@RequestBody DeliveryFeeService.Area request) {
+        return feeService.saveArea(null, request);
     }
 
-    @PutMapping("/api/delivery-fee-plans/{id}")
+    @PutMapping("/api/delivery-areas/{id}")
     @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    public DeliveryFeeService.Plan updatePlan(@PathVariable Long id, @RequestBody DeliveryFeeService.Plan request) {
-        return feeService.savePlan(id, request);
+    public DeliveryFeeService.Area updateArea(@PathVariable Long id, @RequestBody DeliveryFeeService.Area request) {
+        return feeService.saveArea(id, request);
     }
 
-    @DeleteMapping("/api/delivery-fee-plans/{id}")
-    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deletePlan(@PathVariable Long id) {
-        feeService.deletePlan(id);
-    }
-
-    // ---- khung giờ ----
-
-    @GetMapping("/api/delivery-time-slots")
-    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    public List<DeliveryFeeService.Slot> slots() {
-        return feeService.slots();
-    }
-
-    @PostMapping("/api/delivery-time-slots")
-    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    @ResponseStatus(HttpStatus.CREATED)
-    public DeliveryFeeService.Slot createSlot(@RequestBody DeliveryFeeService.Slot request) {
-        return feeService.saveSlot(null, request);
-    }
-
-    @PutMapping("/api/delivery-time-slots/{id}")
-    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    public DeliveryFeeService.Slot updateSlot(@PathVariable Long id, @RequestBody DeliveryFeeService.Slot request) {
-        return feeService.saveSlot(id, request);
-    }
-
-    @DeleteMapping("/api/delivery-time-slots/{id}")
+    @DeleteMapping("/api/delivery-areas/{id}")
     @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteSlot(@PathVariable Long id) {
-        feeService.deleteSlot(id);
+    public void deleteArea(@PathVariable Long id) {
+        feeService.deleteArea(id);
     }
 
     @GetMapping("/api/shipments/{id}/events")

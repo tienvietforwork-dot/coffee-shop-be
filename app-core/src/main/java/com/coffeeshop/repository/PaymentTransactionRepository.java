@@ -24,4 +24,21 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
 
     @Query("select t from PaymentTransaction t join fetch t.payment p join fetch p.order where t.status = com.coffeeshop.entity.enums.PaymentTransactionStatus.PENDING and t.type = 'PAY' and t.expireAt < :now")
     List<PaymentTransaction> findExpired(LocalDateTime now);
+
+    /**
+     * QR / online orders still waiting for an online payment, placed before {@code orderedBefore}, with no VNPAY link
+     * still open: the customer never opened the link, or the attempt failed / was cancelled on VNPAY.
+     */
+    @Query("""
+            select distinct o.id from Payment p join p.order o
+            where o.status = com.coffeeshop.entity.enums.OrderStatus.PENDING
+              and o.channel <> com.coffeeshop.entity.enums.OrderChannel.COUNTER
+              and o.orderedAt < :orderedBefore
+              and p.status = com.coffeeshop.entity.enums.PaymentStatus.PENDING
+              and p.method <> com.coffeeshop.entity.enums.PaymentMethod.CASH
+              and not exists (select t.id from PaymentTransaction t where t.payment = p
+                              and t.status = com.coffeeshop.entity.enums.PaymentTransactionStatus.PENDING
+                              and t.expireAt >= :now)
+            """)
+    List<Long> findUnpaidOnlineOrders(LocalDateTime orderedBefore, LocalDateTime now);
 }

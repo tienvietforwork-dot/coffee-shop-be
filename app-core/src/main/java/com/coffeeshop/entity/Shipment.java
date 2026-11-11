@@ -40,10 +40,19 @@ public class Shipment extends BaseEntity {
     private LocalDateTime deliveredAt;
     @Column(columnDefinition = "TEXT")
     private String note;
-    /** quãng đường quán → địa chỉ giao (km, qua API bản đồ) */
+    /** quãng đường quán → địa chỉ giao (km, qua API bản đồ; chỉ để ước tính, có thể null) */
     @Column(name = "distance_km", precision = 6, scale = 2)
     private BigDecimal distanceKm;
-    /** bậc phí áp dụng, vd "3–5 km" */
+    /** khu vực tính phí, vd "Phường Ba Đình, Thành phố Hà Nội" */
     @Column(name = "zone_name", length = 100)
     private String zoneName;
+    /** nhân viên được phân công giao (null = chưa phân công) */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "shipper_id")
+    private Staff shipper;
+    @Column(name = "assigned_at")
+    private LocalDateTime assignedAt;
+    /** lúc người giao nhận đồ và bắt đầu đi */
+    @Column(name = "picked_up_at")
+    private LocalDateTime pickedUpAt;
 }

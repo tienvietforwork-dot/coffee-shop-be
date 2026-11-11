@@ -3,19 +3,28 @@ package com.coffeeshop.dto.response;
 import java.math.BigDecimal;
 import java.util.List;
 
-/** {@code deliveryDistanceKm} / {@code deliveryTier}: quãng đường quán → địa chỉ giao và bậc phí áp dụng; {@code deliveryOption}: option giá của khung giờ đang tính (null = option mặc định); {@code deliveryWeather} / {@code weatherSurcharge}: thời tiết xấu và phụ phí đã cộng vào phí ship. */
+/**
+ * {@code deliveryZone}: khu vực giao ("Phường …, Thành phố …") quyết định phí ship; {@code deliveryDistanceKm}: quãng đường
+ * quán → địa chỉ (chỉ để ước tính giờ giao, có thể null); {@code deliveryNote}: ghi chú phí (miễn phí cho khách VIP…);
+ * {@code prepMinutes}: tổng thời gian pha chế các món (phút) để ước tính giờ xong / giờ giao tới.
+ */
 public record PriceQuoteResponse(List<Line> lines, BigDecimal subtotal, String promotionName,
                                  BigDecimal promotionDiscount, String voucherCode, BigDecimal voucherDiscount,
                                  String voucherMessage, BigDecimal shippingFee, BigDecimal total,
-                                 List<String> unavailableItems, BigDecimal deliveryDistanceKm, String deliveryTier,
-                                 String deliveryOption, String deliveryWeather, BigDecimal weatherSurcharge, String deliveryNote) {
+                                 List<String> unavailableItems, BigDecimal deliveryDistanceKm, String deliveryZone,
+                                 String deliveryNote, Integer prepMinutes) {
 
     public record Line(Long coffeeId, String coffeeName, Integer quantity, BigDecimal listPrice,
                        BigDecimal unitPrice, String promotionName, BigDecimal lineTotal, String note) {
     }
 
-    public PriceQuoteResponse withDelivery(BigDecimal km, String tier, String peak, String weather, BigDecimal surcharge, String note) {
+    public PriceQuoteResponse withDelivery(BigDecimal km, String zone, String note) {
         return new PriceQuoteResponse(lines, subtotal, promotionName, promotionDiscount, voucherCode, voucherDiscount,
-                voucherMessage, shippingFee, total, unavailableItems, km, tier, peak, weather, surcharge, note);
+                voucherMessage, shippingFee, total, unavailableItems, km, zone, note, prepMinutes);
+    }
+
+    public PriceQuoteResponse withPrepMinutes(Integer minutes) {
+        return new PriceQuoteResponse(lines, subtotal, promotionName, promotionDiscount, voucherCode, voucherDiscount,
+                voucherMessage, shippingFee, total, unavailableItems, deliveryDistanceKm, deliveryZone, deliveryNote, minutes);
     }
 }

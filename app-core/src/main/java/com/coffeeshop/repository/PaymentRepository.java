@@ -10,11 +10,15 @@ import java.util.List;
 public interface PaymentRepository extends JpaRepository<Payment, Long> {
     List<Payment> findByOrderIdOrderByIdAsc(Long orderId);
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"order", "order.customer"})
+    List<Payment> findByStatusOrderByIdAsc(com.coffeeshop.entity.enums.PaymentStatus status);
+
     /** collected in a window, per method: [method, count, amount] (payments PAID or later refunded) */
     @Query("""
             select p.method, count(p), sum(p.amount) from Payment p
             where p.paidAt >= :from and p.paidAt < :to
-              and p.status in (com.coffeeshop.entity.enums.PaymentStatus.PAID, com.coffeeshop.entity.enums.PaymentStatus.REFUNDED)
+              and p.status in (com.coffeeshop.entity.enums.PaymentStatus.PAID, com.coffeeshop.entity.enums.PaymentStatus.REFUNDED,
+                             com.coffeeshop.entity.enums.PaymentStatus.REFUND_PENDING)
             group by p.method
             """)
     List<Object[]> collectedBetween(LocalDateTime from, LocalDateTime to);

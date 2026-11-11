@@ -74,7 +74,7 @@ public class PricingService {
                             l.lineTotal(), l.note())).toList(),
                     subtotal, orderPromotion == null ? null : orderPromotion.getName(), promotionDiscount,
                     voucher == null ? null : voucher.getCode(), voucherDiscount, voucherMessage, shippingFee, total,
-                    unavailable, null, null, null, null, null, null);
+                    unavailable, null, null, null, null);
         }
     }
 
@@ -177,7 +177,9 @@ public class PricingService {
     /** Returns null when the voucher can be used, otherwise the reason it is rejected. */
     private String validateVoucher(VoucherDetail voucher, String customerPhone, BigDecimal subtotal, LocalDateTime now) {
         if (voucher == null) return "Mã voucher không tồn tại";
-        if (voucher.getStatus() != VoucherStatus.ISSUED) return "Voucher đã được sử dụng hoặc không còn hiệu lực";
+        if (voucher.getStatus() != VoucherStatus.ISSUED || voucher.getVoucher().isDelFlag()) {
+            return "Voucher đã được sử dụng hoặc không còn hiệu lực";
+        }
         if (voucher.getExpiresAt() != null && voucher.getExpiresAt().isBefore(now)) return "Voucher đã hết hạn";
         if (voucher.getCustomer() != null
                 && (customerPhone == null || !voucher.getCustomer().getPhone().equals(customerPhone.trim()))) {

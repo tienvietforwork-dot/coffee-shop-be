@@ -54,13 +54,16 @@ public class CoffeeService {
     public CoffeeResponse create(CoffeeRequest request) {
         Coffee coffee = Coffee.builder().build();
         apply(coffee, request);
-        return toResponse(coffeeRepository.save(coffee));
+        coffee = coffeeRepository.save(coffee);
+        ensureCode(coffee);
+        return toResponse(coffee);
     }
 
     @Transactional
     public CoffeeResponse update(Long id, CoffeeRequest request) {
         Coffee coffee = get(id);
         apply(coffee, request);
+        ensureCode(coffee);
         return toResponse(coffee);
     }
 
@@ -72,6 +75,7 @@ public class CoffeeService {
             throw new AccessDeniedException("Cần quyền sửa thực đơn để ngừng bán / bán lại món");
         }
         coffee.setStatus(status);
+        coffee.setAutoSoldOut(false); // nhân viên tự đổi: hệ thống không tự mở bán lại
         return toResponse(coffee);
     }
 
@@ -114,6 +118,14 @@ public class CoffeeService {
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy cà phê: " + id));
     }
 
+    /** Món chưa có mã: SP + id (SP001…); trùng với mã ai đó tự đặt thì thêm hậu tố -2, -3… */
+    private void ensureCode(Coffee coffee) {
+        if (coffee.getCode() != null) return;
+        String code = "SP%03d".formatted(coffee.getId());
+        for (int n = 2; coffeeRepository.existsByCodeIgnoreCase(code); n++) code = "SP%03d-%d".formatted(coffee.getId(), n);
+        coffee.setCode(code);
+    }
+
     private CoffeeResponse toResponse(Coffee coffee) {
         return CoffeeResponse.from(coffee, coffee.getId() != null && recipeRepository.existsByCoffeeIdAndActiveTrue(coffee.getId()));
     }
@@ -125,6 +137,12 @@ public class CoffeeService {
             throw new BadRequestException("Món đã có trong thực đơn: " + name);
         }
         coffee.setName(name);
+        // mã trống: giữ mã đang có (món mới thì tự sinh sau khi lưu)
+        String code = request.code() == null || request.code().isBlank() ? null : request.code().trim().toUpperCase();
+        if (code != null && !code.equalsIgnoreCase(coffee.getCode())) {
+            if (coffeeRepository.existsByCodeIgnoreCase(code)) throw new BadRequestException("Mã sản phẩm đã dùng cho món khác: " + code);
+            coffee.setCode(code);
+        }
         Long oldImage = coffee.getImageId();
         if (request.imageId() != null) imageService.requireExists(request.imageId());
         coffee.setImageId(request.imageId());
@@ -134,6 +152,7 @@ public class CoffeeService {
         coffee.setDescription(request.description());
         if (request.status() != null && request.status() != coffee.getStatus()) {
             coffee.setStatus(request.status());
+            coffee.setAutoSoldOut(false);
         }
     }
 }

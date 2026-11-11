@@ -43,7 +43,7 @@ public class AccountController {
     public List<SavedAddress> addresses() {
         Long id = CurrentUser.customerId();
         if (id == null) return List.of();
-        return addressRepository.findByCustomerIdOrderByDefaultAddressDescIdDesc(id).stream().map(AccountController::view).toList();
+        return addressRepository.findByCustomerIdAndDelFlagFalseOrderByDefaultAddressDescIdDesc(id).stream().map(AccountController::view).toList();
     }
 
     @PostMapping("/addresses")

@@ -20,4 +20,6 @@ public interface CoffeeRepository extends JpaRepository<Coffee, Long> {
     boolean existsByCategoryId(Long categoryId);
 
     boolean existsByNameIgnoreCase(String name);
+
+    boolean existsByCodeIgnoreCase(String code);
 }

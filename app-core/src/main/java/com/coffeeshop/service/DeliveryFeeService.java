@@ -1,103 +1,81 @@
 package com.coffeeshop.service;
 
-import com.coffeeshop.entity.DeliveryFeePlan;
-import com.coffeeshop.entity.DeliveryFeeTier;
+import com.coffeeshop.entity.DeliveryProvince;
 import com.coffeeshop.entity.DeliverySetting;
-import com.coffeeshop.entity.DeliveryTimeSlot;
-import com.coffeeshop.entity.DeliveryWeatherTier;
+import com.coffeeshop.entity.DeliveryWard;
 import com.coffeeshop.exception.BadRequestException;
 import com.coffeeshop.exception.ResourceNotFoundException;
 import com.coffeeshop.integration.distance.DistanceGateway;
-import com.coffeeshop.repository.DeliveryFeePlanRepository;
+import com.coffeeshop.repository.DeliveryProvinceRepository;
 import com.coffeeshop.repository.DeliverySettingRepository;
-import com.coffeeshop.repository.DeliveryTimeSlotRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.DayOfWeek;
+import java.text.Normalizer;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
- * Phí giao hàng (quán tự giao): đo km từ địa chỉ quán tới địa chỉ khách qua API bản đồ, rồi tra khoảng km trong option giá
- * đang áp dụng — option của khung giờ chứa giờ giao, ngoài mọi khung thì option mặc định. Xa hơn khoảng cuối của option
- * = ngoài phạm vi giao; tiền hàng từ "miễn phí ship từ" được miễn phí; dưới "đơn tối thiểu" không giao.
+ * Phí giao hàng theo khu vực (quán tự giao): chỉ giao tới các tỉnh / thành đã cấu hình (mặc định Hà Nội), mỗi tỉnh một phí
+ * ship; phường / xã có thể đặt phí riêng hoặc chặn không giao. Tiền hàng từ "miễn phí ship từ" được miễn phí; khách thuộc
+ * nhóm CRM được chọn (Thân thiết, VIP…) luôn được miễn phí; dưới "đơn tối thiểu" không giao.
+ * <p>
+ * Địa chỉ giao là chuỗi "số nhà đường, Phường …, Tỉnh/Thành phố …" (form chọn tỉnh → phường) — hai phần cuối là phường
+ * và tỉnh. Quãng đường (km, phút) vẫn đo nếu được, chỉ để ước tính giờ giao và vẽ tuyến, không ảnh hưởng phí.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DeliveryFeeService {
 
-    /** giờ mở cửa / khung giờ tính theo giờ Việt Nam, kể cả khi server chạy UTC */
+    /** giờ mở cửa tính theo giờ Việt Nam, kể cả khi server chạy UTC */
     public static final ZoneId SHOP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final DeliverySettingRepository settingRepository;
-    private final DeliveryFeePlanRepository planRepository;
-    private final DeliveryTimeSlotRepository slotRepository;
+    private final DeliveryProvinceRepository provinceRepository;
+    /** bảng nhóm khách do app-crm quản lý (không có entity ở app-core); JDBC để lỗi không làm hỏng giao dịch JPA */
+    private final org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate jdbc;
     private final DistanceGateway distance;
-    private final com.coffeeshop.integration.weather.WeatherGateway weather;
-    private final com.coffeeshop.repository.DeliveryWeatherTierRepository weatherTierRepository;
 
+    /** {@code freeShipGroupIds}: nhóm khách CRM được miễn phí ship; {@code groups}: mọi nhóm CRM để chọn (chỉ đọc) */
     public record Settings(String shopAddress, Double shopLat, Double shopLng, LocalTime openTime, LocalTime closeTime,
-                           BigDecimal freeShipThreshold, BigDecimal minOrderAmount, BigDecimal minutesPerKm, String provider) {
+                           BigDecimal freeShipThreshold, BigDecimal minOrderAmount, BigDecimal speedKmh,
+                           List<Long> freeShipGroupIds, List<Group> groups, String provider) {
     }
 
-    /** mức km: từ {@code fromKm} km trở đi → {@code fee}; {@code toKm} (tự tính: mốc kế tiếp hoặc maxKm) chỉ để đọc */
-    public record Tier(BigDecimal fromKm, BigDecimal toKm, BigDecimal fee) {
+    public record Group(Long id, String name) {
     }
 
-    /**
-     * Option giá: các mức "từ X km → phí" và {@code maxKm} = không giao quá … km. {@code note}: ghi chú cho khách khi
-     * option này được áp dụng (trống = câu mặc định).
-     */
-    public record Plan(Long id, String name, boolean isDefault, String note, List<Tier> tiers, BigDecimal maxKm) {
-        static Plan from(DeliveryFeePlan p) {
-            return new Plan(p.getId(), p.getName(), p.isDefaultPlan(), p.getNote(),
-                    p.getTiers().stream().map(t -> new Tier(t.getFromKm(), t.getToKm(), t.getFee())).toList(),
-                    p.getTiers().stream().map(DeliveryFeeTier::getToKm).max(Comparator.naturalOrder()).orElse(null));
-        }
+    /** phường / xã khai báo riêng: {@code fee} null = theo phí tỉnh; {@code blocked} = không giao */
+    public record Ward(String name, BigDecimal fee, boolean blocked) {
     }
 
-    /** {@code days}: 1 (thứ 2) … 7 (CN), rỗng = mọi ngày */
-    public record Slot(Long id, LocalTime startTime, LocalTime endTime, List<Integer> days, Long planId, String planName) {
-        static Slot from(DeliveryTimeSlot s) {
-            return new Slot(s.getId(), s.getStartTime(), s.getEndTime(), s.dayList(), s.getPlan().getId(), s.getPlan().getName());
+    public record Area(Long id, String name, BigDecimal fee, boolean active, List<Ward> wards) {
+        static Area from(DeliveryProvince p) {
+            return new Area(p.getId(), p.getName(), p.getFee(), p.isActive(),
+                    p.getWards().stream().map(w -> new Ward(w.getName(), w.getFee(), w.isBlocked())).toList());
         }
     }
 
     /**
-     * a delivery to one address at one time: how far, which km range of which option, the bad-weather surcharge
-     * ({@code weather} = "Mưa 3,2 mm/h" when charged) and the fee from what is left to pay
+     * Một lần giao tới một địa chỉ: khu vực ("Phường Ba Đình, Thành phố Hà Nội"), quãng đường đo được (có thể null),
+     * ghi chú cho khách (miễn phí vì là khách VIP…) và phí tính từ tiền hàng còn phải trả.
      */
-    public record Rule(BigDecimal distanceKm, Integer minutes, String tierLabel, String planName, String weather,
-                       BigDecimal weatherSurcharge, String note, Function<BigDecimal, BigDecimal> fee) {
-        /** "3–5 km", "3–5 km · Cao điểm", "3–5 km · Cao điểm · Mưa 3,2 mm/h" */
+    public record Rule(BigDecimal distanceKm, Integer minutes, String zone, String note, Function<BigDecimal, BigDecimal> fee) {
         public String label() {
-            return String.join(" · ", java.util.stream.Stream.of(tierLabel, planName, weather).filter(x -> x != null).toList());
+            return zone;
         }
-    }
-
-    /** bậc phụ phí: mưa từ {@code minRainMm} mm/h → +{@code surcharge} */
-    public record RainTier(BigDecimal minRainMm, BigDecimal surcharge) {
-    }
-
-    /**
-     * thời tiết xấu: bật / tắt, bậc phụ phí theo lượng mưa, ngưng giao khi mưa từ … mm/h (có giông thì luôn ngưng giao).
-     * {@code outlook}: thời tiết tại quán bây giờ + vài giờ tới (chỉ đọc).
-     */
-    public record WeatherSettings(boolean enabled, List<RainTier> rainTiers, BigDecimal stopRainMm, String note, List<WeatherHour> outlook) {
-    }
-
-    /** thời tiết một giờ (đầu danh sách = hiện tại) và quán sẽ làm gì: phụ phí bao nhiêu, có ngưng giao không */
-    public record WeatherHour(LocalDateTime time, int code, String description, double temperature, double rainMm,
-                              double windKmh, BigDecimal surcharge, boolean stopped) {
     }
 
     // ---- cửa hàng ----------------------------------------------------------------
@@ -106,7 +84,7 @@ public class DeliveryFeeService {
     public Settings settings() {
         DeliverySetting s = setting();
         return new Settings(s.getShopAddress(), s.getShopLat(), s.getShopLng(), s.getOpenTime(), s.getCloseTime(),
-                s.getFreeShipThreshold(), s.getMinOrderAmount(), s.getMinutesPerKm(), distance.provider());
+                s.getFreeShipThreshold(), s.getMinOrderAmount(), s.getSpeedKmh(), s.freeShipGroups(), groups(), distance.provider());
     }
 
     /** địa chỉ quán đổi (hoặc chưa có toạ độ) thì đo lại toạ độ */
@@ -123,247 +101,162 @@ public class DeliveryFeeService {
         s.setCloseTime(r.closeTime());
         s.setFreeShipThreshold(positiveOrNull(r.freeShipThreshold()));
         s.setMinOrderAmount(positiveOrNull(r.minOrderAmount()));
-        s.setMinutesPerKm(positiveOrNull(r.minutesPerKm()));
+        s.setSpeedKmh(positiveOrNull(r.speedKmh()));
+        List<Long> ids = r.freeShipGroupIds() == null ? List.of() : r.freeShipGroupIds().stream().filter(Objects::nonNull).distinct().toList();
+        s.setFreeShipGroupIds(ids.isEmpty() ? null : ids.stream().map(String::valueOf).collect(Collectors.joining(",")));
         if (moved || s.getShopLat() == null || s.getShopLng() == null) {
-            var p = locate(s.getShopAddress(), null);
-            s.setShopLat(p.lat());
-            s.setShopLng(p.lng());
+            try {
+                var p = distance.geocode(s.getShopAddress(), null);
+                s.setShopLat(p.lat());
+                s.setShopLng(p.lng());
+            } catch (RuntimeException e) {
+                throw new BadRequestException("Không tìm được vị trí địa chỉ quán: " + e.getMessage());
+            }
         }
         settingRepository.save(s);
         return settings();
     }
 
-    // ---- thời tiết xấu ----------------------------------------------------------------
+    private List<Group> groups() {
+        try {
+            return jdbc.query("select id, name from customer_groups where not del_flag order by name",
+                    (rs, i) -> new Group(rs.getLong(1), rs.getString(2)));
+        } catch (RuntimeException e) { // bảng CRM chưa có (môi trường thử)
+            return List.of();
+        }
+    }
+
+    // ---- khu vực giao ----------------------------------------------------------------
 
     @Transactional(readOnly = true)
-    public WeatherSettings weatherSettings() {
-        DeliverySetting s = setting();
-        List<DeliveryWeatherTier> tiers = weatherTierRepository.findAllByOrderByMinRainMmAsc();
-        List<WeatherHour> outlook = s.getShopLat() == null ? List.of() : weather.outlook(s.getShopLat(), s.getShopLng(), 6).stream()
-                .map(w -> new WeatherHour(w.time(), w.code(), w.describe(), round1(w.temperature()), round1(w.rainMmPerHour()),
-                        round1(w.windKmh()), surchargeFor(s, tiers, w), stops(s, w))).toList();
-        return new WeatherSettings(s.isWeatherEnabled(), tiers.stream().map(t -> new RainTier(t.getMinRainMm(), t.getSurcharge())).toList(),
-                s.getWeatherStopRainMm(), s.getWeatherNote(), outlook);
+    public List<Area> areas() {
+        return provinceRepository.findAllByOrderByNameAsc().stream().map(Area::from).toList();
     }
 
+    /** thêm / sửa một tỉnh cùng danh sách phường có phí riêng / không giao */
     @Transactional
-    public WeatherSettings saveWeather(WeatherSettings r) {
-        List<RainTier> tiers = r.rainTiers() == null ? List.of() : r.rainTiers().stream().filter(java.util.Objects::nonNull).toList();
-        for (RainTier t : tiers) {
-            if (t.minRainMm() == null || t.minRainMm().signum() <= 0) throw new BadRequestException("Lượng mưa phải lớn hơn 0");
-            if (t.surcharge() == null || t.surcharge().signum() < 0) throw new BadRequestException("Nhập phụ phí");
-        }
-        if (tiers.stream().map(t -> t.minRainMm().stripTrailingZeros()).distinct().count() < tiers.size()) {
-            throw new BadRequestException("Hai bậc mưa trùng lượng mưa");
-        }
-        DeliverySetting s = setting();
-        s.setWeatherEnabled(r.enabled());
-        s.setWeatherStopRainMm(positiveOrNull(r.stopRainMm()));
-        s.setWeatherNote(r.note() == null || r.note().isBlank() ? null : r.note().trim());
-        settingRepository.save(s);
-        weatherTierRepository.deleteAllInBatch();
-        weatherTierRepository.saveAll(tiers.stream().map(t -> DeliveryWeatherTier.builder().minRainMm(t.minRainMm()).surcharge(t.surcharge()).build()).toList());
-        return weatherSettings();
-    }
-
-    /** phụ phí lúc thời tiết {@code w}: bậc mưa cao nhất đạt; 0 = không */
-    private static BigDecimal surchargeFor(DeliverySetting s, List<DeliveryWeatherTier> tiers, com.coffeeshop.integration.weather.WeatherGateway.Weather w) {
-        if (!s.isWeatherEnabled() || w == null) return BigDecimal.ZERO;
-        BigDecimal rain = tiers.stream().filter(t -> w.rainMmPerHour() >= t.getMinRainMm().doubleValue())
-                .map(DeliveryWeatherTier::getSurcharge).max(Comparator.naturalOrder()).orElse(BigDecimal.ZERO);
-        return rain;
-    }
-
-    /** mưa từ ngưỡng ngưng giao, hoặc có giông (giông thì không ai đi giao) */
-    private static boolean stops(DeliverySetting s, com.coffeeshop.integration.weather.WeatherGateway.Weather w) {
-        if (!s.isWeatherEnabled() || w == null) return false;
-        return w.storm() || (s.getWeatherStopRainMm() != null && w.rainMmPerHour() >= s.getWeatherStopRainMm().doubleValue());
-    }
-
-    private static double round1(double v) {
-        return Math.round(v * 10) / 10.0;
-    }
-
-    // ---- option giá -----------------------------------------------------------------
-
-    @Transactional(readOnly = true)
-    public List<Plan> plans() {
-        return planRepository.findAllByOrderByDefaultPlanDescIdAsc().stream().map(Plan::from).toList();
-    }
-
-    /**
-     * Thêm / sửa option giá. {@code isDefault} = đặt làm option mặc định (option mặc định cũ bỏ cờ). Luôn có đúng 1 option
-     * mặc định: option đầu tiên tự là mặc định, và không bỏ cờ mặc định của chính nó được — phải đặt option khác.
-     */
-    @Transactional
-    public Plan savePlan(Long id, Plan r) {
-        if (r.name() == null || r.name().isBlank()) throw new BadRequestException("Nhập tên option");
-        List<Tier> tiers = validTiers(r.tiers(), r.maxKm());
+    public Area saveArea(Long id, Area r) {
+        if (r.name() == null || r.name().isBlank()) throw new BadRequestException("Chọn tỉnh / thành phố");
+        if (r.fee() == null || r.fee().signum() < 0) throw new BadRequestException("Nhập phí giao hàng của tỉnh");
         String name = r.name().trim();
-        List<DeliveryFeePlan> all = planRepository.findAllByOrderByDefaultPlanDescIdAsc();
-        if (all.stream().anyMatch(p -> !p.getId().equals(id) && p.getName().equalsIgnoreCase(name))) {
-            throw new BadRequestException("Đã có option tên \"" + name + "\"");
+        for (DeliveryProvince other : provinceRepository.findAllByOrderByNameAsc()) {
+            if (!other.getId().equals(id) && key(other.getName()).equals(key(name))) {
+                throw new BadRequestException("Đã cấu hình " + other.getName());
+            }
         }
-        DeliveryFeePlan p = id == null ? new DeliveryFeePlan() : plan(id);
-        boolean makeDefault = r.isDefault() || all.stream().noneMatch(DeliveryFeePlan::isDefaultPlan);
-        if (p.isDefaultPlan() && !makeDefault) {
-            throw new BadRequestException("Phải luôn có 1 option mặc định — đặt option khác làm mặc định trước");
-        }
-        if (makeDefault && !p.isDefaultPlan()) {
-            // only one default (unique index): clear the old one first
-            all.stream().filter(DeliveryFeePlan::isDefaultPlan).forEach(x -> x.setDefaultPlan(false));
-            planRepository.flush();
-            p.setDefaultPlan(true);
-        }
+        DeliveryProvince p = id == null ? new DeliveryProvince() : province(id);
         p.setName(name);
-        p.setNote(r.note() == null || r.note().isBlank() ? null : r.note().trim());
-        p.getTiers().clear();
-        planRepository.saveAndFlush(p); // orphans go before the new ranges
-        for (Tier t : tiers) {
-            p.getTiers().add(DeliveryFeeTier.builder().plan(p).fromKm(t.fromKm()).toKm(t.toKm()).fee(t.fee()).build());
+        p.setFee(r.fee());
+        p.setActive(r.active());
+        p.getWards().clear();
+        provinceRepository.saveAndFlush(p);
+        Set<String> seen = new HashSet<>();
+        for (Ward w : r.wards() == null ? List.<Ward>of() : r.wards()) {
+            if (w == null || w.name() == null || w.name().isBlank()) continue;
+            if (!seen.add(key(w.name()))) throw new BadRequestException("Phường / xã bị trùng: " + w.name());
+            if (!w.blocked() && w.fee() == null) continue; // không khác tỉnh: không cần lưu
+            if (w.fee() != null && w.fee().signum() < 0) throw new BadRequestException("Phí không hợp lệ: " + w.name());
+            p.getWards().add(DeliveryWard.builder().province(p).name(w.name().trim()).fee(w.blocked() ? null : w.fee()).blocked(w.blocked()).build());
         }
-        return Plan.from(planRepository.save(p));
+        return Area.from(provinceRepository.save(p));
     }
 
     @Transactional
-    public void deletePlan(Long id) {
-        DeliveryFeePlan p = plan(id);
-        if (p.isDefaultPlan()) throw new BadRequestException("Không xóa được option mặc định — đặt option khác làm mặc định trước");
-        List<String> used = slotRepository.findAllByOrderByStartTimeAsc().stream().filter(s -> s.getPlan().getId().equals(id))
-                .map(s -> s.getStartTime() + "–" + s.getEndTime()).toList();
-        if (!used.isEmpty()) throw new BadRequestException("Option đang dùng ở khung giờ " + String.join(", ", used));
-        planRepository.delete(p);
+    public void deleteArea(Long id) {
+        provinceRepository.delete(province(id));
     }
 
-    // ---- khung giờ -----------------------------------------------------------------
+    /** kết quả kiểm tra một phường / xã: giao được không, phí bao nhiêu, vì sao không giao */
+    public record AreaCheck(boolean outside, BigDecimal fee, String zone, String message) {
+    }
 
     @Transactional(readOnly = true)
-    public List<Slot> slots() {
-        return slotRepository.findAllByOrderByStartTimeAsc().stream().map(Slot::from).toList();
-    }
-
-    /** thêm / sửa khung giờ; 2 khung không được trùng giờ trong cùng một ngày */
-    @Transactional
-    public Slot saveSlot(Long id, Slot r) {
-        if (r.startTime() == null || r.endTime() == null || r.startTime().equals(r.endTime())) {
-            throw new BadRequestException("Giờ bắt đầu và kết thúc không hợp lệ");
+    public AreaCheck checkArea(String ward, String province) {
+        try {
+            Zone z = zone(ward, province);
+            return new AreaCheck(false, z.fee(), z.label(), null);
+        } catch (BadRequestException e) {
+            return new AreaCheck(true, null, null, e.getMessage());
         }
-        if (r.planId() == null) throw new BadRequestException("Chọn option giá");
-        // khung giờ phải nằm trong giờ mở cửa
-        DeliverySetting shop = setting();
-        if (shop.getOpenTime() != null) {
-            for (LocalTime t = r.startTime(); !t.equals(r.endTime()); t = t.plusMinutes(1)) {
-                if (!isOpen(shop, t)) {
-                    throw new BadRequestException("Khung giờ phải nằm trong giờ mở cửa (" + shop.getOpenTime() + "–" + shop.getCloseTime() + ")");
-                }
-            }
-        }
-        DeliveryTimeSlot s = id == null ? new DeliveryTimeSlot() : slotRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy khung giờ: " + id));
-        List<Integer> days = r.days() == null ? List.of()
-                : r.days().stream().filter(d -> d != null && d >= 1 && d <= 7).distinct().sorted().toList();
-        s.setStartTime(r.startTime());
-        s.setEndTime(r.endTime());
-        s.setDays(days.isEmpty() || days.size() == 7 ? null : String.join(",", days.stream().map(String::valueOf).toList()));
-        s.setPlan(plan(r.planId()));
-        for (DeliveryTimeSlot other : slotRepository.findAllByOrderByStartTimeAsc()) {
-            if (other.getId().equals(s.getId())) continue;
-            LocalTime clash = overlap(s, other);
-            if (clash != null) {
-                throw new BadRequestException("Trùng với khung " + other.getStartTime() + "–" + other.getEndTime() + " (lúc " + clash + ")");
-            }
-        }
-        return Slot.from(slotRepository.save(s));
-    }
-
-    @Transactional
-    public void deleteSlot(Long id) {
-        slotRepository.deleteById(id);
     }
 
     // ---- tính phí ------------------------------------------------------------------
 
     /**
-     * Fee rule for a delivery to {@code address} at {@code at} (giờ giao; null = bây giờ, giờ Việt Nam), for PricingService.
-     * No address yet: null (PricingService then shows no fee for a quote). Out of range or below the minimum: BadRequestException.
+     * Fee rule for a delivery to {@code address} for PricingService; {@code customerId} (có thể null) để xét miễn phí ship
+     * theo nhóm khách. No address yet: null. Outside the delivery area or below the minimum: BadRequestException.
      */
     @Transactional(readOnly = true)
-    public Rule rule(String address, LocalDateTime at) {
+    public Rule rule(String address, Long customerId) {
         if (address == null || address.isBlank()) return null;
+        String[] parts = address.split(",");
+        if (parts.length < 3) throw new BadRequestException("Địa chỉ giao cần đủ số nhà / đường, phường / xã, tỉnh / thành phố");
+        Zone zone = zone(parts[parts.length - 2], parts[parts.length - 1]);
         DeliverySetting s = setting();
-        LocalDateTime when = at != null ? at : LocalDateTime.now(SHOP_ZONE);
-        DeliveryFeePlan plan = slotRepository.findAllByOrderByStartTimeAsc().stream()
-                .filter(x -> x.covers(when.getDayOfWeek(), when.toLocalTime())).map(DeliveryTimeSlot::getPlan).findFirst()
-                .orElseGet(() -> planRepository.findFirstByDefaultPlanTrue().orElse(null));
-        if (plan == null || plan.getTiers().isEmpty()) throw new BadRequestException("Quán chưa thiết lập phí giao hàng");
-        DistanceGateway.Point shop = shopPoint(s);
-        DistanceGateway.Route route;
-        try {
-            route = distance.route(shop, distance.geocode(address, shop));
-        } catch (IllegalStateException e) {
-            throw new BadRequestException(e.getMessage());
-        }
-        BigDecimal km = BigDecimal.valueOf(route.km()).setScale(2, RoundingMode.HALF_UP);
-        List<DeliveryFeeTier> tiers = plan.getTiers().stream().sorted(Comparator.comparing(DeliveryFeeTier::getFromKm)).toList();
-        DeliveryFeeTier tier = tiers.stream().filter(t -> km.compareTo(t.getToKm()) <= 0).findFirst().orElse(null);
-        if (tier == null) {
-            throw new BadRequestException("Địa chỉ cách quán " + km.setScale(1, RoundingMode.HALF_UP).toPlainString()
-                    + " km — ngoài phạm vi giao (tối đa " + tiers.get(tiers.size() - 1).getToKm().stripTrailingZeros().toPlainString() + " km)");
+        List<String> freeGroups = freeShipGroupsOf(s, customerId);
+        BigDecimal km = null;
+        Integer minutes = null;
+        try { // quãng đường chỉ để ước tính giờ giao / vẽ tuyến
+            DistanceGateway.Point shop = shopPoint(s);
+            var route = distance.route(shop, distance.geocode(address, shop));
+            km = BigDecimal.valueOf(route.km()).setScale(2, RoundingMode.HALF_UP);
+            minutes = route.minutes();
+        } catch (RuntimeException e) {
+            log.debug("Không đo được quãng đường tới {}: {}", address, e.getMessage());
         }
         BigDecimal free = s.getFreeShipThreshold();
         BigDecimal min = s.getMinOrderAmount();
-        BigDecimal fee = tier.getFee();
-        // thời tiết xấu: ngưng giao, hoặc cộng phụ phí vào mọi khung giờ (kể cả đơn được miễn phí ship theo tiền hàng)
-        var w = s.isWeatherEnabled() ? weather.at(shop.lat(), shop.lng(), at) : null;
-        if (stops(s, w)) throw new BadRequestException("Thời tiết xấu (" + w.describe() + ") — quán tạm ngưng giao hàng");
-        BigDecimal extra = surchargeFor(s, weatherTierRepository.findAllByOrderByMinRainMmAsc(), w);
-        boolean bad = extra.signum() > 0;
-        // ghi chú cho khách: vì sao phí khác thường (option của khung giờ, thời tiết xấu)
-        List<String> notes = new ArrayList<>();
-        if (!plan.isDefaultPlan()) notes.add(plan.getNote() != null ? plan.getNote() : "Phí giao hàng khung giờ " + plan.getName());
-        if (bad) notes.add(s.getWeatherNote() != null ? s.getWeatherNote() : "Phụ phí do thời tiết xấu (" + w.describe() + ")");
-        return new Rule(km, route.minutes(), tier.label(), plan.isDefaultPlan() ? null : plan.getName(),
-                bad ? w.describe() : null, bad ? extra : null, notes.isEmpty() ? null : String.join(". ", notes), amount -> {
+        String note = freeGroups.isEmpty() ? null : "Miễn phí giao hàng cho khách " + String.join(", ", freeGroups);
+        return new Rule(km, minutes, zone.label(), note, amount -> {
             if (min != null && amount.compareTo(min) < 0) {
                 throw new BadRequestException("Đơn giao hàng tối thiểu " + min.stripTrailingZeros().toPlainString() + "đ");
             }
-            if (free != null && amount.compareTo(free) >= 0) return extra;
-            return fee.add(extra);
+            if (!freeGroups.isEmpty()) return BigDecimal.ZERO;
+            if (free != null && amount.compareTo(free) >= 0) return BigDecimal.ZERO;
+            return zone.fee();
         });
     }
 
-    /** kiểm tra phường đã chọn: {@code outside} = ngay điểm gần nhất của phường cũng xa hơn khoảng km xa nhất quán giao */
-    public record AreaCheck(boolean outside, Double nearestKm, BigDecimal maxKm) {
-    }
-
-    @Transactional(readOnly = true)
-    public AreaCheck checkArea(String ward, String province) {
-        BigDecimal max = planRepository.findAllByOrderByDefaultPlanDescIdAsc().stream().flatMap(p -> p.getTiers().stream())
-                .map(DeliveryFeeTier::getToKm).max(Comparator.naturalOrder()).orElse(null);
-        DeliverySetting s = setting();
-        Double km = max == null ? null : distance.nearestKm(ward, province, shopPoint(s));
-        Double rounded = km == null ? null : Math.round(km * 10) / 10.0;
-        return new AreaCheck(km != null && km > max.doubleValue(), rounded, max);
-    }
-
-    /** quãng đường đi xe quán → một địa chỉ; {@code outside} = xa hơn mức "không giao quá" lớn nhất của các option */
-    public record Distance(BigDecimal km, boolean outside, BigDecimal maxKm) {
-    }
-
-    @Transactional(readOnly = true)
-    public Distance distanceTo(String address) {
-        if (address == null || address.isBlank()) throw new BadRequestException("Nhập địa chỉ");
-        BigDecimal max = planRepository.findAllByOrderByDefaultPlanDescIdAsc().stream().flatMap(p -> p.getTiers().stream())
-                .map(DeliveryFeeTier::getToKm).max(Comparator.naturalOrder()).orElse(null);
-        DistanceGateway.Point shop = shopPoint(setting());
-        DistanceGateway.Route route;
+    /** nhóm khách được miễn phí ship mà khách đang thuộc (rỗng = không) */
+    private List<String> freeShipGroupsOf(DeliverySetting s, Long customerId) {
+        List<Long> ids = s.freeShipGroups();
+        if (customerId == null || ids.isEmpty()) return List.of();
         try {
-            route = distance.route(shop, distance.geocode(address, shop));
-        } catch (IllegalStateException e) {
-            throw new BadRequestException(e.getMessage());
+            return jdbc.queryForList("""
+                    select g.name from customer_group_members m join customer_groups g on g.id = m.group_id
+                    where m.customer_id = :c and m.group_id in (:ids) and not m.del_flag and not m.is_excluded and not g.del_flag
+                    order by g.name""", java.util.Map.of("c", customerId, "ids", ids), String.class);
+        } catch (RuntimeException e) {
+            log.warn("Không đọc được nhóm khách CRM: {}", e.getMessage());
+            return List.of();
         }
-        BigDecimal km = BigDecimal.valueOf(route.km()).setScale(1, RoundingMode.HALF_UP);
-        return new Distance(km, max != null && km.compareTo(max) > 0, max);
+    }
+
+    private record Zone(String ward, String province, BigDecimal fee) {
+        String label() {
+            return ward + ", " + province;
+        }
+    }
+
+    private Zone zone(String ward, String province) {
+        if (province == null || province.isBlank()) throw new BadRequestException("Chọn tỉnh / thành phố");
+        if (ward == null || ward.isBlank()) throw new BadRequestException("Chọn phường / xã");
+        List<DeliveryProvince> all = provinceRepository.findAllByOrderByNameAsc();
+        List<String> allowed = all.stream().filter(DeliveryProvince::isActive).map(DeliveryProvince::getName).toList();
+        if (allowed.isEmpty()) throw new BadRequestException("Quán chưa thiết lập khu vực giao hàng");
+        DeliveryProvince p = all.stream().filter(x -> x.isActive() && key(x.getName()).equals(key(province))).findFirst()
+                .orElseThrow(() -> new BadRequestException("Quán chỉ giao trong khu vực " + String.join(", ", allowed)));
+        DeliveryWard w = p.getWards().stream().filter(x -> key(x.getName()).equals(key(ward))).findFirst().orElse(null);
+        if (w != null && w.isBlocked()) throw new BadRequestException("Quán chưa giao tới " + w.getName().trim());
+        return new Zone(ward.trim(), p.getName(), w != null && w.getFee() != null ? w.getFee() : p.getFee());
+    }
+
+    /** "Thành phố Hà Nội" = "TP. Hà Nội" = "ha noi": bỏ dấu, tiền tố hành chính, chữ hoa (giống unitKey ở FE) */
+    static String key(String s) {
+        String k = Normalizer.normalize(s.trim(), Normalizer.Form.NFD).replaceAll("\\p{M}", "")
+                .replace('đ', 'd').replace('Đ', 'D').toLowerCase();
+        return k.replaceFirst("^(thanh pho|tp\\.?|tinh|phuong|xa|dac khu|thi tran)\\s+", "")
+                .replaceAll("\\bhcm\\b", "ho chi minh").replaceAll("\\s+", " ").trim();
     }
 
     /** gợi ý địa chỉ khi gõ, ưu tiên quanh quán */
@@ -372,6 +265,22 @@ public class DeliveryFeeService {
         DeliverySetting s = setting();
         DistanceGateway.Point near = s.getShopLat() == null ? null : new DistanceGateway.Point(s.getShopLat(), s.getShopLng());
         return distance.suggest(query, near, ward, province);
+    }
+
+    /** toạ độ một địa chỉ (bản đồ tuyến giao); không tìm được: null */
+    public DistanceGateway.Point locateOrNull(String address) {
+        try {
+            DeliverySetting s = setting();
+            return distance.geocode(address, s.getShopLat() == null ? null : new DistanceGateway.Point(s.getShopLat(), s.getShopLng()));
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** toạ độ quán (điểm xuất phát tuyến giao) */
+    @Transactional(readOnly = true)
+    public DistanceGateway.Point shop() {
+        return shopPoint(setting());
     }
 
     /**
@@ -390,6 +299,13 @@ public class DeliveryFeeService {
         }
     }
 
+    /** giờ {@code t} có trong giờ mở cửa không (chưa đặt giờ mở cửa = luôn mở) */
+    @Transactional(readOnly = true)
+    public boolean isOpenAt(LocalTime t) {
+        DeliverySetting s = setting();
+        return s.getOpenTime() == null || isOpen(s, t);
+    }
+
     // ---- helpers ---------------------------------------------------------------
 
     private static boolean isOpen(DeliverySetting s, LocalTime t) {
@@ -397,73 +313,26 @@ public class DeliveryFeeService {
         return c.isAfter(o) ? !t.isBefore(o) && t.isBefore(c) : !t.isBefore(o) || t.isBefore(c);
     }
 
-    /** first minute (of any day) both slots cover, or null */
-    private static LocalTime overlap(DeliveryTimeSlot a, DeliveryTimeSlot b) {
-        for (DayOfWeek day : DayOfWeek.values()) {
-            for (int m = 0; m < 1440; m++) {
-                LocalTime t = LocalTime.of(m / 60, m % 60);
-                if (a.covers(day, t) && b.covers(day, t)) return t;
-            }
-        }
-        return null;
-    }
-
     private DistanceGateway.Point shopPoint(DeliverySetting s) {
         if (s.getShopLat() != null && s.getShopLng() != null) return new DistanceGateway.Point(s.getShopLat(), s.getShopLng());
-        return locate(s.getShopAddress(), null);
-    }
-
-    private DistanceGateway.Point locate(String address, DistanceGateway.Point near) {
         try {
-            return distance.geocode(address, near);
+            return distance.geocode(s.getShopAddress(), null);
         } catch (IllegalStateException e) {
             throw new BadRequestException(e.getMessage());
         }
-    }
-
-    /**
-     * Mức "từ X km → phí" (mức đầu từ 0 km, không trùng mốc) + không giao quá {@code maxKm}: trả về các khoảng
-     * [từ, mốc kế tiếp) với khoảng cuối kết thúc ở maxKm. maxKm trống = "đến km" lớn nhất gửi lên (API cũ).
-     */
-    private static List<Tier> validTiers(List<Tier> in, BigDecimal maxKm) {
-        if (in == null || in.isEmpty()) throw new BadRequestException("Thêm ít nhất 1 mức km");
-        List<Tier> tiers = new ArrayList<>(in.stream().filter(java.util.Objects::nonNull).toList());
-        for (Tier t : tiers) {
-            if (t.fromKm() == null || t.fee() == null) throw new BadRequestException("Nhập đủ km và phí");
-            if (t.fromKm().signum() < 0) throw new BadRequestException("Km không hợp lệ");
-            if (t.fee().signum() < 0) throw new BadRequestException("Phí ship không hợp lệ");
-        }
-        tiers.sort(Comparator.comparing(Tier::fromKm));
-        if (tiers.get(0).fromKm().signum() != 0) throw new BadRequestException("Mức đầu tiên phải từ 0 km");
-        for (int i = 1; i < tiers.size(); i++) {
-            if (tiers.get(i).fromKm().compareTo(tiers.get(i - 1).fromKm()) == 0) throw new BadRequestException("Hai mức trùng km");
-        }
-        BigDecimal max = maxKm != null ? maxKm
-                : tiers.stream().map(Tier::toKm).filter(java.util.Objects::nonNull).max(Comparator.naturalOrder()).orElse(null);
-        if (max == null) throw new BadRequestException("Nhập \"Không giao quá … km\"");
-        BigDecimal last = tiers.get(tiers.size() - 1).fromKm();
-        if (max.compareTo(last) <= 0) {
-            throw new BadRequestException("\"Không giao quá\" phải lớn hơn " + last.stripTrailingZeros().toPlainString() + " km");
-        }
-        List<Tier> out = new ArrayList<>();
-        for (int i = 0; i < tiers.size(); i++) {
-            BigDecimal to = i + 1 < tiers.size() ? tiers.get(i + 1).fromKm() : max;
-            out.add(new Tier(tiers.get(i).fromKm(), to, tiers.get(i).fee()));
-        }
-        return out;
     }
 
     private static BigDecimal positiveOrNull(BigDecimal v) {
         return v == null || v.signum() <= 0 ? null : v;
     }
 
-    private DeliveryFeePlan plan(Long id) {
-        return planRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy option giá: " + id));
+    private DeliveryProvince province(Long id) {
+        return provinceRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy khu vực: " + id));
     }
 
     /** the single settings row; defaults (saved on the first save) when missing */
     private DeliverySetting setting() {
         return settingRepository.findById(DeliverySetting.ID).orElseGet(() -> DeliverySetting.builder()
-                .id(DeliverySetting.ID).shopAddress("Chợ Bến Thành, Quận 1, TP. Hồ Chí Minh").shopLat(10.7725).shopLng(106.6981).build());
+                .id(DeliverySetting.ID).shopAddress("Hoàn Kiếm, Thành phố Hà Nội").shopLat(21.0285).shopLng(105.8542).build());
     }
 }
