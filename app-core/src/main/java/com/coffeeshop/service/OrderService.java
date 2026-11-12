@@ -32,12 +32,13 @@ import java.util.Set;
 /**
  * Order lifecycle (BPMN-01 / BPMN-02):
  * <pre>
- * PENDING ─confirm→ PREPARING ─ready→ READY ─complete→ COMPLETED
- *    │                                  └─dispatch→ DELIVERING ─complete→ COMPLETED
+ * PENDING ─confirm→ CONFIRMED ─prepare→ PREPARING ─ready→ READY ─complete→ COMPLETED
+ *    │                                                         └─dispatch→ DELIVERING ─complete→ COMPLETED
  *    └─reject→ REJECTED / cancel→ CANCELLED
  * </pre>
- * Confirming starts the drinks at once and deducts the materials; counter orders start PREPARING.
- * CONFIRMED is only left on older orders (prepare / cancel still accept it). Loyalty points are added on COMPLETED.
+ * CONFIRMED = chờ pha chế: đơn hẹn giờ nằm ở cột "Hẹn giao" của bảng điều phối cho tới giờ phải bắt đầu pha
+ * (giờ hẹn − pha − chạy xe), rồi sang "Chờ pha chế". Bắt đầu pha mới trừ nguyên liệu. Counter orders start PREPARING;
+ * subscription orders are confirmed when created. Loyalty points are added on COMPLETED.
  */
 @Service
 @RequiredArgsConstructor
@@ -71,6 +72,7 @@ public class OrderService {
     private final RecipeRepository recipeRepository;
     private final StockService stockService;
     private final DeliverySubscriptionRepository subscriptionRepository;
+    private final DeliveryScheduleService deliveryScheduleService;
 
     /** Loyalty: 1 point per this many VND paid. */
     @Value("${app.loyalty.vnd-per-point:10000}")
@@ -82,7 +84,10 @@ public class OrderService {
     public List<OrderResponse> search(OrderStatus status, OrderChannel channel, LocalDate from, LocalDate to) {
         LocalDateTime start = (from == null ? LocalDate.now().minusDays(30) : from).atStartOfDay();
         LocalDateTime end = (to == null ? LocalDate.now() : to).plusDays(1).atStartOfDay();
-        return orderRepository.search(status, channel, start, end).stream().map(OrderResponse::from).toList();
+        List<Order> orders = orderRepository.search(status, channel, start, end);
+        Map<Long, LocalDateTime> brewAt = deliveryScheduleService.brewStartTimes(orders.stream()
+                .filter(o -> ACTIVE.contains(o.getStatus())).toList());
+        return orders.stream().map(o -> OrderResponse.from(o).withBrewStartAt(brewAt.get(o.getId()))).toList();
     }
 
     @Transactional(readOnly = true)
@@ -199,6 +204,8 @@ public class OrderService {
                 "Gói định kỳ " + sub.getCode() + (sub.getNote() == null || sub.getNote().isBlank() ? "" : " · " + sub.getNote()));
         Order order = place(draft);
         order.setSubscriptionId(sub.getId());
+        // khách đã đăng ký gói: không cần xác nhận lại, vào thẳng "Hẹn giao"
+        moveTo(order, OrderStatus.CONFIRMED, "Gói định kỳ " + sub.getCode() + " · hẹn giao " + deliverAt);
         return publish(order);
     }
 
@@ -296,8 +303,7 @@ public class OrderService {
         if (order.getPayments().stream().anyMatch(p -> p.getStatus() == PaymentStatus.PENDING && OnlinePaymentService.isOnline(order, p))) {
             throw new BadRequestException("Khách chưa thanh toán online — chờ VNPAY xác nhận");
         }
-        stockService.deduct(order);
-        moveTo(order, OrderStatus.PREPARING, null);
+        moveTo(order, OrderStatus.CONFIRMED, order.getPickupTime() == null ? null : "Hẹn giao " + order.getPickupTime());
         return publish(order);
     }
 
@@ -340,7 +346,7 @@ public class OrderService {
         publish(order);
     }
 
-    /** Older orders left CONFIRMED before confirming started the drinks. */
+    /** Chờ pha chế → đang pha: trừ nguyên liệu lúc này. */
     @Transactional
     public OrderResponse startPreparing(Long id) {
         Order order = get(id);
@@ -361,10 +367,22 @@ public class OrderService {
     /** Quán tự giao: nhân viên mang đơn đã pha xong đi giao. */
     @Transactional
     public OrderResponse dispatch(Long id) {
+        return dispatch(id, null);
+    }
+
+    /** {@code shipperId}: người giao chọn lúc bấm "Mang đi giao" (null = giữ người đã phân công, chưa có thì người bấm). */
+    @Transactional
+    public OrderResponse dispatch(Long id, Long shipperId) {
         Order order = get(id);
         expect(order, OrderStatus.READY);
         if (order.getOrderType() != OrderType.DELIVERY) throw new BadRequestException("Chỉ đơn giao hàng mới đi giao");
         Shipment shipment = order.getShipment();
+        if (shipperId != null && (shipment.getShipper() == null || !shipperId.equals(shipment.getShipper().getId()))) {
+            Staff staff = staffService.get(shipperId);
+            if (staff.getWorkStatus() != WorkStatus.ACTIVE) throw new BadRequestException(staff.getFullName() + " không còn làm việc");
+            shipment.setShipper(staff);
+            shipment.setAssignedAt(LocalDateTime.now());
+        }
         if (shipment.getShipper() == null) { // chưa phân công: người bấm "bắt đầu giao" là người giao
             Staff me = staffService.current();
             if (me != null) {

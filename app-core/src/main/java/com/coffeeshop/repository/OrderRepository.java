@@ -33,7 +33,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             select o from Order o
             where (:status is null or o.status = :status)
               and (:channel is null or o.channel = :channel)
-              and o.orderedAt >= :from and o.orderedAt < :to
+              and ((o.orderedAt >= :from and o.orderedAt < :to) or (o.pickupTime >= :from and o.pickupTime < :to))
             order by o.orderedAt desc
             """)
     List<Order> search(OrderStatus status, OrderChannel channel, LocalDateTime from, LocalDateTime to);
@@ -47,7 +47,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("""
             select coalesce(sum(o.totalAmount), 0) from Order o
             where o.status = com.coffeeshop.entity.enums.OrderStatus.COMPLETED
-              and o.orderedAt >= :from and o.orderedAt < :to
+              and ((o.orderedAt >= :from and o.orderedAt < :to) or (o.pickupTime >= :from and o.pickupTime < :to))
             """)
     BigDecimal revenueBetween(LocalDateTime from, LocalDateTime to);
 }

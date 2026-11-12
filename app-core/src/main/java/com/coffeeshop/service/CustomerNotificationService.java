@@ -54,7 +54,7 @@ public class CustomerNotificationService {
     public void onOrderStatus(Order order, OrderStatus to) {
         if (order.getChannel() == OrderChannel.COUNTER || order.getCustomer() == null) return;
         String code = switch (to) {
-            case PREPARING -> "ORDER_CONFIRMED";
+            case CONFIRMED -> "ORDER_CONFIRMED";
             case READY -> order.getOrderType() == OrderType.TAKE_AWAY ? "ORDER_READY" : null;
             case DELIVERING -> "ORDER_DELIVERING";
             case COMPLETED -> "ORDER_COMPLETED";

@@ -95,10 +95,14 @@ public class OrderController {
         return orderService.markReady(id);
     }
 
+    /** {@code shipperId}: người giao (bỏ trống = người đã phân công, chưa có thì người bấm) */
+    public record DispatchRequest(Long shipperId) {
+    }
+
     @PostMapping("/api/orders/{id}/dispatch")
     @PreAuthorize("hasAnyAuthority('orders','shipments')")
-    public OrderResponse dispatch(@PathVariable Long id) {
-        return orderService.dispatch(id);
+    public OrderResponse dispatch(@PathVariable Long id, @RequestBody(required = false) DispatchRequest request) {
+        return orderService.dispatch(id, request == null ? null : request.shipperId());
     }
 
     @PostMapping("/api/orders/{id}/complete")

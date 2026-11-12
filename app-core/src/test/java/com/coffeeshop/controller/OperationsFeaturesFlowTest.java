@@ -96,7 +96,8 @@ class OperationsFeaturesFlowTest {
 
     @Test
     void ordersUseUpMaterialsAndTheCoffeeSellsOutThenComesBack() throws Exception {
-        long milk = call(body(post("/api/materials"), Map.of("name", "Sữa " + UUID.randomUUID(), "unit", "ml", "quantity", 250))).get("id").asLong();
+        String milkName = "Sữa " + UUID.randomUUID();
+        long milk = call(body(post("/api/materials"), Map.of("name", milkName, "unit", "ml", "quantity", 250))).get("id").asLong();
         call(body(post("/api/coffees/" + latte.getId() + "/recipes"), Map.of("brewTimeMin", 3,
                 "materials", List.of(Map.of("materialId", milk, "quantity", 100)), "steps", List.of())));
         // 2 ly: 250 → 50 ml, không đủ cho ly thứ 3 → tự hết món
@@ -108,15 +109,15 @@ class OperationsFeaturesFlowTest {
         // hết món: không bán được nữa
         mvc.perform(body(post("/api/orders"), Map.of("items", List.of(Map.of("coffeeId", latte.getId(), "quantity", 1)),
                 "orderType", "TAKE_AWAY", "paymentMethod", "CASH"))).andExpect(status().isBadRequest());
-        // thêm 500 ml → tự mở bán lại; không cho bớt quá số đang có
-        JsonNode m = call(body(patch("/api/materials/" + milk + "/quantity"), Map.of("delta", 500)));
+        // sửa số lượng lên 550 ml → tự mở bán lại; không cho số âm
+        JsonNode m = call(body(put("/api/materials/" + milk), Map.of("name", milkName, "unit", "ml", "quantity", 550)));
         assertThat(m.get("quantity").decimalValue()).isEqualByComparingTo("550");
         assertThat(m.get("cupsLeft").asInt()).isEqualTo(5);
         assertThat(coffeeRepository.findById(latte.getId()).orElseThrow().getStatus()).isEqualTo(CoffeeStatus.AVAILABLE);
-        mvc.perform(body(patch("/api/materials/" + milk + "/quantity"), Map.of("delta", -600))).andExpect(status().isBadRequest());
+        mvc.perform(body(put("/api/materials/" + milk), Map.of("name", milkName, "unit", "ml", "quantity", -1))).andExpect(status().isBadRequest());
         // nhân viên tự đánh "hết món" thì hệ thống không tự mở lại
         call(body(patch("/api/coffees/" + latte.getId() + "/status"), Map.of("status", "SOLD_OUT")));
-        call(body(patch("/api/materials/" + milk + "/quantity"), Map.of("delta", 100)));
+        call(body(put("/api/materials/" + milk), Map.of("name", milkName, "unit", "ml", "quantity", 650)));
         assertThat(coffeeRepository.findById(latte.getId()).orElseThrow().getStatus()).isEqualTo(CoffeeStatus.SOLD_OUT);
     }
 
