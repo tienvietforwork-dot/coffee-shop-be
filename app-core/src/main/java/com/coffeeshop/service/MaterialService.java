@@ -19,7 +19,7 @@ import java.util.Map;
 
 /**
  * Nguyên liệu thô: tên, đơn vị, số lượng hiện có. Không có phiếu nhập / xuất hay lịch sử —
- * nhân viên sửa thẳng số lượng hoặc điều chỉnh nhanh (+/−). Đơn bắt đầu pha tự trừ (StockService).
+ * nhân viên sửa thẳng số lượng. Đơn bắt đầu pha tự trừ (StockService).
  */
 @Service
 @RequiredArgsConstructor
@@ -58,20 +58,6 @@ public class MaterialService {
         material.setName(name);
         material.setUnit(request.unit().trim());
         if (request.quantity() != null) material.setQuantity(request.quantity());
-        stockService.refreshAvailability();
-        return withUsage(material);
-    }
-
-    /** Cộng / trừ nhanh số lượng; không cho xuống dưới 0. */
-    @Transactional
-    public MaterialResponse adjust(Long id, BigDecimal delta) {
-        Material material = get(id);
-        BigDecimal next = material.getQuantity().add(delta);
-        if (next.signum() < 0) {
-            throw new BadRequestException("Số lượng sau điều chỉnh không được âm (hiện có "
-                    + material.getQuantity().stripTrailingZeros().toPlainString() + " " + material.getUnit() + ")");
-        }
-        material.setQuantity(next);
         stockService.refreshAvailability();
         return withUsage(material);
     }

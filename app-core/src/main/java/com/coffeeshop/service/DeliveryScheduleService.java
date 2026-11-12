@@ -72,10 +72,7 @@ public class DeliveryScheduleService {
     public List<Row> schedule(LocalDate date) {
         LocalDateTime now = LocalDateTime.now(DeliveryFeeService.SHOP_ZONE);
         LocalDate day = date == null ? now.toLocalDate() : date;
-        Map<Long, Integer> brew = new HashMap<>();
-        recipeRepository.findAllActive().forEach(r -> {
-            if (r.getBrewTimeMin() != null) brew.putIfAbsent(r.getCoffee().getId(), r.getBrewTimeMin());
-        });
+        Map<Long, Integer> brew = brewMinutes();
         BigDecimal speed = deliveryFeeService.settings().speedKmh();
         boolean today = day.equals(now.toLocalDate());
 
@@ -117,6 +114,42 @@ public class DeliveryScheduleService {
         // đã bắt đầu pha xuống cuối, còn lại: phải pha sớm nhất lên đầu
         rows.sort(Comparator.comparing((Row r) -> "STARTED".equals(r.urgency())).thenComparing(Row::brewStartAt));
         return rows;
+    }
+
+    /**
+     * Giờ phải bắt đầu pha của từng đơn (id → giờ): đơn hẹn giờ = giờ hẹn − thời gian pha − chạy xe − dự phòng; đơn
+     * làm ngay = lúc đặt. Bảng điều phối dùng để tách cột "Hẹn giao" / "Chờ pha chế" và xếp thứ tự ưu tiên.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, LocalDateTime> brewStartTimes(List<Order> orders) {
+        Map<Long, LocalDateTime> out = new HashMap<>();
+        if (orders.isEmpty()) return out;
+        Map<Long, Integer> brew = null;
+        BigDecimal speed = null;
+        for (Order o : orders) {
+            if (o.getPickupTime() == null) {
+                out.put(o.getId(), o.getOrderedAt());
+                continue;
+            }
+            if (brew == null) {
+                brew = brewMinutes();
+                speed = deliveryFeeService.settings().speedKmh();
+            }
+            Map<Long, Integer> b = brew;
+            int prep = o.getItems().stream().mapToInt(i -> b.getOrDefault(i.getCoffee().getId(), 0) * i.getQuantity()).sum();
+            var sh = o.getShipment();
+            int travel = o.getOrderType() != OrderType.DELIVERY ? 0 : travelMinutes(sh == null ? null : sh.getDistanceKm(), speed);
+            out.put(o.getId(), o.getPickupTime().minusMinutes(prep + travel + bufferMinutes));
+        }
+        return out;
+    }
+
+    private Map<Long, Integer> brewMinutes() {
+        Map<Long, Integer> brew = new HashMap<>();
+        recipeRepository.findAllActive().forEach(r -> {
+            if (r.getBrewTimeMin() != null) brew.putIfAbsent(r.getCoffee().getId(), r.getBrewTimeMin());
+        });
+        return brew;
     }
 
     private int travelMinutes(BigDecimal km, BigDecimal speedKmh) {

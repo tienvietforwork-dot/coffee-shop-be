@@ -14,6 +14,8 @@ import java.util.List;
  * Giảm giá của đơn tách theo nguồn: {@code itemDiscount} = đợt giảm giá theo món (giá niêm yết − giá bán, đã trừ sẵn
  * trong {@code subtotal}); {@code promotionDiscount} = đợt giảm giá theo đơn; {@code voucherDiscount} = voucher
  * {@code voucherCode}. {@code discountAmount} = promotionDiscount + voucherDiscount (trừ trên subtotal).
+ * {@code brewStartAt}: giờ phải bắt đầu pha (đơn hẹn giờ: giờ hẹn − pha − chạy xe; còn lại: lúc đặt) — chỉ có ở
+ * danh sách điều phối, null ở chỗ khác.
  */
 public record OrderResponse(Long id, String orderCode, OrderStatus status, OrderType orderType, OrderChannel channel,
                             Long customerId, String customerName, String customerPhone,
@@ -22,11 +24,18 @@ public record OrderResponse(Long id, String orderCode, OrderStatus status, Order
                             String voucherCode, BigDecimal voucherDiscount, BigDecimal discountAmount,
                             BigDecimal shippingFee, BigDecimal totalAmount, String note, String cancelReason,
                             LocalDateTime pickupTime, LocalDateTime orderedAt, boolean paid, List<Item> items,
-                            List<PaymentResponse> payments, ShipmentResponse shipment) {
+                            List<PaymentResponse> payments, ShipmentResponse shipment, LocalDateTime brewStartAt) {
 
     /** {@code listPrice}: giá niêm yết lúc đặt; lớn hơn {@code unitPrice} khi món được giảm giá. */
     public record Item(Long id, Long coffeeId, String coffeeCode, String coffeeName, String imageUrl, Integer quantity,
                        BigDecimal listPrice, BigDecimal unitPrice, BigDecimal lineTotal, String note) {
+    }
+
+    public OrderResponse withBrewStartAt(LocalDateTime at) {
+        return new OrderResponse(id, orderCode, status, orderType, channel, customerId, customerName, customerPhone,
+                tableId, tableNo, staffId, staffName, promotionName, subtotal, itemDiscount, promotionDiscount,
+                voucherCode, voucherDiscount, discountAmount, shippingFee, totalAmount, note, cancelReason,
+                pickupTime, orderedAt, paid, items, payments, shipment, at);
     }
 
     public static OrderResponse from(Order o) {
@@ -60,6 +69,6 @@ public record OrderResponse(Long id, String orderCode, OrderStatus status, Order
                 o.getTotalAmount(), o.getNote(), o.getCancelReason(), o.getPickupTime(), o.getOrderedAt(), paid,
                 items,
                 o.getPayments().stream().map(PaymentResponse::from).toList(),
-                shipment == null ? null : ShipmentResponse.from(shipment));
+                shipment == null ? null : ShipmentResponse.from(shipment), null);
     }
 }

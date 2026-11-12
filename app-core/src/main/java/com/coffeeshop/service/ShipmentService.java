@@ -208,15 +208,20 @@ public class ShipmentService {
         points.add(shop);
         ordered.forEach(x -> points.add(new DistanceGateway.Point(x.lat(), x.lng())));
         DistanceGateway.Path path = distance.path(points);
-        List<String> all = new ArrayList<>(ordered.stream().map(Stop::address).toList());
+        // Google Maps hay không tìm ra địa chỉ chữ (tên cửa hàng, tên phường mới) → điểm nào đã có tọa độ thì gửi tọa độ
+        List<String> all = new ArrayList<>(ordered.stream().map(x -> latLng(x.lat(), x.lng())).toList());
         all.addAll(unlocated.stream().map(Stop::address).toList());
         return new RoutePlan(settings.shopAddress(), shop.lat(), shop.lng(), ordered, unlocated,
                 path == null ? null : path.line().stream().map(p -> new double[]{p.lat(), p.lng()}).toList(),
                 path == null ? null : Math.round(path.km() * 10) / 10.0, path == null ? null : path.minutes(),
-                googleMapsUrl(settings.shopAddress(), all));
+                googleMapsUrl(latLng(shop.lat(), shop.lng()), all));
     }
 
-    /** link Google Maps chỉ đường xe máy: quán → các điểm theo thứ tự (điểm cuối là đích, còn lại là điểm dừng) */
+    static String latLng(double lat, double lng) {
+        return String.format(java.util.Locale.ROOT, "%.6f,%.6f", lat, lng);
+    }
+
+    /** link Google Maps chỉ đường xe máy: quán → các điểm theo thứ tự (điểm cuối là đích, còn lại là điểm dừng); mỗi điểm là "lat,lng" hoặc địa chỉ chữ */
     static String googleMapsUrl(String origin, List<String> stops) {
         if (stops.isEmpty()) return null;
         StringBuilder url = new StringBuilder("https://www.google.com/maps/dir/?api=1&travelmode=two-wheeler");

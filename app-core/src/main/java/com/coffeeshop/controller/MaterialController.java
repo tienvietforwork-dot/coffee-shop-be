@@ -38,13 +38,6 @@ public class MaterialController {
         return materialService.update(id, request);
     }
 
-    /** Điều chỉnh nhanh số lượng: {delta} dương = thêm, âm = bớt. */
-    @PatchMapping("/{id}/quantity")
-    @PreAuthorize(Perm.CAN_MATERIALS_EDIT)
-    public MaterialResponse adjust(@PathVariable Long id, @Valid @RequestBody MaterialRequest.Adjust request) {
-        return materialService.adjust(id, request.delta());
-    }
-
     @DeleteMapping("/{id}")
     @PreAuthorize(Perm.CAN_MATERIALS_EDIT)
     @ResponseStatus(HttpStatus.NO_CONTENT)
