@@ -5,5 +5,6 @@ public enum ProductPlacementSection {
     BEST_SELLER,
     NEW_ARRIVAL,
     RECOMMENDED,
-    HOME
+    HOME,
+    CATEGORY
 }

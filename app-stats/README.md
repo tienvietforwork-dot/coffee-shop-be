@@ -19,6 +19,29 @@ da duoc phat hanh boi `app-core` (module chinh, so huu Auth/Users). Vi vay:
   quan ly bang cua minh. `ddl-auto: none` -- schema duoc tao thu cong qua DBeaver,
   khong dung Hibernate auto-generate hay migration tool nao.
 
+### Cap nhat Product Placement theo danh muc
+
+Truoc khi chay ban BE co truong `target_category_id`, hay chay thu cong file
+`database/migrations/20261112_product_placement_target_category.sql` tren database
+dung chung bang DBeaver. Hibernate dang de `ddl-auto: none`, nen ung dung khong tu
+tao cot hoac index nay.
+
+### Cap nhat Product Bundle (combo)
+
+Truoc khi deploy ban co anh combo va nhom lua chon cho khach, chay thu cong file
+`database/migrations/20261112_product_bundle_images_choices.sql` tren database
+dung chung bang DBeaver. File nay them `image_id`, `image_url` vao
+`product_bundles` va `choice_group` vao `product_bundle_items`; can chay mot lan
+truoc khi cap nhat ca `app-stats` va `app-core`.
+
+### Phan loai danh muc cho Cross-sell
+
+Truoc khi cap nhat code Cross-sell, chay thu cong file
+`database/migrations/20261112_cross_sell_product_types.sql` tren database dung
+chung. Danh muc cu mac dinh la `DRINK`; vao Thuc don → Danh muc san pham de doi
+danh muc banh/do an thanh `FOOD`, va cac mon them thanh `ADD_ON`. Cross-sell chi
+cho phep va hien thi cac san pham thuoc hai loai nay.
+
 ## Chay local
 
 1. Copy file env mau:
