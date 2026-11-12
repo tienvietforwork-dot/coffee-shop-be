@@ -13,6 +13,7 @@ import com.coffeeshop.entity.User;
 import com.coffeeshop.entity.UserRole;
 import com.coffeeshop.exception.BadRequestException;
 import com.coffeeshop.exception.ResourceNotFoundException;
+import com.coffeeshop.integration.wake.ModuleWaker;
 import com.coffeeshop.repository.CustomerRepository;
 import com.coffeeshop.repository.PermissionRepository;
 import com.coffeeshop.repository.RoleRepository;
@@ -45,6 +46,7 @@ public class AuthService {
     private final CustomerRepository customerRepository;
     private final PasswordEncoder passwordEncoder;
     private final CustomUserDetailsService userDetailsService;
+    private final ModuleWaker moduleWaker;
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
@@ -57,6 +59,7 @@ public class AuthService {
         }
         UserPrincipal principal = (UserPrincipal) auth.getPrincipal();
         userRepository.touchLastLogin(principal.getId(), LocalDateTime.now());
+        moduleWaker.wakeAll(); // admin pages need crm / stats / promotions (throttled inside)
         return toLoginResponse(principal);
     }
 
