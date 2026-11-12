@@ -43,6 +43,9 @@ app:
     expiration-ms: ${JWT_EXPIRATION_MS:86400000}
   cors:
     allowed-origin: ${CORS_ALLOWED_ORIGIN:http://localhost:5173}
+  # Render only: base URLs of app-crm, app-stats, app-promotions (comma-separated), pinged on startup
+  # and on login so they wake up together with app-core. Empty = off (local).
+  wake-urls: ${WAKE_URLS:}
   loyalty:
     vnd-per-point: 10000
   # FE address used in links sent to customers (ZNS / SMS)
