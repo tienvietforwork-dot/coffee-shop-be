@@ -122,13 +122,8 @@ SELECT c.id, v.name, v.img, v.price, v.descr, v.status FROM (VALUES
  ('Cà phê đặc biệt', 'Cà phê dừa', 'https://images.unsplash.com/photo-1525803377221-4f6ccdaa5133?w=800&q=80', 52000, 'Cốt dừa đá xay và cà phê phin', 'SOLD_OUT')
 ) AS v(cat, name, img, price, descr, status) JOIN categories c ON c.name = v.cat;
 
--- Nguyên liệu: chỉ tên + đơn vị (không theo dõi tồn kho); định lượng nằm trong công thức
+-- Nguyên liệu: chỉ nguyên liệu thô (không bán thành phẩm như cốt cà phê, siro, kem muối); định lượng nằm trong công thức
 INSERT INTO materials (name, unit) VALUES
- ('Kem muối', 'ml'),
- ('Cốt cold brew', 'ml'),
- ('Nước đường', 'ml'),
- ('Cốt cà phê phin', 'ml'),
- ('Siro sả', 'ml'),
  ('Cà phê Robusta rang xay', 'g'),
  ('Hạt Arabica', 'g'),
  ('Sữa đặc', 'ml'),
@@ -162,15 +157,15 @@ SELECT c.id, v.bm, 1, v.t, v.d, TRUE FROM (VALUES
 
 INSERT INTO recipe_materials (recipe_id, material_id, quantity, note)
 SELECT r.id, m.id, v.q, v.note FROM (VALUES
- ('Bạc xỉu', 'Cốt cà phê phin', 25, NULL),
+ ('Bạc xỉu', 'Cà phê Robusta rang xay', 12.5, NULL),
  ('Bạc xỉu', 'Sữa đặc', 30, NULL),
  ('Bạc xỉu', 'Sữa tươi', 60, NULL),
  ('Bạc xỉu', 'Đá viên', 150, NULL),
- ('Cà phê sữa đá', 'Cốt cà phê phin', 50, NULL),
+ ('Cà phê sữa đá', 'Cà phê Robusta rang xay', 25, NULL),
  ('Cà phê sữa đá', 'Sữa đặc', 30, NULL),
  ('Cà phê sữa đá', 'Đá viên', 150, NULL),
- ('Cà phê đen đá', 'Cốt cà phê phin', 50, NULL),
- ('Cà phê đen đá', 'Nước đường', 15, NULL),
+ ('Cà phê đen đá', 'Cà phê Robusta rang xay', 25, NULL),
+ ('Cà phê đen đá', 'Đường', 10, NULL),
  ('Cà phê đen đá', 'Đá viên', 150, NULL),
  ('Latte', 'Hạt Arabica', 18, NULL),
  ('Latte', 'Sữa tươi', 180, NULL),
@@ -179,22 +174,25 @@ SELECT r.id, m.id, v.q, v.note FROM (VALUES
  ('Americano', 'Hạt Arabica', 18, NULL),
  ('Americano', 'Đá viên', 100, NULL),
  ('Espresso', 'Hạt Arabica', 18, NULL),
- ('Cold Brew cam sả', 'Cốt cold brew', 70, NULL),
- ('Cold Brew cam sả', 'Siro sả', 15, NULL),
+ ('Cold Brew cam sả', 'Hạt Arabica', 8.8, 'ủ lạnh 12–16 giờ'),
+ ('Cold Brew cam sả', 'Sả cây', 5, NULL),
+ ('Cold Brew cam sả', 'Đường', 10, NULL),
  ('Cold Brew cam sả', 'Cam vàng', 0.5, NULL),
  ('Cold Brew cam sả', 'Đá viên', 150, NULL),
- ('Cold Brew truyền thống', 'Cốt cold brew', 80, NULL),
+ ('Cold Brew truyền thống', 'Hạt Arabica', 10, 'ủ lạnh 12–16 giờ'),
  ('Cold Brew truyền thống', 'Đá viên', 150, NULL),
- ('Cà phê dừa', 'Cốt cà phê phin', 40, NULL),
+ ('Cà phê dừa', 'Cà phê Robusta rang xay', 20, NULL),
  ('Cà phê dừa', 'Cốt dừa', 60, NULL),
  ('Cà phê dừa', 'Sữa đặc', 20, NULL),
  ('Cà phê dừa', 'Đá viên', 200, NULL),
- ('Cà phê trứng', 'Cốt cà phê phin', 40, NULL),
+ ('Cà phê trứng', 'Cà phê Robusta rang xay', 20, NULL),
  ('Cà phê trứng', 'Trứng gà', 1, 'trứng tiệt trùng'),
  ('Cà phê trứng', 'Sữa đặc', 25, NULL),
- ('Cà phê muối', 'Cốt cà phê phin', 50, NULL),
+ ('Cà phê muối', 'Cà phê Robusta rang xay', 25, NULL),
  ('Cà phê muối', 'Sữa đặc', 20, NULL),
- ('Cà phê muối', 'Kem muối', 40, NULL),
+ ('Cà phê muối', 'Whipping cream', 25, 'đánh bông với sữa tươi + muối'),
+ ('Cà phê muối', 'Sữa tươi', 15, NULL),
+ ('Cà phê muối', 'Muối', 0.5, NULL),
  ('Cà phê muối', 'Đá viên', 120, NULL)
 ) AS v(coffee, material, q, note)
 JOIN coffees c ON c.name = v.coffee
