@@ -7,6 +7,8 @@ import com.coffeeshop.stats.dto.response.ProductBundleResponse;
 import com.coffeeshop.stats.entity.Coffee;
 import com.coffeeshop.stats.entity.ProductBundle;
 import com.coffeeshop.stats.entity.ProductBundleItem;
+import com.coffeeshop.stats.entity.enums.CoffeeStatus;
+import com.coffeeshop.stats.entity.enums.CategoryProductType;
 import com.coffeeshop.stats.entity.enums.ProductBundleStatus;
 import com.coffeeshop.stats.entity.repository.CoffeeRepository;
 import com.coffeeshop.stats.repository.ProductBundleItemRepository;
@@ -28,6 +30,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -42,7 +45,7 @@ public class ProductBundleService {
 
     @Transactional(readOnly = true)
     public List<ProductBundleResponse> findAll() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = ShopTime.now();
         return bundleRepository.findAllByOrderByStatusAscNameAsc()
                 .stream()
                 .map(bundle -> ProductBundleResponse.from(bundle, now))
@@ -54,10 +57,7 @@ public class ProductBundleService {
         LocalDateTime now = ShopTime.now();
         return bundleRepository.findAllByOrderByStatusAscNameAsc().stream()
                 .filter(bundle -> bundle.isAvailableNow(now))
-                .filter(bundle -> !bundle.getItems().isEmpty())
-                .filter(bundle -> bundle.getItems().stream()
-                        .filter(item -> !item.isOptional())
-                        .allMatch(item -> item.getCoffee().getStatus() == com.coffeeshop.stats.entity.enums.CoffeeStatus.AVAILABLE && !item.getCoffee().isAutoSoldOut()))
+                .filter(this::hasSellableConfiguration)
                 .map(bundle -> ProductBundleResponse.from(bundle, now)).toList();
     }
 
@@ -104,6 +104,9 @@ public class ProductBundleService {
     public ProductBundleResponse addItem(Long bundleId, ProductBundleItemRequest request) {
         ProductBundle bundle = getBundle(bundleId);
         requireEditable(bundle);
+        if (bundle.getItems().size() >= 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mỗi combo chỉ gồm đúng 2 loại cà phê khác nhau");
+        }
         if (bundleItemRepository.existsByBundle_IdAndCoffee_Id(bundleId, request.coffeeId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sản phẩm đã có trong combo");
         }
@@ -130,7 +133,7 @@ public class ProductBundleService {
         ProductBundleItem item = findItem(bundle, itemId);
         item.softDelete();
         bundle.getItems().remove(item);
-        return ProductBundleResponse.from(bundle, LocalDateTime.now());
+        return ProductBundleResponse.from(bundle, ShopTime.now());
     }
 
     @Transactional
@@ -143,12 +146,15 @@ public class ProductBundleService {
         if (bundle.getEndsAt() != null && !bundle.getEndsAt().isAfter(ShopTime.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể kích hoạt combo đã hết hạn");
         }
-        if (bundle.getItems().isEmpty() || bundle.getItems().stream().noneMatch(item -> !item.isOptional())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Combo phải có ít nhất một sản phẩm bắt buộc");
-        }
-        if (bundle.getItems().stream().anyMatch(item ->
-                item.getCoffee().getStatus() != com.coffeeshop.stats.entity.enums.CoffeeStatus.AVAILABLE || item.getCoffee().isAutoSoldOut())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Combo chứa sản phẩm không được phép bán");
+        validateCoffeeOnly(bundle.getItems());
+        validateExactlyTwoCoffees(bundle.getItems());
+        List<ProductBundleItem> unavailableRequired = bundle.getItems().stream()
+                .filter(item -> !isSellable(item.getCoffee())).toList();
+        if (!unavailableRequired.isEmpty()) {
+            String names = unavailableRequired.stream().map(item -> item.getCoffee().getName()).distinct()
+                    .collect(Collectors.joining(", "));
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Món bắt buộc đang hết hàng/ẩn: " + names + ". Hãy thay món hoặc bổ sung tồn kho trước khi kích hoạt.");
         }
         validateMandatoryPrice(bundle);
         bundle.setStatus(ProductBundleStatus.ACTIVE);
@@ -206,10 +212,7 @@ public class ProductBundleService {
         int estimatedSoldQuantity = ((Number) totals[0]).intValue();
         BigDecimal realRevenue = (BigDecimal) totals[1];
 
-        BigDecimal standalonePrice = items.stream()
-                .filter(item -> !item.isOptional())
-                .map(item -> item.getCoffee().getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal standalonePrice = standalonePrice(bundle);
         BigDecimal estimatedRevenue = realRevenue;
         BigDecimal estimatedSavingGiven = standalonePrice.subtract(bundle.getBundlePrice())
                 .multiply(BigDecimal.valueOf(estimatedSoldQuantity));
@@ -218,7 +221,7 @@ public class ProductBundleService {
                 .map(item -> {
                     SalesSummary summary = sales.getOrDefault(item.getCoffee().getId(), SalesSummary.ZERO);
                     return new ProductBundleAnalyticsResponse.ComponentSales(item.getCoffee().getId(),
-                            item.getCoffee().getName(), item.getQuantity(), item.isOptional(),
+                            item.getCoffee().getName(), item.getQuantity(), item.isOptional(), item.getChoiceGroup(),
                             summary.quantity(), summary.revenue());
                 })
                 .toList();
@@ -230,6 +233,8 @@ public class ProductBundleService {
     private void apply(ProductBundle bundle, ProductBundleRequest request) {
         bundle.setName(request.name().trim());
         bundle.setDescription(blankToNull(request.description()));
+        bundle.setImageId(request.imageId());
+        bundle.setImageUrl(request.imageId() == null ? blankToNull(request.imageUrl()) : null);
         bundle.setBundlePrice(request.bundlePrice());
         bundle.setStartsAt(request.startsAt());
         bundle.setEndsAt(request.endsAt());
@@ -241,16 +246,19 @@ public class ProductBundleService {
         }
     }
 
-    /** Optional products are excluded from the fixed bundle price and savings. */
+    /** The fixed combo price includes both coffee components. */
     private void validateMandatoryPrice(ProductBundle bundle) {
-        BigDecimal regularPrice = bundle.getItems().stream()
-                .filter(item -> !item.isOptional())
-                .map(item -> item.getCoffee().getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal regularPrice = standalonePrice(bundle);
         if (bundle.getBundlePrice().compareTo(regularPrice) > 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Giá combo không được vượt tổng giá bán lẻ của các món bắt buộc");
+                    "Giá combo không được vượt tổng giá bán lẻ của 2 loại cà phê");
         }
+    }
+
+    private BigDecimal standalonePrice(ProductBundle bundle) {
+        return bundle.getItems().stream()
+                .map(item -> item.getCoffee().getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private void requireEditable(ProductBundle bundle) {
@@ -260,11 +268,25 @@ public class ProductBundleService {
     }
 
     private void validateBundleRequest(ProductBundleRequest request) {
+        if (request.imageId() == null && blankToNull(request.imageUrl()) == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Combo cần có ảnh trước khi lưu");
+        }
+        if (request.imageId() != null) {
+            Number imageCount = (Number) entityManager.createNativeQuery("SELECT count(*) FROM images WHERE id = :id")
+                    .setParameter("id", request.imageId()).getSingleResult();
+            if (imageCount.longValue() == 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ảnh combo không tồn tại");
+            }
+        }
         if (request.items() != null) {
+            if (request.items().size() > 2) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Mỗi combo chỉ gồm đúng 2 loại cà phê khác nhau");
+            }
             Set<Long> ids = new LinkedHashSet<>();
             for (ProductBundleItemRequest item : request.items()) {
                 if (item == null || item.coffeeId() == null || item.quantity() == null
-                        || item.quantity() < 1 || item.coffeeId() <= 0) {
+                        || item.quantity() < 1 || item.quantity() > 99 || item.coffeeId() <= 0) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thành phần combo không hợp lệ");
                 }
                 if (!ids.add(item.coffeeId())) {
@@ -302,10 +324,63 @@ public class ProductBundleService {
     }
 
     private void applyItem(ProductBundleItem item, ProductBundleItemRequest request) {
-        item.setCoffee(getCoffee(request.coffeeId()));
+        Coffee coffee = getCoffee(request.coffeeId());
+        if (request.quantity() == null || request.quantity() < 1 || request.quantity() > 99) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số lượng mỗi thành phần phải từ 1 đến 99");
+        }
+        if (!isSellable(coffee)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    coffee.getName() + " hiện không còn bán được, không thể thêm vào combo");
+        }
+        if (!isDrink(coffee)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    coffee.getName() + " không phải cà phê/đồ uống; combo chỉ được gồm các món uống");
+        }
+        if (Boolean.TRUE.equals(request.optional()) || blankToNull(request.choiceGroup()) != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Combo chỉ gồm đúng 2 loại cà phê bắt buộc, không hỗ trợ món tùy chọn hoặc món thêm");
+        }
+        item.setCoffee(coffee);
         item.setQuantity(request.quantity());
-        item.setOptional(request.optional() != null && request.optional());
+        item.setOptional(false);
+        item.setChoiceGroup(null);
         item.setDisplayOrder(request.displayOrder() == null ? 0 : request.displayOrder());
+    }
+
+    private boolean hasSellableConfiguration(ProductBundle bundle) {
+        if (bundle.getItems().size() != 2 || bundle.getItems().stream().anyMatch(item -> !isDrink(item.getCoffee())
+                || item.isOptional() || blankToNull(item.getChoiceGroup()) != null
+                || !isSellable(item.getCoffee()))) return false;
+        if (bundle.getItems().stream().map(item -> item.getCoffee().getId()).distinct().count() != 2) return false;
+        return bundle.getBundlePrice().compareTo(standalonePrice(bundle)) <= 0;
+    }
+
+    private void validateExactlyTwoCoffees(List<ProductBundleItem> items) {
+        if (items.size() != 2 || items.stream().map(item -> item.getCoffee().getId()).distinct().count() != 2) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Combo phải gồm đúng 2 loại cà phê khác nhau; hãy thêm hoặc xóa thành phần cho đủ 2 món");
+        }
+    }
+
+    private void validateCoffeeOnly(List<ProductBundleItem> items) {
+        for (ProductBundleItem item : items) {
+            if (!isDrink(item.getCoffee())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        item.getCoffee().getName() + " không phải cà phê/đồ uống; hãy xóa món này khỏi combo");
+            }
+            if (item.isOptional() || blankToNull(item.getChoiceGroup()) != null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Combo chỉ gồm các cà phê bắt buộc; hãy bỏ lựa chọn thay thế hoặc món thêm khỏi combo");
+            }
+        }
+    }
+
+    private boolean isDrink(Coffee coffee) {
+        return coffee.getCategory() != null && coffee.getCategory().getProductType() == CategoryProductType.DRINK;
+    }
+
+    private boolean isSellable(Coffee coffee) {
+        return coffee.getStatus() == CoffeeStatus.AVAILABLE && !coffee.isAutoSoldOut();
     }
 
     private ProductBundle getBundle(Long id) {

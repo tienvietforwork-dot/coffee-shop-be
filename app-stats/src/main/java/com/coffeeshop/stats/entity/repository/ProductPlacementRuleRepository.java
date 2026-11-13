@@ -9,10 +9,16 @@ import java.util.List;
 
 public interface ProductPlacementRuleRepository extends JpaRepository<ProductPlacementRule, Long> {
 
-    @EntityGraph(attributePaths = {"coffee", "coffee.category"})
+    @EntityGraph(attributePaths = {"coffee", "coffee.category", "targetCategory"})
     List<ProductPlacementRule> findAllByOrderBySectionAscDisplayOrderAscIdAsc();
 
-    boolean existsByCoffee_IdAndSection(Long coffeeId, ProductPlacementSection section);
+    boolean existsByCoffee_IdAndSectionAndTargetCategory_Id(Long coffeeId, ProductPlacementSection section, Long targetCategoryId);
 
-    boolean existsByCoffee_IdAndSectionAndIdNot(Long coffeeId, ProductPlacementSection section, Long id);
+    boolean existsByCoffee_IdAndSectionAndTargetCategory_IdAndIdNot(Long coffeeId, ProductPlacementSection section,
+                                                                    Long targetCategoryId, Long id);
+
+    boolean existsByCoffee_IdAndSectionAndTargetCategoryIsNull(Long coffeeId, ProductPlacementSection section);
+
+    boolean existsByCoffee_IdAndSectionAndTargetCategoryIsNullAndIdNot(Long coffeeId, ProductPlacementSection section,
+                                                                       Long id);
 }

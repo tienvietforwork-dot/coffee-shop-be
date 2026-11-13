@@ -3,6 +3,7 @@ package com.coffeeshop.stats.service;
 
 import com.coffeeshop.stats.entity.*;
 import com.coffeeshop.stats.entity.repository.*;
+import com.coffeeshop.stats.entity.enums.CategoryProductType;
 import com.coffeeshop.stats.entity.enums.CoffeeStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -66,6 +67,15 @@ public class CrossSellService {
         );
     }
 
+    private boolean isSellable(Coffee coffee) {
+        return coffee.getStatus() == CoffeeStatus.AVAILABLE && !coffee.isAutoSoldOut();
+    }
+
+    private boolean isAddOn(Coffee coffee) {
+        return coffee.getCategory().getProductType() == CategoryProductType.FOOD
+                || coffee.getCategory().getProductType() == CategoryProductType.ADD_ON;
+    }
+
     private String generateRuleName(Coffee coffee) {
         String coffeeName = coffee.getName();
 
@@ -125,7 +135,10 @@ public class CrossSellService {
                 throw bad("Thứ tự phải không âm");
             }
 
-            requireCoffee(item.coffeeId());
+            Coffee related = requireCoffee(item.coffeeId());
+            if (!isAddOn(related)) {
+                throw bad(related.getName() + " thuộc danh mục Đồ uống. Cross-sell chỉ nhận Đồ ăn / bánh hoặc Món thêm.");
+            }
         }
     }
 
@@ -166,6 +179,7 @@ public class CrossSellService {
         result.put("id", item.getId());
         result.put("coffeeId", coffee.getId());
         result.put("coffeeName", coffee.getName());
+        result.put("categoryType", coffee.getCategory().getProductType());
         result.put("price", coffee.getPrice());
         result.put("position", item.getPosition());
 
@@ -187,6 +201,7 @@ public class CrossSellService {
                 "anchor_name",
                 rule.getAnchorCoffee().getName()
         );
+        map.put("anchor_category_type", rule.getAnchorCoffee().getCategory().getProductType());
 
         map.put("priority", rule.getPriority());
         map.put("min_cart_amount", rule.getMinCartAmount());
@@ -267,12 +282,11 @@ public class CrossSellService {
     @Transactional
     public Map<String, Object> update(long id, RuleInput input) {
         CrossSellRule rule = requireRule(id);
-
-        validate(input);
-
         if ("ACTIVE".equals(rule.getStatus())) {
             throw bad("Tạm dừng quy tắc trước khi chỉnh sửa");
         }
+
+        validate(input);
 
         rule.getItems().clear();
         rules.flush();
@@ -293,6 +307,34 @@ public class CrossSellService {
 
         if ("ACTIVE".equals(next) && rule.getItems().isEmpty()) {
             throw bad("Không thể kích hoạt quy tắc trống");
+        }
+
+        if ("ACTIVE".equals(next)) {
+            if (!isSellable(rule.getAnchorCoffee())) {
+                throw bad("Món gốc đang hết hàng hoặc ngừng bán; hãy chọn món gốc đang bán trước khi kích hoạt");
+            }
+            List<String> invalidItems = rule.getItems().stream()
+                    .map(CrossSellItem::getCoffee)
+                    .filter(coffee -> !isAddOn(coffee))
+                    .map(Coffee::getName)
+                    .distinct()
+                    .toList();
+            if (!invalidItems.isEmpty()) {
+                throw bad("Không thể kích hoạt vì các món sau là đồ uống, không phải món bán kèm: "
+                        + String.join(", ", invalidItems) + ". Hãy sửa quy tắc và chọn đồ ăn/bánh/món thêm.");
+            }
+            List<String> unavailableItems = rule.getItems().stream()
+                    .map(CrossSellItem::getCoffee)
+                    .filter(coffee -> !isSellable(coffee))
+                    .map(Coffee::getName)
+                    .distinct()
+                    .toList();
+            if (!unavailableItems.isEmpty()) {
+                throw bad("Món bán kèm đang hết hàng hoặc ẩn: " + String.join(", ", unavailableItems));
+            }
+            if (rule.getEndsAt() != null && !rule.getEndsAt().isAfter(LocalDateTime.now())) {
+                throw bad("Không thể kích hoạt quy tắc đã hết hạn");
+            }
         }
 
         rule.setStatus(next);
@@ -324,6 +366,7 @@ public class CrossSellService {
 
         map.put("coffeeId", coffee.getId());
         map.put("coffeeName", coffee.getName());
+        map.put("categoryType", coffee.getCategory().getProductType());
         map.put("price", coffee.getPrice());
         map.put("description", coffee.getDescription());
         map.put("imageUrl", coffee.getImageUrl());
@@ -360,8 +403,7 @@ public class CrossSellService {
 
                 Coffee coffee = item.getCoffee();
 
-                if (coffee.getStatus() != CoffeeStatus.AVAILABLE
-                        || coffee.isAutoSoldOut()) {
+                if (!isSellable(coffee) || !isAddOn(coffee)) {
                     continue;
                 }
 
@@ -386,6 +428,7 @@ public class CrossSellService {
 
         return items.findByRuleIdOrderByPositionAscIdAsc(id)
                 .stream()
+                .filter(item -> isAddOn(item.getCoffee()) && isSellable(item.getCoffee()))
                 .map(item -> suggestion(rule, item, false))
                 .toList();
     }
@@ -421,10 +464,9 @@ public class CrossSellService {
         boolean allowed = items
                 .findByRuleIdOrderByPositionAscIdAsc(rule.getId())
                 .stream()
-                .anyMatch(item ->
-                        item.getCoffee().getId()
-                                .equals(input.coffeeId())
-                );
+                .anyMatch(item -> item.getCoffee().getId().equals(input.coffeeId())
+                        && isAddOn(item.getCoffee())
+                        && isSellable(item.getCoffee()));
 
         if (!allowed) {
             throw bad("Món không thuộc quy tắc");

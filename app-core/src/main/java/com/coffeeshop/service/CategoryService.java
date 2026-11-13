@@ -61,6 +61,7 @@ public class CategoryService {
     private void apply(Category category, CategoryRequest request) {
         category.setName(request.name().trim());
         category.setDescription(request.description());
+        category.setProductType(request.productType());
         category.setDisplayOrder(request.displayOrder() == null ? 0 : request.displayOrder());
     }
 }

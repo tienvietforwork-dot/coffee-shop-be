@@ -38,6 +38,12 @@ public class ProductBundle extends AuditableEntity {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Column(name = "image_id")
+    private Long imageId;
+
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
+
     @Column(name = "bundle_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal bundlePrice;
 
@@ -54,6 +60,10 @@ public class ProductBundle extends AuditableEntity {
     @OrderBy("displayOrder ASC, id ASC")
     @OneToMany(mappedBy = "bundle", cascade = CascadeType.ALL)
     private List<ProductBundleItem> items = new ArrayList<>();
+
+    public String imageSrc() {
+        return imageId != null ? "/api/public/images/" + imageId : imageUrl;
+    }
 
     public boolean isAvailableNow(LocalDateTime now) {
         return status == ProductBundleStatus.ACTIVE
