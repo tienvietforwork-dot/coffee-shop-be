@@ -1045,6 +1045,18 @@ ALTER TABLE orders      ADD COLUMN IF NOT EXISTS voucher_discount NUMERIC(12,2) 
 ALTER TABLE materials ADD COLUMN IF NOT EXISTS quantity       NUMERIC(12,2) NOT NULL DEFAULT 0;
 ALTER TABLE orders    ADD COLUMN IF NOT EXISTS stock_deducted BOOLEAN       NOT NULL DEFAULT FALSE;
 
+-- Danh mục 34 tỉnh / thành → phường / xã (từ 1/7/2025); dữ liệu — xem vn_admin_units.sql
+CREATE TABLE IF NOT EXISTS vn_provinces (
+    code INTEGER      PRIMARY KEY,
+    name VARCHAR(100) NOT NULL
+);
+CREATE TABLE IF NOT EXISTS vn_wards (
+    code          INTEGER      PRIMARY KEY,
+    province_code INTEGER      NOT NULL REFERENCES vn_provinces (code),
+    name          VARCHAR(100) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_vn_wards_province ON vn_wards (province_code);
+
 -- Phí giao hàng theo khu vực (tỉnh + phường), miễn phí cho nhóm khách — xem delivery_areas.sql
 CREATE TABLE IF NOT EXISTS delivery_provinces (
     id     BIGSERIAL PRIMARY KEY,
