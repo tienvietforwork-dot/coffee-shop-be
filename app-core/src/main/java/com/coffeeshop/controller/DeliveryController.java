@@ -2,16 +2,20 @@ package com.coffeeshop.controller;
 
 import com.coffeeshop.dto.response.ShipmentResponse;
 import com.coffeeshop.security.Perm;
+import com.coffeeshop.service.AdminUnitService;
 import com.coffeeshop.service.DeliveryFeeService;
 import com.coffeeshop.service.ShipmentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /** Giao hàng (quán tự giao): cửa hàng & giờ mở cửa, khu vực giao + phí ship theo tỉnh / phường; gợi ý địa chỉ; lịch sử đơn giao. */
 @RestController
@@ -20,6 +24,7 @@ public class DeliveryController {
 
     private final DeliveryFeeService feeService;
     private final ShipmentService shipmentService;
+    private final AdminUnitService adminUnitService;
 
     /** what the checkout needs: địa chỉ quán, giờ mở cửa, miễn phí từ, đơn tối thiểu, các tỉnh giao được */
     public record PublicConfig(String shopAddress, LocalTime openTime, LocalTime closeTime, BigDecimal freeShipThreshold,
@@ -31,6 +36,12 @@ public class DeliveryController {
         var s = feeService.settings();
         return new PublicConfig(s.shopAddress(), s.openTime(), s.closeTime(), s.freeShipThreshold(), s.minOrderAmount(), s.speedKmh(),
                 feeService.areas().stream().filter(DeliveryFeeService.Area::active).map(DeliveryFeeService.Area::name).toList());
+    }
+
+    /** danh mục 34 tỉnh / thành → phường / xã (bảng vn_provinces, vn_wards) cho ô chọn địa chỉ; trình duyệt nhớ 1 ngày */
+    @GetMapping("/api/public/vn-units")
+    public ResponseEntity<List<AdminUnitService.Unit>> units() {
+        return ResponseEntity.ok().cacheControl(CacheControl.maxAge(1, TimeUnit.DAYS).cachePublic()).body(adminUnitService.units());
     }
 
     /** phường / xã đã chọn có giao được không, phí bao nhiêu (trước khi nhập số nhà) */

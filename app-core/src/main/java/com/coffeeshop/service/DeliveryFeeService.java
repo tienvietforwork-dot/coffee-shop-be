@@ -47,6 +47,13 @@ public class DeliveryFeeService {
     /** bảng nhóm khách do app-crm quản lý (không có entity ở app-core); JDBC để lỗi không làm hỏng giao dịch JPA */
     private final org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate jdbc;
     private final DistanceGateway distance;
+    private final AdminUnitService adminUnits;
+
+    /** độ chính xác của toạ độ: đúng địa chỉ, chỉ tới trung tâm phường / xã, hay chỉ tới trung tâm tỉnh */
+    public enum Precision { ADDRESS, WARD, PROVINCE }
+
+    public record Located(DistanceGateway.Point point, Precision precision) {
+    }
 
     /** {@code freeShipGroupIds}: nhóm khách CRM được miễn phí ship; {@code groups}: mọi nhóm CRM để chọn (chỉ đọc) */
     public record Settings(String shopAddress, Double shopLat, Double shopLng, LocalTime openTime, LocalTime closeTime,
@@ -138,7 +145,7 @@ public class DeliveryFeeService {
     public Area saveArea(Long id, Area r) {
         if (r.name() == null || r.name().isBlank()) throw new BadRequestException("Chọn tỉnh / thành phố");
         if (r.fee() == null || r.fee().signum() < 0) throw new BadRequestException("Nhập phí giao hàng của tỉnh");
-        String name = r.name().trim();
+        String name = adminUnits.province(r.name().trim());
         for (DeliveryProvince other : provinceRepository.findAllByOrderByNameAsc()) {
             if (!other.getId().equals(id) && key(other.getName()).equals(key(name))) {
                 throw new BadRequestException("Đã cấu hình " + other.getName());
@@ -156,7 +163,7 @@ public class DeliveryFeeService {
             if (!seen.add(key(w.name()))) throw new BadRequestException("Phường / xã bị trùng: " + w.name());
             if (!w.blocked() && w.fee() == null) continue; // không khác tỉnh: không cần lưu
             if (w.fee() != null && w.fee().signum() < 0) throw new BadRequestException("Phí không hợp lệ: " + w.name());
-            p.getWards().add(DeliveryWard.builder().province(p).name(w.name().trim()).fee(w.blocked() ? null : w.fee()).blocked(w.blocked()).build());
+            p.getWards().add(DeliveryWard.builder().province(p).name(adminUnits.ward(w.name().trim(), name)).fee(w.blocked() ? null : w.fee()).blocked(w.blocked()).build());
         }
         return Area.from(provinceRepository.save(p));
     }
@@ -196,11 +203,14 @@ public class DeliveryFeeService {
         List<String> freeGroups = freeShipGroupsOf(s, customerId);
         BigDecimal km = null;
         Integer minutes = null;
-        try { // quãng đường chỉ để ước tính giờ giao / vẽ tuyến
+        try { // quãng đường chỉ để ước tính giờ giao / vẽ tuyến; không thấy số nhà thì đo tới trung tâm phường
             DistanceGateway.Point shop = shopPoint(s);
-            var route = distance.route(shop, distance.geocode(address, shop));
-            km = BigDecimal.valueOf(route.km()).setScale(2, RoundingMode.HALF_UP);
-            minutes = route.minutes();
+            Located to = locate(address, shop);
+            if (to != null) {
+                var route = distance.route(shop, to.point());
+                km = BigDecimal.valueOf(route.km()).setScale(2, RoundingMode.HALF_UP);
+                minutes = route.minutes();
+            }
         } catch (RuntimeException e) {
             log.debug("Không đo được quãng đường tới {}: {}", address, e.getMessage());
         }
@@ -246,6 +256,7 @@ public class DeliveryFeeService {
         if (allowed.isEmpty()) throw new BadRequestException("Quán chưa thiết lập khu vực giao hàng");
         DeliveryProvince p = all.stream().filter(x -> x.isActive() && key(x.getName()).equals(key(province))).findFirst()
                 .orElseThrow(() -> new BadRequestException("Quán chỉ giao trong khu vực " + String.join(", ", allowed)));
+        adminUnits.ward(ward, p.getName()); // phường phải thuộc tỉnh theo danh mục
         DeliveryWard w = p.getWards().stream().filter(x -> key(x.getName()).equals(key(ward))).findFirst().orElse(null);
         if (w != null && w.isBlocked()) throw new BadRequestException("Quán chưa giao tới " + w.getName().trim());
         return new Zone(ward.trim(), p.getName(), w != null && w.getFee() != null ? w.getFee() : p.getFee());
@@ -267,14 +278,32 @@ public class DeliveryFeeService {
         return distance.suggest(query, near, ward, province);
     }
 
-    /** toạ độ một địa chỉ (bản đồ tuyến giao); không tìm được: null */
-    public DistanceGateway.Point locateOrNull(String address) {
-        try {
-            DeliverySetting s = setting();
-            return distance.geocode(address, s.getShopLat() == null ? null : new DistanceGateway.Point(s.getShopLat(), s.getShopLng()));
-        } catch (RuntimeException e) {
-            return null;
+    /**
+     * Toạ độ một địa chỉ giao (bản đồ tuyến giao). Khách gõ số nhà / đường tuỳ ý nên bản đồ có thể không biết: khi đó lấy
+     * trung tâm phường / xã, rồi tới trung tâm tỉnh (đánh dấu {@link Precision}). Không tìm được gì: null.
+     */
+    public Located locateOrNull(String address) {
+        DeliverySetting s = setting();
+        return locate(address, s.getShopLat() == null ? null : new DistanceGateway.Point(s.getShopLat(), s.getShopLng()));
+    }
+
+    private Located locate(String address, DistanceGateway.Point near) {
+        if (address == null || address.isBlank()) return null;
+        List<String> segs = java.util.Arrays.stream(address.split(",")).map(String::trim).filter(x -> !x.isEmpty()).toList();
+        record Try(String q, Precision precision) {
         }
+        List<Try> tries = new java.util.ArrayList<>();
+        if (segs.size() >= 3) tries.add(new Try(address, Precision.ADDRESS));
+        if (segs.size() >= 2) tries.add(new Try(String.join(", ", segs.subList(segs.size() - 2, segs.size())), Precision.WARD));
+        if (!segs.isEmpty()) tries.add(new Try(segs.get(segs.size() - 1), Precision.PROVINCE));
+        for (Try t : tries) {
+            try {
+                return new Located(distance.geocode(t.q(), near), t.precision());
+            } catch (RuntimeException e) {
+                log.debug("Không định vị được {}: {}", t.q(), e.getMessage());
+            }
+        }
+        return null;
     }
 
     /** toạ độ quán (điểm xuất phát tuyến giao) */
