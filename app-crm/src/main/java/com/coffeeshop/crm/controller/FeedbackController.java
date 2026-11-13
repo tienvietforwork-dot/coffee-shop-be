@@ -109,4 +109,30 @@ public class FeedbackController {
         feedbackService.delete(id);
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("/satisfaction-metrics")
+    @Operation(summary = "Tổng hợp CSAT và NPS từ khảo sát khách hàng")
+    public ResponseEntity<java.util.Map<String, Object>> satisfactionMetrics() {
+        return ResponseEntity.ok(feedbackService.satisfactionMetrics());
+    }
+
+    @GetMapping("/{id}/survey")
+    @Operation(summary = "Xem câu trả lời khảo sát của một phản hồi")
+    public ResponseEntity<java.util.Map<String, Object>> survey(@PathVariable Long id) {
+        return ResponseEntity.ok(feedbackService.surveyForFeedback(id));
+    }
+
+    @GetMapping("/manager-notifications")
+    @Operation(summary = "Danh sách cảnh báo phản hồi tiêu cực cho quản lý")
+    public ResponseEntity<java.util.List<java.util.Map<String, Object>>> managerNotifications(
+            @RequestParam(defaultValue = "true") boolean unreadOnly) {
+        return ResponseEntity.ok(feedbackService.managerNotifications(unreadOnly));
+    }
+
+    @PostMapping("/manager-notifications/{id}/read")
+    @Operation(summary = "Đánh dấu cảnh báo đã đọc")
+    public ResponseEntity<Void> markNotificationRead(@PathVariable Long id) {
+        feedbackService.markManagerNotificationRead(id);
+        return ResponseEntity.noContent().build();
+    }
 }

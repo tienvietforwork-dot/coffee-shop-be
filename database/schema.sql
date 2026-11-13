@@ -581,6 +581,7 @@ CREATE TABLE customer_groups (
     name            VARCHAR(100) NOT NULL,
     description     TEXT,
     group_type      VARCHAR(20)  NOT NULL DEFAULT 'MANUAL' CHECK (group_type IN ('AUTOMATIC', 'MANUAL')),
+    classification_code VARCHAR(30),
     -- Example: {"min_spend": 5000000, "min_orders": 10, "last_order_days": 30}
     criteria_rule   JSONB,
     recalculated_at TIMESTAMP,
@@ -592,6 +593,8 @@ CREATE TABLE customer_groups (
     del_user   VARCHAR(50)
 );
 CREATE UNIQUE INDEX uq_customer_groups_name ON customer_groups (lower(name)) WHERE NOT del_flag;
+CREATE UNIQUE INDEX uq_customer_groups_classification_code ON customer_groups (classification_code)
+    WHERE classification_code IS NOT NULL AND del_flag = FALSE;
 
 CREATE TABLE customer_group_members (
     id          BIGSERIAL PRIMARY KEY,
@@ -608,6 +611,7 @@ CREATE TABLE customer_group_members (
     del_user   VARCHAR(50)
 );
 CREATE UNIQUE INDEX uq_customer_group_members ON customer_group_members (group_id, customer_id) WHERE NOT del_flag;
+CREATE UNIQUE INDEX uq_customer_group_members_one_active_group ON customer_group_members (customer_id) WHERE del_flag = FALSE AND is_excluded = FALSE;
 CREATE INDEX idx_cgm_customer ON customer_group_members (customer_id);
 
 CREATE TABLE interactions (
