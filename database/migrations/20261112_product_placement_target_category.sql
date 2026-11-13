@@ -54,4 +54,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_product_placement_coffee_section_target
     ON product_placement_rules (coffee_id, section, (COALESCE(target_category_id, 0)))
     WHERE del_flag = false;
 
+-- The section CHECK generated earlier only lists the five original sections; allow CATEGORY.
+ALTER TABLE product_placement_rules DROP CONSTRAINT IF EXISTS product_placement_rules_section_check;
+ALTER TABLE product_placement_rules ADD CONSTRAINT product_placement_rules_section_check
+    CHECK (section IN ('FEATURED', 'BEST_SELLER', 'NEW_ARRIVAL', 'RECOMMENDED', 'HOME', 'CATEGORY'));
+
 COMMIT;
