@@ -18,6 +18,7 @@ import com.coffeeshop.crm.repository.CustomerPortalRepository;
 import com.coffeeshop.crm.security.CrmPrincipal;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import org.springframework.jdbc.core.JdbcTemplate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -35,6 +36,8 @@ public class FeedbackService {
     private final FeedbackResponseRepository responseRepository;
     private final CustomerPortalRepository customerPortalRepository;
     private final FeedbackSentimentAnalyzer sentimentAnalyzer;
+    private final JdbcTemplate jdbcTemplate;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
     @PersistenceContext private EntityManager entityManager;
 
     @Transactional(readOnly = true)
@@ -68,7 +71,9 @@ public class FeedbackService {
         feedback.setStatus("NEW");
         feedback.setEscalated(false);
         feedback.setApprovalStatus("NOT_REQUIRED");
-        return feedbackRepository.save(feedback);
+        feedback = feedbackRepository.save(feedback);
+        syncNegativeAlert(feedback);
+        return feedback;
     }
 
     @Transactional
@@ -86,7 +91,25 @@ public class FeedbackService {
         feedbackRequest.setCustomerId(customer.getId());
         feedbackRequest.setTopic(request.getTopic() == null ? null : request.getTopic().trim());
         feedbackRequest.setContent(request.getContent().trim());
-        return create(feedbackRequest);
+        if (request.getSatisfactionScore() != null) {
+            feedbackRequest.setSentiment(request.getSatisfactionScore() <= 2 ? "NEGATIVE"
+                    : request.getSatisfactionScore() == 3 ? "NEUTRAL" : "POSITIVE");
+        }
+        Feedback feedback = create(feedbackRequest);
+        if (request.getSatisfactionScore() != null || request.getRecommendationScore() != null
+                || (request.getSurveyChoices() != null && !request.getSurveyChoices().isEmpty())) {
+            try {
+                jdbcTemplate.update("""
+                        insert into customer_surveys (feedback_id, customer_id, question, answer, recommendation_score, satisfaction_score)
+                        values (?, ?, ?, ?, ?, ?)
+                        """, feedback.getId(), customer.getId(), "Mức độ hài lòng và lý do trải nghiệm",
+                        objectMapper.writeValueAsString(request.getSurveyChoices() == null ? List.of() : request.getSurveyChoices()),
+                        request.getRecommendationScore(), request.getSatisfactionScore());
+            } catch (Exception e) {
+                throw new IllegalStateException("Không lưu được câu trả lời khảo sát", e);
+            }
+        }
+        return feedback;
     }
 
     @Transactional
@@ -120,7 +143,9 @@ public class FeedbackService {
         }
         if (request.getResolution() != null) feedback.setResolution(request.getResolution());
         if (request.getSatisfaction() != null) feedback.setSatisfaction(request.getSatisfaction());
-        return feedbackRepository.save(feedback);
+        feedback = feedbackRepository.save(feedback);
+        syncNegativeAlert(feedback);
+        return feedback;
     }
 
     @Transactional
@@ -193,6 +218,64 @@ public class FeedbackService {
     public List<FeedbackResponse> getResponses(Long feedbackId) {
         find(feedbackId);
         return responseRepository.findAllByFeedbackIdAndDelFlagFalseOrderBySentAtAsc(feedbackId);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> satisfactionMetrics() {
+        return jdbcTemplate.queryForMap("""
+                select count(*) filter (where s.satisfaction_score is not null) as csat_responses,
+                       coalesce(round(100.0 * count(*) filter (where s.satisfaction_score >= 4)
+                           / nullif(count(*) filter (where s.satisfaction_score is not null), 0), 2), 0) as csat_percent,
+                       count(*) filter (where s.recommendation_score is not null) as nps_responses,
+                       coalesce(round(100.0 * (
+                           count(*) filter (where s.recommendation_score >= 9)::numeric
+                           - count(*) filter (where s.recommendation_score <= 6)::numeric)
+                           / nullif(count(*) filter (where s.recommendation_score is not null), 0), 2), 0) as nps
+                from customer_surveys s join feedbacks f on f.id = s.feedback_id
+                where f.del_flag = false
+                """);
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Map<String, Object> surveyForFeedback(Long feedbackId) {
+        find(feedbackId);
+        var rows = jdbcTemplate.queryForList("""
+                select s.question, s.answer, s.satisfaction_score as \"satisfactionScore\",
+                       s.recommendation_score as \"recommendationScore\", s.created_at as \"createdAt\"
+                from customer_surveys s where s.feedback_id = ?
+                """, feedbackId);
+        if (rows.isEmpty()) return java.util.Map.of();
+        var result = new java.util.LinkedHashMap<String, Object>(rows.get(0));
+        try { result.put("choices", objectMapper.readValue((String) result.remove("answer"), List.class)); }
+        catch (Exception e) { result.put("choices", List.of()); }
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public List<java.util.Map<String, Object>> managerNotifications(boolean unreadOnly) {
+        String sql = "select n.id, n.feedback_id as \"feedbackId\", f.customer_id as \"customerId\", c.full_name as \"customerName\", n.notification_type as \"type\", n.message, n.created_at as \"createdAt\", n.read_at as \"readAt\" from crm_manager_notifications n join feedbacks f on f.id=n.feedback_id join customers c on c.id=f.customer_id where n.del_flag = false and f.del_flag = false "
+                + (unreadOnly ? "and n.read_at is null " : "") + "order by n.created_at desc limit 200";
+        return jdbcTemplate.queryForList(sql);
+    }
+
+    @Transactional
+    public void markManagerNotificationRead(Long id) {
+        int updated = jdbcTemplate.update("update crm_manager_notifications set read_at = coalesce(read_at, current_timestamp) where id = ? and del_flag = false", id);
+        if (updated == 0) throw new CrmNotFoundException("Không tìm thấy thông báo ID " + id);
+    }
+
+    private void syncNegativeAlert(Feedback feedback) {
+        if (!"NEGATIVE".equals(feedback.getSentiment())) {
+            jdbcTemplate.update("update crm_manager_notifications set del_flag = true where feedback_id = ? and notification_type = 'NEGATIVE_FEEDBACK' and del_flag = false",
+                    feedback.getId());
+            return;
+        }
+        jdbcTemplate.update("""
+                insert into crm_manager_notifications (feedback_id, notification_type, message)
+                values (?, 'NEGATIVE_FEEDBACK', ?)
+                on conflict (feedback_id, notification_type) do update
+                    set message = excluded.message, del_flag = false, read_at = null
+                """, feedback.getId(), "Có phản hồi tiêu cực cần theo dõi (phản hồi #" + feedback.getId() + ")");
     }
 
     @Transactional

@@ -31,6 +31,10 @@ public class CustomerGroup extends BaseEntity {
     @Column(name = "group_type", nullable = false, length = 20)
     private String groupType; // 'AUTOMATIC' hoặc 'MANUAL'
 
+    /** Mã cho bốn nhóm phân loại tự động cố định; null với nhóm phục vụ nghiệp vụ khác. */
+    @Column(name = "classification_code", length = 30)
+    private String classificationCode;
+
     // Ánh xạ trường JSONB từ PostgreSQL
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "criteria_rule", columnDefinition = "jsonb")

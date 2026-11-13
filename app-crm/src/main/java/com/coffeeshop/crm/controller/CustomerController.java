@@ -17,6 +17,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.*;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,10 +40,12 @@ public class CustomerController {
                                     @RequestParam(defaultValue = "20") int size) {
         if (page < 0 || size < 1 || size > 100) throw new IllegalArgumentException("page phải >= 0, size phải từ 1 đến 100");
         Page<com.coffeeshop.crm.entity.Customer> customers = customer360Service.searchCustomers(q, PageRequest.of(page, size));
-        Map<Long, List<String>> groupsByCustomer = customer360Service.customerGroupNames(
-                customers.getContent().stream().map(com.coffeeshop.crm.entity.Customer::getId).toList());
+        List<Long> customerIds = customers.getContent().stream().map(com.coffeeshop.crm.entity.Customer::getId).toList();
+        Map<Long, List<String>> groupsByCustomer = customer360Service.customerGroupNames(customerIds);
+        var metricsByCustomer = customer360Service.customerListMetrics(customerIds);
         return ResponseEntity.ok(customers.map(customer -> CustomerResponse.from(
-                customer, groupsByCustomer.getOrDefault(customer.getId(), List.of()))));
+                customer, groupsByCustomer.getOrDefault(customer.getId(), List.of()),
+                metricsByCustomer.getOrDefault(customer.getId(), new com.coffeeshop.crm.repository.CustomerAnalyticsRepository.CustomerListMetrics(0, java.math.BigDecimal.ZERO, null)))));
     }
 
     @PostMapping
@@ -54,6 +59,18 @@ public class CustomerController {
     @Operation(summary = "Cập nhật hồ sơ khách hàng")
     public ResponseEntity<CustomerResponse> update(@PathVariable Long id, @Valid @RequestBody CustomerRequest request) {
         return ResponseEntity.ok(CustomerResponse.from(customer360Service.updateCustomer(id, request)));
+    }
+
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Nhập hồ sơ khách hàng từ CSV UTF-8")
+    public ResponseEntity<Map<String, Object>> importCsv(@RequestPart("file") MultipartFile file) {
+        return ResponseEntity.ok(customer360Service.importCustomers(file));
+    }
+
+    @GetMapping("/{id}/history")
+    @Operation(summary = "Lịch sử thay đổi hồ sơ khách hàng")
+    public ResponseEntity<List<Map<String, Object>>> history(@PathVariable Long id) {
+        return ResponseEntity.ok(customer360Service.customerHistory(id));
     }
 
     @GetMapping("/{id}/360")
