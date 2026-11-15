@@ -165,6 +165,7 @@ CREATE TABLE categories (
     id            BIGSERIAL PRIMARY KEY,
     name          VARCHAR(100) NOT NULL,
     description   TEXT,
+    product_type  VARCHAR(20) NOT NULL DEFAULT 'DRINK' CHECK (product_type IN ('DRINK', 'FOOD', 'ADD_ON')),
     display_order INT NOT NULL DEFAULT 0,
     created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
     created_at TIMESTAMP    NOT NULL DEFAULT now(),
@@ -174,6 +175,7 @@ CREATE TABLE categories (
     del_user   VARCHAR(50)
 );
 CREATE UNIQUE INDEX uq_categories_name ON categories (lower(name)) WHERE NOT del_flag;
+CREATE INDEX idx_categories_product_type ON categories (product_type, del_flag);
 
 CREATE TABLE coffees (
     id          BIGSERIAL PRIMARY KEY,

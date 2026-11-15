@@ -7,7 +7,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
-public record ProductBundleResponse(Long id, String name, String description, BigDecimal bundlePrice,
+public record ProductBundleResponse(Long id, String name, String description, Long imageId, String imageUrl, BigDecimal bundlePrice,
                                     BigDecimal standalonePrice, BigDecimal savingAmount,
                                     LocalDateTime startsAt, LocalDateTime endsAt, ProductBundleStatus status,
                                     boolean availableNow, List<ProductBundleItemResponse> items) {
@@ -22,7 +22,8 @@ public record ProductBundleResponse(Long id, String name, String description, Bi
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal savingAmount = standalonePrice.subtract(bundle.getBundlePrice());
         return new ProductBundleResponse(bundle.getId(), bundle.getName(), bundle.getDescription(),
-                bundle.getBundlePrice(), standalonePrice, savingAmount, bundle.getStartsAt(), bundle.getEndsAt(),
+                bundle.getImageId(), bundle.imageSrc(), bundle.getBundlePrice(), standalonePrice, savingAmount,
+                bundle.getStartsAt(), bundle.getEndsAt(),
                 bundle.getStatus(), bundle.isAvailableNow(now), items);
     }
 }

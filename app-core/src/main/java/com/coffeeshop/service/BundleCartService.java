@@ -14,6 +14,8 @@ import java.util.*;
 /** Database is shared with app-stats. Re-check bundle price, schedule and components at checkout. */
 @Service @RequiredArgsConstructor
 public class BundleCartService {
+    private static final long MIN_BUNDLE_COMPONENTS = 2L;
+    private static final long MAX_BUNDLE_COMPONENTS = 5L;
     private final JdbcTemplate jdbc;
     private final CoffeeService coffeeService;
     public record Component(long itemId, long coffeeId, String name, int quantity, boolean optional, BigDecimal price) {}
@@ -27,20 +29,28 @@ public class BundleCartService {
                 (rs,n)->new Bundle(rs.getLong(1),rs.getString(2),rs.getBigDecimal(3),List.of()),id);
         if(bs.isEmpty()) throw new BadRequestException("Combo đã ngừng bán hoặc hết hạn");
         Bundle b=bs.get(0);
-        List<Component> parts=jdbc.query("SELECT bi.id,bi.coffee_id,c.name,bi.quantity,bi.optional,c.price FROM product_bundle_items bi JOIN coffees c ON c.id=bi.coffee_id WHERE bi.bundle_id=? AND bi.del_flag=false AND c.del_flag=false AND c.status='AVAILABLE' ORDER BY bi.display_order,bi.id",
+        List<Component> parts=jdbc.query("SELECT bi.id,bi.coffee_id,c.name,bi.quantity,bi.optional,c.price FROM product_bundle_items bi JOIN coffees c ON c.id=bi.coffee_id JOIN categories cat ON cat.id=c.category_id WHERE bi.bundle_id=? AND bi.del_flag=false AND c.del_flag=false AND c.status='AVAILABLE' AND c.auto_sold_out=false AND cat.del_flag=false AND cat.product_type='DRINK' AND bi.optional=false AND EXISTS (SELECT 1 FROM recipes r WHERE r.coffee_id=c.id AND r.is_active=true AND r.del_flag=false) ORDER BY bi.display_order,bi.id",
                 (rs,n)->new Component(rs.getLong(1),rs.getLong(2),rs.getString(3),rs.getInt(4),rs.getBoolean(5),rs.getBigDecimal(6)),id);
         Long all=jdbc.queryForObject("SELECT count(*) FROM product_bundle_items WHERE bundle_id=? AND del_flag=false",Long.class,id);
-        if(parts.isEmpty() || all==null || all!=parts.size() || parts.stream().noneMatch(p->!p.optional()))
-            throw new BadRequestException("Thành phần combo không còn khả dụng");
+        if(all==null || all<MIN_BUNDLE_COMPONENTS || all>MAX_BUNDLE_COMPONENTS || parts.size()!=all.intValue()
+                || parts.stream().anyMatch(Component::optional)
+                || parts.stream().map(Component::coffeeId).distinct().count()!=parts.size())
+            throw new BadRequestException("Combo cần từ 2 đến 5 loại đồ uống khác nhau, bắt buộc và đang bán, còn hàng");
+        BigDecimal standalone=parts.stream()
+                .map(p->p.price().multiply(BigDecimal.valueOf(p.quantity())))
+                .reduce(BigDecimal.ZERO,BigDecimal::add);
+        if(b.basePrice()==null || b.basePrice().signum()<=0 || b.basePrice().compareTo(standalone)>0)
+            throw new BadRequestException("Giá combo không còn phù hợp với tổng giá lẻ các thành phần; vui lòng cập nhật combo");
         return new Bundle(b.id(),b.name(),b.basePrice(),parts);
     }
     private static String encode(List<Long> ids) { return String.join(",", ids.stream().map(String::valueOf).toList()); }
     private static List<Long> decode(String s) { return s==null || s.isBlank()?List.of():Arrays.stream(s.split(",")).map(Long::valueOf).toList(); }
     public Purchase resolve(long bundleId, int qty, List<Long> optionalIds) {
         if(qty<1 || qty>99) throw new BadRequestException("Số lượng combo không hợp lệ");
-        Bundle b=active(bundleId); Set<Long> chosen=new HashSet<>(optionalIds == null ? List.of():optionalIds);
-        if(chosen.size() != (optionalIds==null?0:optionalIds.size()) || b.components().stream().filter(p->p.optional()).map(Component::itemId).filter(chosen::contains).count()!=chosen.size())
-            throw new BadRequestException("Món tùy chọn không hợp lệ");
+        if (optionalIds != null && !optionalIds.isEmpty()) {
+            throw new BadRequestException("Combo cà phê không hỗ trợ món tùy chọn");
+        }
+        Bundle b=active(bundleId); List<Long> chosen=List.of();
         List<PricingService.InputLine> lines=new ArrayList<>(); boolean priced=false; BigDecimal extra=BigDecimal.ZERO;
         for(Component p:b.components()) {
             if(p.optional() && !chosen.contains(p.itemId())) continue;
