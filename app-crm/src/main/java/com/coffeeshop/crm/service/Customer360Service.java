@@ -18,6 +18,10 @@ import com.coffeeshop.crm.repository.InteractionRepository;
 import com.coffeeshop.crm.repository.FeedbackResponseRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.security.core.context.SecurityContextHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -32,6 +36,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.HashMap;
+import java.util.Locale;
 
 /** Nghiệp vụ hồ sơ khách hàng: CRUD, tổng hợp Customer 360 và gộp hồ sơ trùng. */
 @Service
@@ -44,6 +52,8 @@ public class Customer360Service {
     private final FeedbackRepository feedbackRepository;
     private final FeedbackResponseRepository feedbackResponseRepository;
     private final CustomerAnalyticsRepository analyticsRepository;
+    private final JdbcTemplate jdbcTemplate;
+    private final ObjectMapper objectMapper;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -65,6 +75,11 @@ public class Customer360Service {
                                 Collectors.toList())));
     }
 
+    @Transactional(readOnly = true)
+    public Map<Long, CustomerAnalyticsRepository.CustomerListMetrics> customerListMetrics(List<Long> customerIds) {
+        return analyticsRepository.customerListMetrics(customerIds);
+    }
+
     @Transactional
     public Customer createCustomer(CustomerRequest request) {
         if (customerRepository.existsByPhoneAndDelFlagFalse(request.getPhone())) {
@@ -83,6 +98,7 @@ public class Customer360Service {
     @Transactional
     public Customer updateCustomer(Long id, CustomerRequest request) {
         Customer customer = findCustomer(id);
+        Map<String, Object> before = profileValues(customer);
         String phone = request.getPhone().trim();
         if (!phone.equals(customer.getPhone()) && customerRepository.existsByPhoneAndDelFlagFalse(phone)) {
             throw new CrmConflictException("Số điện thoại đã thuộc một hồ sơ khách hàng khác");
@@ -93,7 +109,125 @@ public class Customer360Service {
         customer.setDateOfBirth(request.getDateOfBirth());
         customer.setGender(request.getGender());
         customer.setDescription(request.getDescription());
-        return customerRepository.save(customer);
+        Customer saved = customerRepository.save(customer);
+        Map<String, Object> after = profileValues(saved);
+        if (!before.equals(after)) {
+            try {
+                String actor = SecurityContextHolder.getContext().getAuthentication() == null
+                        ? "system" : SecurityContextHolder.getContext().getAuthentication().getName();
+                jdbcTemplate.update("""
+                        insert into customer_profile_history (customer_id, actor, before_values, after_values)
+                        values (?, ?, cast(? as jsonb), cast(? as jsonb))
+                        """, id, actor == null || actor.isBlank() ? "system" : actor,
+                        objectMapper.writeValueAsString(before), objectMapper.writeValueAsString(after));
+            } catch (Exception e) {
+                throw new IllegalStateException("Không lưu được lịch sử thay đổi hồ sơ", e);
+            }
+        }
+        return saved;
+    }
+
+    private Map<String, Object> profileValues(Customer c) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.put("fullName", c.getFullName()); values.put("phone", c.getPhone());
+        values.put("email", c.getEmail()); values.put("dateOfBirth", c.getDateOfBirth());
+        values.put("gender", c.getGender()); values.put("description", c.getDescription());
+        return values;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> customerHistory(Long customerId) {
+        findCustomer(customerId);
+        return jdbcTemplate.query("""
+                select id, actor, before_values::text as before_values, after_values::text as after_values, changed_at
+                from customer_profile_history where customer_id = ? order by changed_at desc, id desc
+                """, (rs, row) -> {
+            Map<String, Object> history = new LinkedHashMap<>();
+            history.put("id", rs.getLong("id")); history.put("actor", rs.getString("actor"));
+            try {
+                history.put("before", objectMapper.readValue(rs.getString("before_values"), Map.class));
+                history.put("after", objectMapper.readValue(rs.getString("after_values"), Map.class));
+            } catch (Exception e) { throw new IllegalStateException("Lịch sử hồ sơ không hợp lệ", e); }
+            history.put("changedAt", rs.getTimestamp("changed_at").toLocalDateTime());
+            return history;
+        }, customerId);
+    }
+
+    @Transactional
+    public Map<String, Object> importCustomers(MultipartFile file) {
+        if (file == null || file.isEmpty()) throw new IllegalArgumentException("Chọn tệp CSV không rỗng");
+        if (file.getSize() > 5 * 1024 * 1024) throw new IllegalArgumentException("Tệp CSV không được vượt quá 5 MB");
+        String raw;
+        try { raw = new String(file.getBytes(), StandardCharsets.UTF_8); }
+        catch (Exception e) { throw new IllegalArgumentException("Không đọc được tệp CSV UTF-8"); }
+        if (raw.startsWith("\uFEFF")) raw = raw.substring(1);
+        List<List<String>> rows = parseCsv(raw);
+        if (rows.size() < 2) throw new IllegalArgumentException("CSV cần có dòng tiêu đề và ít nhất một dòng dữ liệu");
+        Map<String, Integer> columns = new HashMap<>();
+        for (int i = 0; i < rows.get(0).size(); i++) columns.put(rows.get(0).get(i).trim().toLowerCase(Locale.ROOT), i);
+        int phoneCol = column(columns, "phone", "sđt", "so dien thoai", "số điện thoại");
+        int nameCol = column(columns, "fullname", "full_name", "ho ten", "họ tên");
+        if (phoneCol < 0 || nameCol < 0) throw new IllegalArgumentException("CSV bắt buộc có cột fullName và phone (hoặc Họ tên, Số điện thoại)");
+        int imported = 0; List<Map<String, Object>> errors = new java.util.ArrayList<>();
+        for (int rowIndex = 1; rowIndex < rows.size(); rowIndex++) {
+            List<String> row = rows.get(rowIndex);
+            if (row.stream().allMatch(String::isBlank)) continue;
+            try {
+                String phone = cell(row, phoneCol).trim();
+                String name = cell(row, nameCol).trim();
+                if (!phone.matches("0\\d{9,10}")) throw new IllegalArgumentException("Số điện thoại phải gồm 10 hoặc 11 số, bắt đầu bằng 0");
+                if (name.isBlank() || name.length() > 100) throw new IllegalArgumentException("Họ tên bắt buộc và tối đa 100 ký tự");
+                if (customerRepository.existsByPhoneAndDelFlagFalse(phone)) throw new IllegalArgumentException("Số điện thoại đã tồn tại");
+                Customer c = new Customer(); c.setFullName(name); c.setPhone(phone);
+                String email = optionalCell(row, column(columns, "email"));
+                if (email != null && (email.length() > 100 || !email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")))
+                    throw new IllegalArgumentException("Email sai định dạng hoặc dài quá 100 ký tự");
+                c.setEmail(email);
+                String dob = optionalCell(row, column(columns, "dateofbirth", "date_of_birth", "ngay sinh", "ngày sinh"));
+                if (dob != null) {
+                    LocalDate dateOfBirth = LocalDate.parse(dob);
+                    if (!dateOfBirth.isBefore(LocalDate.now())) throw new IllegalArgumentException("Ngày sinh phải trước ngày hiện tại");
+                    c.setDateOfBirth(dateOfBirth);
+                }
+                String gender = optionalCell(row, column(columns, "gender", "gioi tinh", "giới tính"));
+                if (gender != null && !List.of("MALE", "FEMALE", "OTHER").contains(gender.toUpperCase(Locale.ROOT)))
+                    throw new IllegalArgumentException("Giới tính nhận MALE, FEMALE hoặc OTHER");
+                c.setGender(gender == null ? null : gender.toUpperCase(Locale.ROOT));
+                String description = optionalCell(row, column(columns, "description", "mo ta", "mô tả"));
+                if (description != null && description.length() > 10000) throw new IllegalArgumentException("Mô tả tối đa 10.000 ký tự");
+                c.setDescription(description);
+                customerRepository.save(c); imported++;
+            } catch (Exception e) {
+                Map<String, Object> issue = new LinkedHashMap<>(); issue.put("row", rowIndex + 1);
+                issue.put("message", e.getMessage() == null ? "Dữ liệu không hợp lệ" : e.getMessage()); errors.add(issue);
+            }
+        }
+        Map<String, Object> result = new LinkedHashMap<>(); result.put("imported", imported);
+        result.put("failed", errors.size()); result.put("errors", errors); return result;
+    }
+
+    private int column(Map<String, Integer> columns, String... names) {
+        for (String name : names) { Integer i = columns.get(name.toLowerCase(Locale.ROOT)); if (i != null) return i; }
+        return -1;
+    }
+    private String cell(List<String> row, int index) { return index >= 0 && index < row.size() ? row.get(index) : ""; }
+    private String optionalCell(List<String> row, int index) { String v = cell(row, index).trim(); return v.isEmpty() ? null : v; }
+    private List<List<String>> parseCsv(String text) {
+        List<List<String>> rows = new java.util.ArrayList<>(); List<String> row = new java.util.ArrayList<>();
+        StringBuilder value = new StringBuilder(); boolean quoted = false;
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (quoted && ch == '"' && i + 1 < text.length() && text.charAt(i + 1) == '"') { value.append('"'); i++; }
+            else if (ch == '"') quoted = !quoted;
+            else if (!quoted && ch == ',') { row.add(value.toString()); value.setLength(0); }
+            else if (!quoted && (ch == '\n' || ch == '\r')) {
+                row.add(value.toString()); value.setLength(0); rows.add(row); row = new java.util.ArrayList<>();
+                if (ch == '\r' && i + 1 < text.length() && text.charAt(i + 1) == '\n') i++;
+            } else value.append(ch);
+        }
+        if (quoted) throw new IllegalArgumentException("CSV có dấu ngoặc kép chưa đóng");
+        if (value.length() > 0 || !row.isEmpty()) { row.add(value.toString()); rows.add(row); }
+        return rows;
     }
 
     @Transactional(readOnly = true)

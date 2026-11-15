@@ -47,6 +47,7 @@ public class InvoiceService {
     private final InvoiceRepository invoiceRepository;
     private final OrderRepository orderRepository;
     private final EinvoiceProvider provider;
+    private final InvoiceSettingService settingService;
     private final PlatformTransactionManager transactionManager;
 
     public record Buyer(String buyerName, String buyerCompany, String buyerTaxCode, String buyerAddress, String buyerEmail,
@@ -191,11 +192,12 @@ public class InvoiceService {
                 if (inv == null || !"PENDING".equals(inv.getStatus())) return false;
                 try {
                     Integer max = invoiceRepository.maxNumber(inv.getSeries());
-                    EinvoiceProvider.Issued r = provider.issue(inv, (max == null ? 0 : max) + 1);
+                    var seller = settingService.seller(LocalDate.now(DeliveryFeeService.SHOP_ZONE));
+                    EinvoiceProvider.Issued r = provider.issue(inv, (max == null ? 0 : max) + 1, seller.taxOfficeCode());
                     inv.setInvoiceNo(r.invoiceNo());
                     inv.setTaxAuthorityCode(r.taxAuthorityCode());
                     inv.setLookupCode(r.lookupCode());
-                    inv.setLookupUrl(provider.props().getLookupUrl());
+                    inv.setLookupUrl(seller.lookupUrl());
                     inv.setProviderInvoiceId(r.providerId());
                     inv.setStatus("ISSUED");
                     inv.setIssuedAt(LocalDateTime.now());
@@ -249,9 +251,10 @@ public class InvoiceService {
     }
 
     private Invoice base(Order order, String kind, Invoice related, String reason) {
-        var p = provider.props();
-        return Invoice.builder().order(order).kind(kind).related(related).status("PENDING").templateCode(p.templateCode())
-                .series(p.getSeries()).vatRate(p.getVatRate()).paymentMethod(paymentName(order)).reason(reason)
+        var s = settingService.seller(LocalDate.now(DeliveryFeeService.SHOP_ZONE));
+        return Invoice.builder().order(order).kind(kind).related(related).status("PENDING").templateCode(s.templateCode())
+                .series(s.series()).vatRate(s.vatRate()).paymentMethod(paymentName(order)).reason(reason)
+                .sellerName(s.name()).sellerTaxCode(s.taxCode()).sellerAddress(s.address())
                 .amountBeforeTax(BigDecimal.ZERO).vatAmount(BigDecimal.ZERO).totalAmount(BigDecimal.ZERO)
                 .createdBy(CurrentUser.username()).createdAt(LocalDateTime.now()).build();
     }
@@ -336,9 +339,13 @@ public class InvoiceService {
         return s == null || s.isBlank() ? null : s.trim();
     }
 
+    /** the seller copied on the invoice; invoices made before that was copied show the current settings */
     private InvoiceResponse response(Invoice i) {
-        var p = provider.props();
-        return InvoiceResponse.from(i, p.getSellerName(), p.getSellerTaxCode(), p.getSellerAddress());
+        if (i.getSellerTaxCode() != null) {
+            return InvoiceResponse.from(i, i.getSellerName(), i.getSellerTaxCode(), i.getSellerAddress());
+        }
+        var s = settingService.seller(LocalDate.now(DeliveryFeeService.SHOP_ZONE));
+        return InvoiceResponse.from(i, s.name(), s.taxCode(), s.address());
     }
 
     private Invoice get(Long id) {

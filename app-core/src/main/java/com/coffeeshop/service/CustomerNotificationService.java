@@ -54,7 +54,7 @@ public class CustomerNotificationService {
     public void onOrderStatus(Order order, OrderStatus to) {
         if (order.getChannel() == OrderChannel.COUNTER || order.getCustomer() == null) return;
         String code = switch (to) {
-            case PREPARING -> "ORDER_CONFIRMED";
+            case CONFIRMED -> "ORDER_CONFIRMED";
             case READY -> order.getOrderType() == OrderType.TAKE_AWAY ? "ORDER_READY" : null;
             case DELIVERING -> "ORDER_DELIVERING";
             case COMPLETED -> "ORDER_COMPLETED";
@@ -167,7 +167,8 @@ public class CustomerNotificationService {
             default -> "Da huy";
         });
         p.put("link", siteUrl + "/order/" + o.getOrderCode());
-        p.put("driver", ""); // quán tự giao: không có tài xế đối tác
+        var shipper = o.getShipment() == null ? null : o.getShipment().getShipper();
+        p.put("driver", shipper == null ? "" : shipper.getFullName() + " " + shipper.getPhone()); // người giao của quán
         p.put("reason", o.getCancelReason() == null ? "" : o.getCancelReason());
         return p;
     }

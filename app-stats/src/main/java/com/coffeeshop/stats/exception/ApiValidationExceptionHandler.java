@@ -2,6 +2,7 @@ package com.coffeeshop.stats.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -14,6 +15,13 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class ApiValidationExceptionHandler {
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleDataConflict(DataIntegrityViolationException exception) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("message", "Dữ liệu vừa được thay đổi hoặc cấu hình bị trùng. Hãy tải lại trang rồi thử lại.");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
 
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> handleResponseStatus(ResponseStatusException exception) {

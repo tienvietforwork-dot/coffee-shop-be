@@ -7,7 +7,8 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 
 /**
- * app.einvoice.*: seller and invoice settings registered with the tax office, and the provider account.
+ * app.einvoice.*: the provider account. seller-*, series and vat-rate are only the defaults of the first
+ * "Thiết lập hóa đơn" (table invoice_settings, edited on the Hóa đơn điện tử page) — the saved row wins.
  * {@code vatRate} null → hóa đơn bán hàng (mẫu 2, hộ kinh doanh / phương pháp trực tiếp); a rate → hóa đơn GTGT (mẫu 1).
  * {@code mode}: {@code simulated} (default) numbers and "issues" locally; {@code misa} calls MISA meInvoice
  * (its API documentation is given with the contract; the call is isolated in {@link EinvoiceProvider}).

@@ -1,9 +1,12 @@
 package com.coffeeshop.crm.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
+import java.util.List;
 
 @Data
 public class PublicFeedbackRequest {
@@ -20,4 +23,13 @@ public class PublicFeedbackRequest {
     @NotBlank
     @Size(max = 2000)
     private String content;
+
+    @Min(1) @Max(5)
+    private Integer satisfactionScore;
+
+    @Min(0) @Max(10)
+    private Integer recommendationScore;
+
+    @Size(max = 7)
+    private List<@Pattern(regexp = "QUALITY|SERVICE|WAIT_TIME|DELIVERY|PRICE|ATMOSPHERE|OTHER") String> surveyChoices;
 }

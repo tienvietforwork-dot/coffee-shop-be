@@ -26,6 +26,7 @@ import java.util.Set;
 public class RecipeService {
 
     private final RecipeRepository recipeRepository;
+    private final StockService stockService;
     private final MaterialRepository materialRepository;
     private final CoffeeService coffeeService;
 
@@ -55,6 +56,7 @@ public class RecipeService {
                 .build();
         apply(recipe, request);
         RecipeResponse saved = RecipeResponse.from(recipeRepository.save(recipe));
+        stockService.refreshAvailability();
         return saved;
     }
 
@@ -70,6 +72,7 @@ public class RecipeService {
         if (Boolean.TRUE.equals(request.activate()) && !recipe.isActive()) {
             return activate(recipeId);
         }
+        stockService.refreshAvailability();
         return RecipeResponse.from(recipe);
     }
 
@@ -78,6 +81,8 @@ public class RecipeService {
         Recipe recipe = get(recipeId);
         deactivateCurrent(recipe.getCoffee().getId());
         recipe.setActive(true);
+        recipeRepository.flush();
+        stockService.refreshAvailability();
         return RecipeResponse.from(recipe);
     }
 

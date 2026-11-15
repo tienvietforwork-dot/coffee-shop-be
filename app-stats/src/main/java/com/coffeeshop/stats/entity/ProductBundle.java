@@ -61,6 +61,10 @@ public class ProductBundle extends AuditableEntity {
     @OneToMany(mappedBy = "bundle", cascade = CascadeType.ALL)
     private List<ProductBundleItem> items = new ArrayList<>();
 
+    public String imageSrc() {
+        return imageId != null ? "/api/public/images/" + imageId : imageUrl;
+    }
+
     public boolean isAvailableNow(LocalDateTime now) {
         return status == ProductBundleStatus.ACTIVE
                 && (startsAt == null || !startsAt.isAfter(now))

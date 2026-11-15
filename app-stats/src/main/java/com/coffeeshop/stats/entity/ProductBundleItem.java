@@ -38,6 +38,9 @@ public class ProductBundleItem extends AuditableEntity {
     @Column(nullable = false)
     private boolean optional = false;
 
+    @Column(name = "choice_group", length = 80)
+    private String choiceGroup;
+
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder = 0;
 }

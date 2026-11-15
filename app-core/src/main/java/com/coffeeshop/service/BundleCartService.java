@@ -18,15 +18,22 @@ public class BundleCartService {
     private static final long MAX_BUNDLE_COMPONENTS = 5L;
     private final JdbcTemplate jdbc;
     private final CoffeeService coffeeService;
-    public record Component(long itemId, long coffeeId, String name, int quantity, boolean optional, BigDecimal price) {}
-    public record Bundle(long id, String name, BigDecimal basePrice, List<Component> components) {}
-    public record CartBundle(long id, long bundleId, String name, int quantity, List<Long> selected,
-                             BigDecimal unitPrice, BigDecimal total) {}
+    public record Component(long itemId, long coffeeId, String name, int quantity, boolean optional,
+                            String choiceGroup, BigDecimal price, boolean available, String categoryType) {}
+    public record Bundle(long id, String name, String imageUrl, BigDecimal basePrice, List<Component> components) {}
+    public record CartComponent(long coffeeId, String name, int quantity, boolean optional,
+                                String choiceGroup, BigDecimal unitPrice) {}
+    public record CartBundle(long id, long bundleId, String name, String imageUrl, int quantity, List<Long> selected,
+                             List<CartComponent> components, BigDecimal unitPrice, BigDecimal total) {}
     public record Purchase(Bundle bundle, int quantity, List<Long> selected, BigDecimal optionalUnitPrice, BigDecimal unitPrice,
                            List<PricingService.InputLine> lines) {}
     private Bundle active(long id) {
-        List<Bundle> bs = jdbc.query("SELECT id,name,bundle_price FROM product_bundles WHERE id=? AND del_flag=false AND status='ACTIVE' AND (starts_at IS NULL OR starts_at<=CURRENT_TIMESTAMP) AND (ends_at IS NULL OR ends_at>=CURRENT_TIMESTAMP)",
-                (rs,n)->new Bundle(rs.getLong(1),rs.getString(2),rs.getBigDecimal(3),List.of()),id);
+        List<Bundle> bs = jdbc.query("SELECT id,name,image_id,image_url,bundle_price FROM product_bundles WHERE id=? AND del_flag=false AND status='ACTIVE' AND (starts_at IS NULL OR starts_at<=CURRENT_TIMESTAMP) AND (ends_at IS NULL OR ends_at>CURRENT_TIMESTAMP)",
+                (rs,n)-> {
+                    Long imageId = rs.getObject(3, Long.class);
+                    String imageUrl = imageId != null ? "/api/public/images/" + imageId : rs.getString(4);
+                    return new Bundle(rs.getLong(1),rs.getString(2),imageUrl,rs.getBigDecimal(5),List.of());
+                },id);
         if(bs.isEmpty()) throw new BadRequestException("Combo đã ngừng bán hoặc hết hạn");
         Bundle b=bs.get(0);
         List<Component> parts=jdbc.query("SELECT bi.id,bi.coffee_id,c.name,bi.quantity,bi.optional,c.price FROM product_bundle_items bi JOIN coffees c ON c.id=bi.coffee_id JOIN categories cat ON cat.id=c.category_id WHERE bi.bundle_id=? AND bi.del_flag=false AND c.del_flag=false AND c.status='AVAILABLE' AND c.auto_sold_out=false AND cat.del_flag=false AND cat.product_type='DRINK' AND bi.optional=false AND EXISTS (SELECT 1 FROM recipes r WHERE r.coffee_id=c.id AND r.is_active=true AND r.del_flag=false) ORDER BY bi.display_order,bi.id",
@@ -53,17 +60,28 @@ public class BundleCartService {
         Bundle b=active(bundleId); List<Long> chosen=List.of();
         List<PricingService.InputLine> lines=new ArrayList<>(); boolean priced=false; BigDecimal extra=BigDecimal.ZERO;
         for(Component p:b.components()) {
-            if(p.optional() && !chosen.contains(p.itemId())) continue;
+            if(!p.available()) throw new BadRequestException(p.name()+" trong combo đã hết hàng");
             Coffee coffee=coffeeService.get(p.coffeeId());
+            String note="Combo: "+b.name()+(p.choiceGroup()==null||p.choiceGroup().isBlank()?"":" · "+p.choiceGroup());
             for(int n=0;n<p.quantity()*qty;n++) {
-                BigDecimal unit;
-                if(p.optional()) {unit=p.price();extra=extra.add(unit);}
-                else if(!priced) {unit=b.basePrice().multiply(BigDecimal.valueOf(qty));priced=true;}
-                else unit=BigDecimal.ZERO;
-                lines.add(new PricingService.InputLine(coffee,1,"Combo: "+b.name(),unit));
+                includedUnits.add(new IncludedUnit(coffee,note,p.price()));
             }
         }
-        return new Purchase(b,qty,optionalIds==null?List.of():optionalIds,extra.divide(BigDecimal.valueOf(qty)),b.basePrice().add(extra.divide(BigDecimal.valueOf(qty))),lines);
+
+        // Allocate the fixed combo price over its included component units. This keeps invoice/order lines
+        // readable and makes component revenue analytics reflect the actual bundle revenue distribution.
+        BigDecimal bundleTotal=b.basePrice().multiply(BigDecimal.valueOf(qty));
+        BigDecimal totalWeight=includedUnits.stream().map(IncludedUnit::weight).reduce(BigDecimal.ZERO,BigDecimal::add);
+        BigDecimal allocated=BigDecimal.ZERO;
+        for (int i=0;i<includedUnits.size();i++) {
+            IncludedUnit unit=includedUnits.get(i);
+            BigDecimal price=i==includedUnits.size()-1
+                    ? bundleTotal.subtract(allocated)
+                    : bundleTotal.multiply(unit.weight()).divide(totalWeight,2,java.math.RoundingMode.DOWN);
+            lines.add(new PricingService.InputLine(unit.coffee(),1,unit.note(),price));
+            allocated=allocated.add(price);
+        }
+        return new Purchase(b,qty,List.copyOf(chosen),BigDecimal.ZERO,b.basePrice(),lines);
     }
     @Transactional public void add(Cart cart,long bundleId,int quantity,List<Long> options) {
         resolve(bundleId,quantity,options);
@@ -76,7 +94,12 @@ public class BundleCartService {
         return jdbc.query("SELECT id,bundle_id,quantity,optional_item_ids FROM cart_bundle_lines WHERE cart_id=? ORDER BY id",(rs,n)->{
             long id=rs.getLong(1),bundleId=rs.getLong(2); int qty=rs.getInt(3);List<Long> opts=decode(rs.getString(4));
             Purchase p=resolve(bundleId,qty,opts);
-            return new CartBundle(id,bundleId,p.bundle().name(),qty,opts,p.unitPrice(),p.unitPrice().multiply(BigDecimal.valueOf(qty)));
+            List<CartComponent> selectedComponents=p.bundle().components().stream()
+                    .filter(c -> !c.optional() || p.selected().contains(c.itemId()))
+                    .map(c -> new CartComponent(c.coffeeId(),c.name(),c.quantity(),c.optional(),c.choiceGroup(),c.price()))
+                    .toList();
+            return new CartBundle(id,bundleId,p.bundle().name(),p.bundle().imageUrl(),qty,p.selected(),selectedComponents,
+                    p.unitPrice(),p.unitPrice().multiply(BigDecimal.valueOf(qty)));
         },cart.getId());
     }
     public List<Purchase> purchases(Cart cart) {
@@ -101,4 +124,5 @@ public class BundleCartService {
                     saleId,line.coffee().getId(),line.quantity(),line.fixedPrice().multiply(BigDecimal.valueOf(line.quantity())));
         }
     }
+    private record IncludedUnit(Coffee coffee,String note,BigDecimal weight) {}
 }

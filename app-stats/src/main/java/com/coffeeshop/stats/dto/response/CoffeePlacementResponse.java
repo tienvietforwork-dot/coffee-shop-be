@@ -3,6 +3,7 @@ package com.coffeeshop.stats.dto.response;
 import com.coffeeshop.stats.entity.Coffee;
 import com.coffeeshop.stats.entity.enums.CategoryProductType;
 import com.coffeeshop.stats.entity.enums.CoffeeStatus;
+import com.coffeeshop.stats.entity.enums.CategoryProductType;
 
 import java.math.BigDecimal;
 

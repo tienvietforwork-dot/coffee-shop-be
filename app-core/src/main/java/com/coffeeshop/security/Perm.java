@@ -28,6 +28,12 @@ public final class Perm {
     public static final String AUDIT_LOGS = "audit-logs";
     public static final String PAYMENT_RECONCILIATION = "payment-reconciliation";
     public static final String DELIVERY_ZONES = "delivery-zones";
+    /** người giao: chỉ thấy và cập nhật đơn giao được phân công cho mình */
+    public static final String MY_DELIVERIES = "my-deliveries";
+    /** lịch hẹn giao + thứ tự pha chế ưu tiên */
+    public static final String DELIVERY_SCHEDULE = "delivery-schedule";
+    /** gói giao cà phê định kỳ */
+    public static final String SUBSCRIPTIONS = "subscriptions";
     public static final String INVOICES = "invoices";
     public static final String NOTIFICATIONS = "notifications";
     public static final String TABLES = "tables";
@@ -66,6 +72,11 @@ public final class Perm {
     public static final String CAN_COLLECT = "hasAnyAuthority('orders','pos')";
     public static final String CAN_REFUND = "hasAuthority('orders.refund')";
     public static final String CAN_SHIPMENTS = "hasAuthority('shipments')";
+    public static final String CAN_MY_DELIVERIES = "hasAuthority('my-deliveries')";
+    /** đổi trạng thái / xem tuyến: quản lý giao hàng hoặc người giao (đơn của mình — kiểm tra trong ShipmentService) */
+    public static final String CAN_DELIVER = "hasAnyAuthority('shipments','my-deliveries')";
+    public static final String CAN_DELIVERY_SCHEDULE = "hasAnyAuthority('delivery-schedule','orders')";
+    public static final String CAN_SUBSCRIPTIONS = "hasAuthority('subscriptions')";
     public static final String CAN_INCIDENTS = "hasAnyAuthority('incidents','orders')";
     public static final String CAN_RESOLVE_INCIDENTS = "hasAuthority('incidents.resolve')";
     public static final String CAN_LOOKUP_CUSTOMER = "hasAnyAuthority('pos','orders','crm.customers')";

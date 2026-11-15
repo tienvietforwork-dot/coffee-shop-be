@@ -33,6 +33,9 @@ public class OrderItem extends BaseEntity {
     private Coffee coffee;
     @Column(nullable = false)
     private Integer quantity;
+    /** Giá niêm yết của món lúc đặt; null ở dòng cũ = như unitPrice. */
+    @Column(name = "list_price", precision = 12, scale = 2)
+    private BigDecimal listPrice;
     /** Price actually charged per unit (after any coffee-level promotion). */
     @Column(name = "unit_price", nullable = false, precision = 12, scale = 2)
     private BigDecimal unitPrice;

@@ -2,33 +2,52 @@ package com.coffeeshop.controller;
 
 import com.coffeeshop.dto.response.ShipmentResponse;
 import com.coffeeshop.security.Perm;
+import com.coffeeshop.service.AdminUnitService;
 import com.coffeeshop.service.DeliveryFeeService;
 import com.coffeeshop.service.ShipmentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
-/** Giao hàng (quán tự giao): cửa hàng & giờ mở cửa, option giá theo km, khung giờ; gợi ý địa chỉ; lịch sử đơn giao. */
+/** Giao hàng (quán tự giao): cửa hàng & giờ mở cửa, khu vực giao + phí ship theo tỉnh / phường; gợi ý địa chỉ; lịch sử đơn giao. */
 @RestController
 @RequiredArgsConstructor
 public class DeliveryController {
 
     private final DeliveryFeeService feeService;
     private final ShipmentService shipmentService;
+    private final AdminUnitService adminUnitService;
 
-    /** what the checkout needs: giờ mở cửa, miễn phí từ, đơn tối thiểu */
-    public record PublicConfig(LocalTime openTime, LocalTime closeTime, BigDecimal freeShipThreshold, BigDecimal minOrderAmount) {
+    /** what the checkout needs: địa chỉ quán, giờ mở cửa, miễn phí từ, đơn tối thiểu, các tỉnh giao được */
+    public record PublicConfig(String shopAddress, LocalTime openTime, LocalTime closeTime, BigDecimal freeShipThreshold,
+                               BigDecimal minOrderAmount, BigDecimal speedKmh, List<String> provinces) {
     }
 
     @GetMapping("/api/public/delivery-settings")
     public PublicConfig publicConfig() {
         var s = feeService.settings();
-        return new PublicConfig(s.openTime(), s.closeTime(), s.freeShipThreshold(), s.minOrderAmount());
+        return new PublicConfig(s.shopAddress(), s.openTime(), s.closeTime(), s.freeShipThreshold(), s.minOrderAmount(), s.speedKmh(),
+                feeService.areas().stream().filter(DeliveryFeeService.Area::active).map(DeliveryFeeService.Area::name).toList());
+    }
+
+    /** danh mục 34 tỉnh / thành → phường / xã (bảng vn_provinces, vn_wards) cho ô chọn địa chỉ; trình duyệt nhớ 1 ngày */
+    @GetMapping("/api/public/vn-units")
+    public ResponseEntity<List<AdminUnitService.Unit>> units() {
+        return ResponseEntity.ok().cacheControl(CacheControl.maxAge(1, TimeUnit.DAYS).cachePublic()).body(adminUnitService.units());
+    }
+
+    /** phường / xã đã chọn có giao được không, phí bao nhiêu (trước khi nhập số nhà) */
+    @GetMapping("/api/public/delivery-area")
+    public DeliveryFeeService.AreaCheck area(@RequestParam String ward, @RequestParam(required = false) String province) {
+        return feeService.checkArea(ward, province);
     }
 
     /** gợi ý địa chỉ khi gõ (ô địa chỉ ở trang đặt hàng, quầy, cấu hình) */
@@ -50,74 +69,32 @@ public class DeliveryController {
         return feeService.saveSettings(request);
     }
 
-    // ---- thời tiết xấu ----
+    // ---- khu vực giao: tỉnh + phí, phường phí riêng / không giao ----
 
-    @GetMapping("/api/delivery-weather")
+    @GetMapping("/api/delivery-areas")
     @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    public DeliveryFeeService.WeatherSettings weather() {
-        return feeService.weatherSettings();
+    public List<DeliveryFeeService.Area> areas() {
+        return feeService.areas();
     }
 
-    @PutMapping("/api/delivery-weather")
-    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    public DeliveryFeeService.WeatherSettings saveWeather(@RequestBody DeliveryFeeService.WeatherSettings request) {
-        return feeService.saveWeather(request);
-    }
-
-    // ---- option giá ----
-
-    @GetMapping("/api/delivery-fee-plans")
-    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    public List<DeliveryFeeService.Plan> plans() {
-        return feeService.plans();
-    }
-
-    @PostMapping("/api/delivery-fee-plans")
+    @PostMapping("/api/delivery-areas")
     @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
     @ResponseStatus(HttpStatus.CREATED)
-    public DeliveryFeeService.Plan createPlan(@RequestBody DeliveryFeeService.Plan request) {
-        return feeService.savePlan(null, request);
+    public DeliveryFeeService.Area createArea(@RequestBody DeliveryFeeService.Area request) {
+        return feeService.saveArea(null, request);
     }
 
-    @PutMapping("/api/delivery-fee-plans/{id}")
+    @PutMapping("/api/delivery-areas/{id}")
     @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    public DeliveryFeeService.Plan updatePlan(@PathVariable Long id, @RequestBody DeliveryFeeService.Plan request) {
-        return feeService.savePlan(id, request);
+    public DeliveryFeeService.Area updateArea(@PathVariable Long id, @RequestBody DeliveryFeeService.Area request) {
+        return feeService.saveArea(id, request);
     }
 
-    @DeleteMapping("/api/delivery-fee-plans/{id}")
-    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deletePlan(@PathVariable Long id) {
-        feeService.deletePlan(id);
-    }
-
-    // ---- khung giờ ----
-
-    @GetMapping("/api/delivery-time-slots")
-    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    public List<DeliveryFeeService.Slot> slots() {
-        return feeService.slots();
-    }
-
-    @PostMapping("/api/delivery-time-slots")
-    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    @ResponseStatus(HttpStatus.CREATED)
-    public DeliveryFeeService.Slot createSlot(@RequestBody DeliveryFeeService.Slot request) {
-        return feeService.saveSlot(null, request);
-    }
-
-    @PutMapping("/api/delivery-time-slots/{id}")
-    @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
-    public DeliveryFeeService.Slot updateSlot(@PathVariable Long id, @RequestBody DeliveryFeeService.Slot request) {
-        return feeService.saveSlot(id, request);
-    }
-
-    @DeleteMapping("/api/delivery-time-slots/{id}")
+    @DeleteMapping("/api/delivery-areas/{id}")
     @PreAuthorize(Perm.CAN_DELIVERY_ZONES)
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteSlot(@PathVariable Long id) {
-        feeService.deleteSlot(id);
+    public void deleteArea(@PathVariable Long id) {
+        feeService.deleteArea(id);
     }
 
     @GetMapping("/api/shipments/{id}/events")

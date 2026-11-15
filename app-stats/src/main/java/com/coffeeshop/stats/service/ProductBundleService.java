@@ -30,6 +30,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -48,7 +49,7 @@ public class ProductBundleService {
 
     @Transactional(readOnly = true)
     public List<ProductBundleResponse> findAll() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = ShopTime.now();
         return bundleRepository.findAllByOrderByStatusAscNameAsc()
                 .stream()
                 .map(bundle -> ProductBundleResponse.from(bundle, now))
@@ -142,7 +143,7 @@ public class ProductBundleService {
         ProductBundleItem item = findItem(bundle, itemId);
         item.softDelete();
         bundle.getItems().remove(item);
-        return ProductBundleResponse.from(bundle, LocalDateTime.now());
+        return ProductBundleResponse.from(bundle, ShopTime.now());
     }
 
     @Transactional
@@ -220,10 +221,7 @@ public class ProductBundleService {
         int estimatedSoldQuantity = ((Number) totals[0]).intValue();
         BigDecimal realRevenue = (BigDecimal) totals[1];
 
-        BigDecimal standalonePrice = items.stream()
-                .filter(item -> !item.isOptional())
-                .map(item -> item.getCoffee().getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal standalonePrice = standalonePrice(bundle);
         BigDecimal estimatedRevenue = realRevenue;
         BigDecimal estimatedSavingGiven = standalonePrice.subtract(bundle.getBundlePrice())
                 .multiply(BigDecimal.valueOf(estimatedSoldQuantity));
@@ -232,7 +230,7 @@ public class ProductBundleService {
                 .map(item -> {
                     SalesSummary summary = sales.getOrDefault(item.getCoffee().getId(), SalesSummary.ZERO);
                     return new ProductBundleAnalyticsResponse.ComponentSales(item.getCoffee().getId(),
-                            item.getCoffee().getName(), item.getQuantity(), item.isOptional(),
+                            item.getCoffee().getName(), item.getQuantity(), item.isOptional(), item.getChoiceGroup(),
                             summary.quantity(), summary.revenue());
                 })
                 .toList();
@@ -257,7 +255,7 @@ public class ProductBundleService {
         }
     }
 
-    /** Optional products are excluded from the fixed bundle price and savings. */
+    /** The fixed combo price includes both coffee components. */
     private void validateMandatoryPrice(ProductBundle bundle) {
         BigDecimal regularPrice = standalonePrice(bundle);
         if (bundle.getBundlePrice().compareTo(regularPrice) > 0) {
@@ -355,9 +353,26 @@ public class ProductBundleService {
     }
 
     private void applyItem(ProductBundleItem item, ProductBundleItemRequest request) {
-        item.setCoffee(getCoffee(request.coffeeId()));
+        Coffee coffee = getCoffee(request.coffeeId());
+        if (request.quantity() == null || request.quantity() < 1 || request.quantity() > 99) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số lượng mỗi thành phần phải từ 1 đến 99");
+        }
+        if (!isSellable(coffee)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    coffee.getName() + " hiện không còn bán được, không thể thêm vào combo");
+        }
+        if (!isDrink(coffee)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    coffee.getName() + " không phải cà phê/đồ uống; combo chỉ được gồm các món uống");
+        }
+        if (Boolean.TRUE.equals(request.optional()) || blankToNull(request.choiceGroup()) != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Combo chỉ gồm đúng 2 loại cà phê bắt buộc, không hỗ trợ món tùy chọn hoặc món thêm");
+        }
+        item.setCoffee(coffee);
         item.setQuantity(request.quantity());
-        item.setOptional(request.optional() != null && request.optional());
+        item.setOptional(false);
+        item.setChoiceGroup(null);
         item.setDisplayOrder(request.displayOrder() == null ? 0 : request.displayOrder());
     }
 

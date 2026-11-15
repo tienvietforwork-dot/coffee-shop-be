@@ -21,4 +21,5 @@ public class PromotionRequest {
     private LocalDateTime endDate;
     private PromotionStatus status;
     private List<PromotionItemRequest> items;
+
 }

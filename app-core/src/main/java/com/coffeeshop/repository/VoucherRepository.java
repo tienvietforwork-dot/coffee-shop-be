@@ -11,10 +11,10 @@ import java.util.List;
 import java.util.Optional;
 
 public interface VoucherRepository extends JpaRepository<Voucher, Long> {
-    List<Voucher> findByStatusOrderByNameAsc(VoucherTypeStatus status);
+    List<Voucher> findByStatusAndDelFlagFalseOrderByNameAsc(VoucherTypeStatus status);
 
     /** Locks the voucher row so two staff cannot take its last free slot at the same time. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select v from Voucher v where v.id = :id")
+    @Query("select v from Voucher v where v.id = :id and v.delFlag = false")
     Optional<Voucher> lockById(Long id);
 }

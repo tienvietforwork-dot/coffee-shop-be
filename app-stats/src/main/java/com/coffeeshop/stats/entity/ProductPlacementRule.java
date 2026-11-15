@@ -34,6 +34,10 @@ public class ProductPlacementRule extends AuditableEntity {
     @JoinColumn(name = "coffee_id", nullable = false)
     private Coffee coffee;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "target_category_id")
+    private Category targetCategory;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private ProductPlacementSection section;

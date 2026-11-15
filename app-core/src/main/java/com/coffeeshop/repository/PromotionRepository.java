@@ -11,7 +11,8 @@ import java.util.List;
 public interface PromotionRepository extends JpaRepository<Promotion, Long> {
     @Query("""
             select p from Promotion p
-            where p.status = com.coffeeshop.entity.enums.PromotionStatus.ACTIVE
+            where p.delFlag = false
+              and p.status = com.coffeeshop.entity.enums.PromotionStatus.ACTIVE
               and p.applyScope = com.coffeeshop.entity.enums.PromotionScope.ORDER
               and p.startDate <= :now and p.endDate >= :now
             """)
@@ -19,7 +20,8 @@ public interface PromotionRepository extends JpaRepository<Promotion, Long> {
 
     @Query("""
             select i from PromotionItem i join fetch i.promotion p
-            where p.status = com.coffeeshop.entity.enums.PromotionStatus.ACTIVE
+            where p.delFlag = false
+              and p.status = com.coffeeshop.entity.enums.PromotionStatus.ACTIVE
               and p.applyScope = com.coffeeshop.entity.enums.PromotionScope.COFFEE
               and p.startDate <= :now and p.endDate >= :now
             """)

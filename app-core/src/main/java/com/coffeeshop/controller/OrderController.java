@@ -28,6 +28,7 @@ public class OrderController {
 
     private final OrderService orderService;
     private final IncidentService incidentService;
+    private final com.coffeeshop.service.OnlinePaymentService onlinePaymentService;
 
     @GetMapping("/api/orders")
     @PreAuthorize(Perm.CAN_READ_ORDERS)
@@ -94,10 +95,14 @@ public class OrderController {
         return orderService.markReady(id);
     }
 
+    /** {@code shipperId}: người giao (bỏ trống = người đã phân công, chưa có thì người bấm) */
+    public record DispatchRequest(Long shipperId) {
+    }
+
     @PostMapping("/api/orders/{id}/dispatch")
     @PreAuthorize("hasAnyAuthority('orders','shipments')")
-    public OrderResponse dispatch(@PathVariable Long id) {
-        return orderService.dispatch(id);
+    public OrderResponse dispatch(@PathVariable Long id, @RequestBody(required = false) DispatchRequest request) {
+        return orderService.dispatch(id, request == null ? null : request.shipperId());
     }
 
     @PostMapping("/api/orders/{id}/complete")
@@ -116,6 +121,30 @@ public class OrderController {
     @PreAuthorize(Perm.CAN_REFUND)
     public PaymentResponse refund(@PathVariable Long paymentId, @Valid @RequestBody RefundRequest request) {
         return orderService.refund(paymentId, request.amount());
+    }
+
+    /** khoản đã trả online mà đơn bị từ chối / hủy, cổng không hoàn được — chờ nhân viên chuyển khoản trả khách */
+    @GetMapping("/api/payments/refund-pending")
+    @PreAuthorize(Perm.CAN_REFUND)
+    public List<PaymentResponse> refundPending() {
+        return onlinePaymentService.refundPending().stream().map(PaymentResponse::from).toList();
+    }
+
+    public record ManualRefundRequest(String reference, String note) {
+    }
+
+    /** đã chuyển khoản trả khách: ghi mã giao dịch, khoản thành "đã hoàn" */
+    @PostMapping("/api/payments/{paymentId}/manual-refund")
+    @PreAuthorize(Perm.CAN_REFUND)
+    public PaymentResponse manualRefund(@PathVariable Long paymentId, @RequestBody ManualRefundRequest request) {
+        return PaymentResponse.from(onlinePaymentService.markRefundedManually(paymentId, request.reference(), request.note()));
+    }
+
+    /** thử hoàn lại qua VNPAY */
+    @PostMapping("/api/payments/{paymentId}/retry-refund")
+    @PreAuthorize(Perm.CAN_REFUND)
+    public PaymentResponse retryRefund(@PathVariable Long paymentId) {
+        return PaymentResponse.from(onlinePaymentService.retryRefund(paymentId));
     }
 
     @GetMapping("/api/orders/{id}/incidents")

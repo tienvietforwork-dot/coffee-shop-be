@@ -59,6 +59,13 @@ public class Order extends BaseEntity {
     @Builder.Default
     @Column(name = "discount_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal discountAmount = BigDecimal.ZERO;
+    /** Voucher đã dùng trên đơn (giữ lại cả khi đơn hủy và voucher được trả lại). */
+    @Column(name = "voucher_code", length = 30)
+    private String voucherCode;
+    /** Phần voucher giảm; {@link #discountAmount} là tổng giảm (đợt giảm giá theo đơn + voucher). */
+    @Builder.Default
+    @Column(name = "voucher_discount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal voucherDiscount = BigDecimal.ZERO;
     @Builder.Default
     @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal totalAmount = BigDecimal.ZERO;
@@ -68,6 +75,13 @@ public class Order extends BaseEntity {
     private String cancelReason;
     @Column(name = "pickup_time")
     private LocalDateTime pickupTime;
+    /** đã trừ nguyên liệu (lúc bắt đầu pha) — hủy / từ chối sau đó thì cộng lại */
+    @Builder.Default
+    @Column(name = "stock_deducted", nullable = false)
+    private boolean stockDeducted = false;
+    /** đơn tự tạo từ gói giao định kỳ (delivery_subscriptions.id) */
+    @Column(name = "subscription_id")
+    private Long subscriptionId;
     @Builder.Default
     @Column(name = "ordered_at", nullable = false)
     private LocalDateTime orderedAt = LocalDateTime.now();

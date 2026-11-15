@@ -38,6 +38,9 @@ public class DistanceGateway {
     private final ObjectMapper json;
     private final RestClient http = RestClient.create();
     private final Map<String, Point> geocodeCache = new ConcurrentHashMap<>();
+    /** địa chỉ bản đồ không biết → lúc tra (chỉ khi bản đồ trả lời "không có", không tính lỗi mạng) */
+    private final Map<String, Long> geocodeMisses = new ConcurrentHashMap<>();
+    private static final long MISS_TTL_MS = 60 * 60_000;
     private final Map<String, Route> routeCache = new ConcurrentHashMap<>();
     private final Map<String, List<String>> suggestCache = new ConcurrentHashMap<>();
 
@@ -50,12 +53,20 @@ public class DistanceGateway {
         String key = norm(address);
         Point cached = geocodeCache.get(key);
         if (cached != null) return cached;
+        Long missedAt = geocodeMisses.get(key); // địa chỉ khách gõ tuỳ ý: không hỏi lại bản đồ mỗi lần báo giá / vẽ tuyến
+        if (missedAt != null && System.currentTimeMillis() - missedAt < MISS_TTL_MS) {
+            throw new IllegalStateException("Không tìm thấy địa chỉ trên bản đồ — chọn địa chỉ trong danh sách gợi ý");
+        }
         Point p = switch (provider()) {
             case "simulated" -> simulatedPoint(address, near);
             case "google" -> googleGeocode(address);
             case "goong" -> goongGeocode(address);
             default -> osmGeocode(address, near);
         };
+        if (p == null) {
+            if (geocodeMisses.size() > CACHE_MAX) geocodeMisses.clear();
+            geocodeMisses.put(key, System.currentTimeMillis());
+        }
         if (p == null) throw new IllegalStateException("Không tìm thấy địa chỉ trên bản đồ — chọn địa chỉ trong danh sách gợi ý");
         if (geocodeCache.size() > CACHE_MAX) geocodeCache.clear();
         geocodeCache.put(key, p);
@@ -149,6 +160,22 @@ public class DistanceGateway {
     private final Map<String, java.util.Optional<Area>> areaCache = new ConcurrentHashMap<>();
 
     /** ranh giới hành chính của "Phường …, Tỉnh …" từ Nominatim (null khi OSM chưa có) */
+    /**
+     * Khoảng cách đường chim bay (km) từ {@code from} tới điểm gần nhất của phường (0 khi {@code from} nằm trong phường),
+     * hoặc null khi không có ranh giới. Đường đi thật luôn dài hơn, nên vượt ngưỡng ở đây = chắc chắn ngoài phạm vi.
+     */
+    public Double nearestKm(String ward, String province, Point from) {
+        if (ward == null || ward.isBlank()) return null;
+        Area a = areaOf(ward + (province == null || province.isBlank() ? "" : ", " + province));
+        if (a == null) return null;
+        if (a.contains(from.lat(), from.lng())) return 0.0;
+        double best = Double.MAX_VALUE;
+        for (double[][] ring : a.rings()) {
+            for (double[] p : ring) best = Math.min(best, haversineKm(from, new Point(p[1], p[0])));
+        }
+        return best;
+    }
+
     private Area areaOf(String area) {
         return areaCache.computeIfAbsent(norm(area), k -> {
             try {
@@ -356,6 +383,34 @@ public class DistanceGateway {
         return null;
     }
 
+    /** đường đi xe qua lần lượt các điểm: đường vẽ trên bản đồ + tổng km / phút */
+    public record Path(List<Point> line, double km, int minutes) {
+    }
+
+    /**
+     * Tuyến đường thật qua các điểm theo thứ tự (OSRM, không cần key). Lỗi mạng / quá nhiều điểm: null — khi đó bản đồ
+     * nối thẳng các điểm.
+     */
+    public Path path(List<Point> stops) {
+        if (stops.size() < 2 || stops.size() > 25) return null;
+        try {
+            StringBuilder coords = new StringBuilder();
+            for (Point p : stops) {
+                if (!coords.isEmpty()) coords.append(';');
+                coords.append(String.format(Locale.ROOT, "%.6f,%.6f", p.lng(), p.lat()));
+            }
+            URI uri = URI.create(props.getOsrmUrl() + "/route/v1/driving/" + coords + "?overview=full&geometries=geojson");
+            JsonNode route = getJson(uri).path("routes").path(0);
+            if (route.isMissingNode()) return null;
+            List<Point> line = new ArrayList<>();
+            for (JsonNode c : route.path("geometry").path("coordinates")) line.add(new Point(c.get(1).asDouble(), c.get(0).asDouble()));
+            return new Path(line, route.path("distance").asDouble() / 1000.0, (int) Math.round(route.path("duration").asDouble() / 60.0));
+        } catch (RuntimeException e) {
+            log.warn("OSRM path failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private Route osrmRoute(Point from, Point to) {
         URI uri = URI.create(String.format(Locale.ROOT, "%s/route/v1/driving/%.6f,%.6f;%.6f,%.6f?overview=false",
                 props.getOsrmUrl(), from.lng(), from.lat(), to.lng(), to.lat()));
@@ -381,7 +436,6 @@ public class DistanceGateway {
         out.add(String.join(", ", segs));
         // the old quận / phường names are gone since the 2025 merger: street + city alone usually still matches
         if (segs.size() > 2) out.add(segs.get(0) + ", " + segs.get(segs.size() - 1));
-        for (int i = 1; i <= segs.size() - 2; i++) out.add(String.join(", ", segs.subList(i, segs.size())));
         return new ArrayList<>(out);
     }
 

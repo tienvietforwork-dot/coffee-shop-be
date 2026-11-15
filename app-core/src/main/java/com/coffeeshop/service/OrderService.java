@@ -24,18 +24,21 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
  * Order lifecycle (BPMN-01 / BPMN-02):
  * <pre>
- * PENDING ─confirm→ PREPARING ─ready→ READY ─complete→ COMPLETED
- *    │                                  └─dispatch→ DELIVERING ─complete→ COMPLETED
+ * PENDING ─confirm→ CONFIRMED ─prepare→ PREPARING ─ready→ READY ─complete→ COMPLETED
+ *    │                                                         └─dispatch→ DELIVERING ─complete→ COMPLETED
  *    └─reject→ REJECTED / cancel→ CANCELLED
  * </pre>
- * Confirming starts the drinks at once and deducts the materials; counter orders start PREPARING.
- * CONFIRMED is only left on older orders (prepare / cancel still accept it). Loyalty points are added on COMPLETED.
+ * CONFIRMED = chờ pha chế: đơn hẹn giờ nằm ở cột "Hẹn giao" của bảng điều phối cho tới giờ phải bắt đầu pha
+ * (giờ hẹn − pha − chạy xe), rồi sang "Chờ pha chế". Bắt đầu pha mới trừ nguyên liệu. Counter orders start PREPARING;
+ * subscription orders are confirmed when created. Loyalty points are added on COMPLETED.
  */
 @Service
 @RequiredArgsConstructor
@@ -66,6 +69,10 @@ public class OrderService {
     private final InvoiceService invoiceService;
     private final CustomerNotificationService customerNotificationService;
     private final CashShiftService cashShiftService;
+    private final RecipeRepository recipeRepository;
+    private final StockService stockService;
+    private final DeliverySubscriptionRepository subscriptionRepository;
+    private final DeliveryScheduleService deliveryScheduleService;
 
     /** Loyalty: 1 point per this many VND paid. */
     @Value("${app.loyalty.vnd-per-point:10000}")
@@ -77,7 +84,10 @@ public class OrderService {
     public List<OrderResponse> search(OrderStatus status, OrderChannel channel, LocalDate from, LocalDate to) {
         LocalDateTime start = (from == null ? LocalDate.now().minusDays(30) : from).atStartOfDay();
         LocalDateTime end = (to == null ? LocalDate.now() : to).plusDays(1).atStartOfDay();
-        return orderRepository.search(status, channel, start, end).stream().map(OrderResponse::from).toList();
+        List<Order> orders = orderRepository.search(status, channel, start, end);
+        Map<Long, LocalDateTime> brewAt = deliveryScheduleService.brewStartTimes(orders.stream()
+                .filter(o -> ACTIVE.contains(o.getStatus())).toList());
+        return orders.stream().map(o -> OrderResponse.from(o).withBrewStartAt(brewAt.get(o.getId()))).toList();
     }
 
     @Transactional(readOnly = true)
@@ -107,25 +117,37 @@ public class OrderService {
         java.util.List<PricingService.InputLine> lines = new java.util.ArrayList<>(cart.getItems().stream()
                 .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote())).toList());
         lines.addAll(bundleCartService.lines(cart));
-        var rule = feeRule(orderType, deliveryAddress, deliveryTime);
+        var rule = feeRule(orderType, deliveryAddress, phoneOfCurrentCustomer(customerPhone));
         return withDelivery(pricingService.quote(lines, orderType, phoneOfCurrentCustomer(customerPhone), voucherCode,
-                LocalDateTime.now(), rule == null ? null : rule.fee()).toResponse(), rule);
+                LocalDateTime.now(), rule == null ? null : rule.fee()).toResponse(), rule).withPrepMinutes(prepMinutes(lines));
     }
 
     @Transactional(readOnly = true)
     public PriceQuoteResponse preview(PricePreviewRequest request) {
-        var rule = feeRule(request.orderType(), request.deliveryAddress(), request.deliveryTime());
-        return withDelivery(pricingService.quote(toLines(request.items()), request.orderType(), request.customerPhone(),
-                request.voucherCode(), LocalDateTime.now(), rule == null ? null : rule.fee()).toResponse(), rule);
+        var rule = feeRule(request.orderType(), request.deliveryAddress(), request.customerPhone());
+        var lines = toLines(request.items());
+        return withDelivery(pricingService.quote(lines, request.orderType(), request.customerPhone(),
+                request.voucherCode(), LocalDateTime.now(), rule == null ? null : rule.fee()).toResponse(), rule).withPrepMinutes(prepMinutes(lines));
     }
 
-    /** phí ship theo km từ quán tới địa chỉ giao (chưa có địa chỉ: null) */
-    private DeliveryFeeService.Rule feeRule(OrderType type, String address, LocalDateTime at) {
-        return type == OrderType.DELIVERY ? deliveryFeeService.rule(address, at) : null;
+    /** tổng "Thời gian pha" ở công thức đang dùng của từng món × số lượng; món chưa nhập thời gian pha tính 0 */
+    private int prepMinutes(List<PricingService.InputLine> lines) {
+        Map<Long, Integer> minutes = new HashMap<>();
+        recipeRepository.findAllActive().forEach(r -> {
+            if (r.getBrewTimeMin() != null) minutes.putIfAbsent(r.getCoffee().getId(), r.getBrewTimeMin());
+        });
+        return lines.stream().mapToInt(l -> minutes.getOrDefault(l.coffee().getId(), 0) * l.quantity()).sum();
+    }
+
+    /** phí ship theo khu vực của địa chỉ giao; khách (theo SĐT) thuộc nhóm VIP / thân thiết thì miễn phí. Chưa có địa chỉ: null */
+    private DeliveryFeeService.Rule feeRule(OrderType type, String address, String phone) {
+        if (type != OrderType.DELIVERY) return null;
+        Long customerId = phone == null || phone.isBlank() ? null : customerService.idByPhone(phone);
+        return deliveryFeeService.rule(address, customerId);
     }
 
     private static PriceQuoteResponse withDelivery(PriceQuoteResponse q, DeliveryFeeService.Rule rule) {
-        return rule == null ? q : q.withDelivery(rule.distanceKm(), rule.tierLabel(), rule.planName(), rule.weather(), rule.weatherSurcharge());
+        return rule == null ? q : q.withDelivery(rule.distanceKm(), rule.zone(), rule.note());
     }
 
     // ---- creation --------------------------------------------------------
@@ -161,7 +183,29 @@ public class OrderService {
                 request.customerPhone(), request.customerName(), null, request.delivery(), null,
                 request.paymentMethod(), Boolean.TRUE.equals(request.paidNow()), request.voucherCode(), request.note());
         Order order = place(draft);
+        stockService.deduct(order);
         moveTo(order, OrderStatus.PREPARING, null);
+        return publish(order);
+    }
+
+    /**
+     * Đơn tự tạo cho một lần giao của gói định kỳ: giao tới địa chỉ của gói lúc {@code deliverAt}, khách trả tiền mặt khi
+     * nhận. Giá / khuyến mãi / phí ship tính lúc tạo đơn. Đơn ở trạng thái chờ xác nhận như đơn online.
+     * Giao dịch riêng: lỗi (hết món, ngoài khu vực…) không làm hỏng việc ghi lỗi vào gói.
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public OrderResponse placeForSubscription(Long subscriptionId, LocalDateTime deliverAt) {
+        DeliverySubscription sub = subscriptionRepository.findById(subscriptionId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy gói: " + subscriptionId));
+        List<PricingService.InputLine> lines = sub.getItems().stream()
+                .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote())).toList();
+        Draft draft = new Draft(lines, OrderType.DELIVERY, OrderChannel.ONLINE, null, null, sub.getCustomer().getPhone(),
+                sub.getCustomer().getFullName(), sub.getAddress().getId(), null, deliverAt, PaymentMethod.CASH, false, null,
+                "Gói định kỳ " + sub.getCode() + (sub.getNote() == null || sub.getNote().isBlank() ? "" : " · " + sub.getNote()));
+        Order order = place(draft);
+        order.setSubscriptionId(sub.getId());
+        // khách đã đăng ký gói: không cần xác nhận lại, vào thẳng "Hẹn giao"
+        moveTo(order, OrderStatus.CONFIRMED, "Gói định kỳ " + sub.getCode() + " · hẹn giao " + deliverAt);
         return publish(order);
     }
 
@@ -184,8 +228,8 @@ public class OrderService {
                 : customerService.findOrCreate(d.customerPhone(), d.customerName());
         CustomerAddress address = d.type() == OrderType.DELIVERY
                 ? customerService.resolveAddress(customer, d.addressId(), d.delivery()) : null;
-        // phí ship: km from the shop to the address the order really goes to
-        DeliveryFeeService.Rule rule = address == null ? null : deliveryFeeService.rule(address.getAddress(), d.pickupTime());
+        // phí ship theo khu vực (tỉnh / phường) của địa chỉ thật sự giao tới
+        DeliveryFeeService.Rule rule = address == null ? null : deliveryFeeService.rule(address.getAddress(), customer.getId());
 
         var quote = pricingService.quote(d.lines(), d.type(), phoneOfCurrentCustomer(d.customerPhone()), d.voucherCode(), now,
                 rule == null ? null : rule.fee());
@@ -204,6 +248,8 @@ public class OrderService {
                 .channel(d.channel())
                 .subtotal(quote.subtotal())
                 .discountAmount(quote.discountAmount())
+                .voucherCode(quote.voucher() == null ? null : quote.voucher().getCode())
+                .voucherDiscount(quote.voucherDiscount())
                 .totalAmount(quote.total())
                 .note(d.note())
                 .pickupTime(d.pickupTime())
@@ -211,6 +257,7 @@ public class OrderService {
                 .build();
         for (var line : quote.lines()) {
             order.getItems().add(OrderItem.builder().order(order).coffee(line.coffee()).quantity(line.quantity())
+                    .listPrice(line.coffee().getPrice().max(line.unitPrice()))
                     .unitPrice(line.unitPrice()).lineTotal(line.lineTotal()).note(line.note()).build());
             if (line.promoItem() != null) {
                 line.promoItem().setSoldQuantity(line.promoItem().getSoldQuantity() + line.quantity());
@@ -256,7 +303,7 @@ public class OrderService {
         if (order.getPayments().stream().anyMatch(p -> p.getStatus() == PaymentStatus.PENDING && OnlinePaymentService.isOnline(order, p))) {
             throw new BadRequestException("Khách chưa thanh toán online — chờ VNPAY xác nhận");
         }
-        moveTo(order, OrderStatus.PREPARING, null);
+        moveTo(order, OrderStatus.CONFIRMED, order.getPickupTime() == null ? null : "Hẹn giao " + order.getPickupTime());
         return publish(order);
     }
 
@@ -299,11 +346,12 @@ public class OrderService {
         publish(order);
     }
 
-    /** Older orders left CONFIRMED before confirming started the drinks. */
+    /** Chờ pha chế → đang pha: trừ nguyên liệu lúc này. */
     @Transactional
     public OrderResponse startPreparing(Long id) {
         Order order = get(id);
         expect(order, OrderStatus.CONFIRMED);
+        stockService.deduct(order);
         moveTo(order, OrderStatus.PREPARING, null);
         return publish(order);
     }
@@ -319,12 +367,33 @@ public class OrderService {
     /** Quán tự giao: nhân viên mang đơn đã pha xong đi giao. */
     @Transactional
     public OrderResponse dispatch(Long id) {
+        return dispatch(id, null);
+    }
+
+    /** {@code shipperId}: người giao chọn lúc bấm "Mang đi giao" (null = giữ người đã phân công, chưa có thì người bấm). */
+    @Transactional
+    public OrderResponse dispatch(Long id, Long shipperId) {
         Order order = get(id);
         expect(order, OrderStatus.READY);
         if (order.getOrderType() != OrderType.DELIVERY) throw new BadRequestException("Chỉ đơn giao hàng mới đi giao");
         Shipment shipment = order.getShipment();
+        if (shipperId != null && (shipment.getShipper() == null || !shipperId.equals(shipment.getShipper().getId()))) {
+            Staff staff = staffService.get(shipperId);
+            if (staff.getWorkStatus() != WorkStatus.ACTIVE) throw new BadRequestException(staff.getFullName() + " không còn làm việc");
+            shipment.setShipper(staff);
+            shipment.setAssignedAt(LocalDateTime.now());
+        }
+        if (shipment.getShipper() == null) { // chưa phân công: người bấm "bắt đầu giao" là người giao
+            Staff me = staffService.current();
+            if (me != null) {
+                shipment.setShipper(me);
+                shipment.setAssignedAt(LocalDateTime.now());
+            }
+        }
         shipment.setStatus(ShipmentStatus.DELIVERING);
-        shipmentEvent(shipment, ShipmentStatus.DELIVERING, "Bắt đầu giao");
+        shipment.setPickedUpAt(LocalDateTime.now());
+        shipmentEvent(shipment, ShipmentStatus.DELIVERING, shipment.getShipper() == null ? "Bắt đầu giao"
+                : "Bắt đầu giao · " + shipment.getShipper().getFullName());
         moveTo(order, OrderStatus.DELIVERING, null);
         return publish(order);
     }
@@ -414,10 +483,11 @@ public class OrderService {
         for (Payment p : order.getPayments()) {
             if (p.getStatus() == PaymentStatus.PAID) {
                 BigDecimal back = p.getAmount().subtract(p.getRefundAmount());
-                onlinePaymentService.refundIfOnline(p, back);
+                // trả online (VNPAY): hoàn qua cổng; cổng từ chối → "chờ hoàn tiền" để nhân viên chuyển khoản tay,
+                // đơn vẫn được từ chối / hủy
+                var r = onlinePaymentService.tryRefund(p, back);
                 if (p.getMethod() == PaymentMethod.CASH && back.signum() > 0) cashShiftService.recordCashRefund(order.getOrderCode(), back);
-                p.setRefundAmount(p.getAmount());
-                p.setStatus(PaymentStatus.REFUNDED);
+                onlinePaymentService.settleRefund(p, back, r);
             } else if (p.getStatus() == PaymentStatus.PENDING) {
                 onlinePaymentService.closePending(p);
                 p.setStatus(PaymentStatus.FAILED);
@@ -432,6 +502,7 @@ public class OrderService {
                     .ifPresent(pi -> pi.setSoldQuantity(Math.max(0, pi.getSoldQuantity() - item.getQuantity())));
         }
         if (order.getShipment() != null) order.getShipment().setStatus(ShipmentStatus.FAILED);
+        stockService.restore(order);
         releaseTable(order);
     }
 

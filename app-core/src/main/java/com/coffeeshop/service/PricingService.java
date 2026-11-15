@@ -7,6 +7,7 @@ import com.coffeeshop.entity.PromotionItem;
 import com.coffeeshop.entity.VoucherDetail;
 import com.coffeeshop.entity.enums.CoffeeStatus;
 import com.coffeeshop.entity.enums.OrderType;
+import com.coffeeshop.entity.enums.PromotionType;
 import com.coffeeshop.entity.enums.VoucherStatus;
 import com.coffeeshop.repository.PromotionRepository;
 import com.coffeeshop.repository.VoucherDetailRepository;
@@ -74,7 +75,7 @@ public class PricingService {
                             l.lineTotal(), l.note())).toList(),
                     subtotal, orderPromotion == null ? null : orderPromotion.getName(), promotionDiscount,
                     voucher == null ? null : voucher.getCode(), voucherDiscount, voucherMessage, shippingFee, total,
-                    unavailable, null, null, null, null, null);
+                    unavailable, null, null, null, null);
         }
     }
 
@@ -135,9 +136,17 @@ public class PricingService {
         Promotion orderPromotion = null;
         BigDecimal promotionDiscount = BigDecimal.ZERO;
         for (Promotion p : promotionRepository.findRunningOrderPromotions(now)) {
-            if (p.getDiscountPercent() == null) continue;
+            BigDecimal discountValue = p.getDiscountPercent();
+            if (discountValue == null) continue;
             if (p.getMinOrderAmount() != null && subtotal.compareTo(p.getMinOrderAmount()) < 0) continue;
-            BigDecimal discount = vnd(subtotal.multiply(p.getDiscountPercent()).divide(HUNDRED, 2, RoundingMode.HALF_UP));
+            BigDecimal discount;
+            if (p.getDiscountType() == PromotionType.FIXED_AMOUNT) {
+                discount = vnd(discountValue.min(subtotal));
+            } else if (p.getDiscountType() == PromotionType.PERCENTAGE || p.getDiscountType() == null) {
+                discount = vnd(subtotal.multiply(discountValue).divide(HUNDRED, 2, RoundingMode.HALF_UP));
+            } else {
+                continue;
+            }
             if (discount.compareTo(promotionDiscount) > 0) {
                 promotionDiscount = discount;
                 orderPromotion = p;
@@ -177,7 +186,9 @@ public class PricingService {
     /** Returns null when the voucher can be used, otherwise the reason it is rejected. */
     private String validateVoucher(VoucherDetail voucher, String customerPhone, BigDecimal subtotal, LocalDateTime now) {
         if (voucher == null) return "Mã voucher không tồn tại";
-        if (voucher.getStatus() != VoucherStatus.ISSUED) return "Voucher đã được sử dụng hoặc không còn hiệu lực";
+        if (voucher.getStatus() != VoucherStatus.ISSUED || voucher.getVoucher().isDelFlag()) {
+            return "Voucher đã được sử dụng hoặc không còn hiệu lực";
+        }
         if (voucher.getExpiresAt() != null && voucher.getExpiresAt().isBefore(now)) return "Voucher đã hết hạn";
         if (voucher.getCustomer() != null
                 && (customerPhone == null || !voucher.getCustomer().getPhone().equals(customerPhone.trim()))) {

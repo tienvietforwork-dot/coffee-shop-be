@@ -21,6 +21,7 @@ public interface CustomerGroupMemberRepository extends JpaRepository<CustomerGro
     List<CustomerGroupMember> findAllByGroupIdAndDelFlagFalseOrderByAddedAtDesc(Long groupId);
     List<CustomerGroupMember> findAllByGroupIdAndDelFlagFalseAndIsExcludedFalseOrderByAddedAtDesc(Long groupId);
     boolean existsByGroupIdAndCustomerIdAndDelFlagFalse(Long groupId, Long customerId);
+    boolean existsByCustomerIdAndDelFlagFalseAndIsExcludedFalse(Long customerId);
     Optional<CustomerGroupMember> findByGroupIdAndCustomerIdAndDelFlagFalse(Long groupId, Long customerId);
 
     @Query("select m.customerId as customerId, g.name as groupName " +
@@ -38,4 +39,9 @@ public interface CustomerGroupMemberRepository extends JpaRepository<CustomerGro
     @Query("update CustomerGroupMember m set m.delFlag = true, m.delUser = 'system', m.updatedAt = CURRENT_TIMESTAMP " +
             "where m.groupId = :groupId and m.delFlag = false")
     int softDeleteGroupMembers(@Param("groupId") Long groupId);
+
+    @Modifying
+    @Query("update CustomerGroupMember m set m.delFlag=true, m.delUser='system', m.updatedAt=CURRENT_TIMESTAMP " +
+            "where m.customerId=:customerId and m.delFlag=false")
+    int softDeleteAllMembershipsForCustomer(@Param("customerId") Long customerId);
 }
