@@ -44,6 +44,8 @@ public class SecurityConfig {
                                 "/api/public/merchandising/recommendation/events").permitAll()
                         .requestMatchers("/api/product-placement/**")
                         .hasAnyAuthority("ROLE_ADMIN", "menu")
+                        .requestMatchers("/api/merchandising-schedules/**")
+                        .hasAnyAuthority("ROLE_ADMIN", "menu")
                         .anyRequest().hasRole("ADMIN"))
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

@@ -70,4 +70,8 @@ public class ProductBundle extends AuditableEntity {
                 && (startsAt == null || !startsAt.isAfter(now))
                 && (endsAt == null || now.isBefore(endsAt));
     }
+
+    public String imageSrc() {
+        return imageId != null ? "/api/public/images/" + imageId : imageUrl;
+    }
 }

@@ -14,6 +14,8 @@ import java.util.*;
 /** Database is shared with app-stats. Re-check bundle price, schedule and components at checkout. */
 @Service @RequiredArgsConstructor
 public class BundleCartService {
+    private static final long MIN_BUNDLE_COMPONENTS = 2L;
+    private static final long MAX_BUNDLE_COMPONENTS = 5L;
     private final JdbcTemplate jdbc;
     private final CoffeeService coffeeService;
     public record Component(long itemId, long coffeeId, String name, int quantity, boolean optional,
@@ -34,33 +36,29 @@ public class BundleCartService {
                 },id);
         if(bs.isEmpty()) throw new BadRequestException("Combo đã ngừng bán hoặc hết hạn");
         Bundle b=bs.get(0);
-        List<Component> parts=jdbc.query("SELECT bi.id,bi.coffee_id,c.name,bi.quantity,bi.optional,bi.choice_group,c.price,c.status,c.auto_sold_out,cat.product_type FROM product_bundle_items bi JOIN coffees c ON c.id=bi.coffee_id JOIN categories cat ON cat.id=c.category_id WHERE bi.bundle_id=? AND bi.del_flag=false AND c.del_flag=false ORDER BY bi.display_order,bi.id",
-                (rs,n)->new Component(rs.getLong(1),rs.getLong(2),rs.getString(3),rs.getInt(4),rs.getBoolean(5),
-                        rs.getString(6),rs.getBigDecimal(7),"AVAILABLE".equals(rs.getString(8))&&!rs.getBoolean(9),rs.getString(10)),id);
-        if(parts.isEmpty() || parts.stream().noneMatch(p->!p.optional() && p.available()))
-            throw new BadRequestException("Combo không còn món bắt buộc để bán");
-        if (parts.stream().anyMatch(p -> !"DRINK".equals(p.categoryType())))
-            throw new BadRequestException("Combo chỉ bao gồm cà phê/đồ uống; hãy cập nhật lại thành phần trước khi mua");
-        if (parts.size() != 2 || parts.stream().anyMatch(p -> p.optional()
-                || (p.choiceGroup() != null && !p.choiceGroup().isBlank()))
-                || parts.stream().map(Component::coffeeId).distinct().count() != 2)
-            throw new BadRequestException("Combo phải gồm đúng 2 loại cà phê khác nhau; hãy cập nhật thành phần trước khi mua");
-        BigDecimal standalone = parts.stream()
-                .map(p -> p.price().multiply(BigDecimal.valueOf(p.quantity())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (b.basePrice().compareTo(standalone) > 0)
-            throw new BadRequestException("Giá sản phẩm đã thay đổi, combo đang cần được quản lý cập nhật trước khi bán");
-        return new Bundle(b.id(),b.name(),b.imageUrl(),b.basePrice(),parts);
+        List<Component> parts=jdbc.query("SELECT bi.id,bi.coffee_id,c.name,bi.quantity,bi.optional,c.price FROM product_bundle_items bi JOIN coffees c ON c.id=bi.coffee_id JOIN categories cat ON cat.id=c.category_id WHERE bi.bundle_id=? AND bi.del_flag=false AND c.del_flag=false AND c.status='AVAILABLE' AND c.auto_sold_out=false AND cat.del_flag=false AND cat.product_type='DRINK' AND bi.optional=false AND EXISTS (SELECT 1 FROM recipes r WHERE r.coffee_id=c.id AND r.is_active=true AND r.del_flag=false) ORDER BY bi.display_order,bi.id",
+                (rs,n)->new Component(rs.getLong(1),rs.getLong(2),rs.getString(3),rs.getInt(4),rs.getBoolean(5),rs.getBigDecimal(6)),id);
+        Long all=jdbc.queryForObject("SELECT count(*) FROM product_bundle_items WHERE bundle_id=? AND del_flag=false",Long.class,id);
+        if(all==null || all<MIN_BUNDLE_COMPONENTS || all>MAX_BUNDLE_COMPONENTS || parts.size()!=all.intValue()
+                || parts.stream().anyMatch(Component::optional)
+                || parts.stream().map(Component::coffeeId).distinct().count()!=parts.size())
+            throw new BadRequestException("Combo cần từ 2 đến 5 loại đồ uống khác nhau, bắt buộc và đang bán, còn hàng");
+        BigDecimal standalone=parts.stream()
+                .map(p->p.price().multiply(BigDecimal.valueOf(p.quantity())))
+                .reduce(BigDecimal.ZERO,BigDecimal::add);
+        if(b.basePrice()==null || b.basePrice().signum()<=0 || b.basePrice().compareTo(standalone)>0)
+            throw new BadRequestException("Giá combo không còn phù hợp với tổng giá lẻ các thành phần; vui lòng cập nhật combo");
+        return new Bundle(b.id(),b.name(),b.basePrice(),parts);
     }
     private static String encode(List<Long> ids) { return String.join(",", ids.stream().map(String::valueOf).toList()); }
     private static List<Long> decode(String s) { return s==null || s.isBlank()?List.of():Arrays.stream(s.split(",")).map(Long::valueOf).toList(); }
     public Purchase resolve(long bundleId, int qty, List<Long> optionalIds) {
         if(qty<1 || qty>99) throw new BadRequestException("Số lượng combo không hợp lệ");
-        Bundle b=active(bundleId); List<Long> requested=optionalIds==null?List.of():optionalIds;
-        if (!requested.isEmpty()) throw new BadRequestException("Combo gồm 2 cà phê cố định, không có món cần chọn thêm");
-        List<Long> chosen=List.of();
-        List<PricingService.InputLine> lines=new ArrayList<>();
-        List<IncludedUnit> includedUnits=new ArrayList<>();
+        if (optionalIds != null && !optionalIds.isEmpty()) {
+            throw new BadRequestException("Combo cà phê không hỗ trợ món tùy chọn");
+        }
+        Bundle b=active(bundleId); List<Long> chosen=List.of();
+        List<PricingService.InputLine> lines=new ArrayList<>(); boolean priced=false; BigDecimal extra=BigDecimal.ZERO;
         for(Component p:b.components()) {
             if(!p.available()) throw new BadRequestException(p.name()+" trong combo đã hết hàng");
             Coffee coffee=coffeeService.get(p.coffeeId());

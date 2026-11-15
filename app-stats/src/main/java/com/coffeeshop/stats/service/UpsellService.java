@@ -2,6 +2,7 @@
 package com.coffeeshop.stats.service;
 
 import com.coffeeshop.stats.entity.*;
+import com.coffeeshop.stats.entity.enums.CategoryProductType;
 import com.coffeeshop.stats.entity.enums.CoffeeStatus;
 import com.coffeeshop.stats.entity.repository.*;
 
@@ -26,19 +27,17 @@ public class UpsellService {
     private final CoffeeRepository coffees;
     private final JdbcTemplate jdbc;
 
-    /** The manager curates the taste match between two different sellable coffees. */
+    /** The manager curates a taste-matched recommendation between two sellable coffees. */
     private boolean isVerifiedVariant(Long baseId, Long variantId, String type) {
         if (baseId == null || variantId == null || type == null
                 || baseId.equals(variantId) || !"PREMIUM_VERSION".equals(type)) return false;
         Coffee base = coffees.findById(baseId).orElse(null);
         Coffee variant = coffees.findById(variantId).orElse(null);
-        if (base == null || variant == null
-                || variant.getPrice().compareTo(base.getPrice()) <= 0) return false;
+        if (!isSellableDrink(base) || !isSellableDrink(variant)) return false;
         Integer count = jdbc.queryForObject("""
                 SELECT count(*) FROM public.upsell_variant_links
                 WHERE base_coffee_id = ? AND variant_coffee_id = ?
                   AND upgrade_type = ? AND enabled = true
-                  AND nullif(trim(experience_note), '') IS NOT NULL
                   AND EXISTS (
                       SELECT 1 FROM public.recipes r
                       WHERE r.coffee_id = public.upsell_variant_links.variant_coffee_id
@@ -46,6 +45,14 @@ public class UpsellService {
                   )
                 """, Integer.class, baseId, variantId, type);
         return count != null && count > 0;
+    }
+
+    private boolean isSellableDrink(Coffee coffee) {
+        return coffee != null
+                && coffee.getCategory() != null
+                && coffee.getCategory().getProductType() == CategoryProductType.DRINK
+                && coffee.getStatus() == CoffeeStatus.AVAILABLE
+                && !coffee.isAutoSoldOut();
     }
 
     @Transactional(readOnly = true)
@@ -59,18 +66,21 @@ public class UpsellService {
                 FROM public.upsell_variant_links l
                 JOIN public.coffees c ON c.id = l.variant_coffee_id
                 JOIN public.coffees base ON base.id = l.base_coffee_id
+                JOIN public.categories variant_category ON variant_category.id = c.category_id
+                JOIN public.categories base_category ON base_category.id = base.category_id
                 WHERE l.base_coffee_id = ? AND l.upgrade_type = ? AND l.enabled = true
-                  AND nullif(trim(l.experience_note), '') IS NOT NULL
                   AND c.del_flag = false AND base.del_flag = false
                   AND c.status = 'AVAILABLE' AND c.auto_sold_out = false
+                  AND base.status = 'AVAILABLE' AND base.auto_sold_out = false
+                  AND variant_category.product_type = 'DRINK' AND base_category.product_type = 'DRINK'
+                  AND variant_category.del_flag = false AND base_category.del_flag = false
                   AND c.id <> base.id
-                  AND c.price > base.price
                 ORDER BY c.price ASC, c.id ASC
                 """, anchorId, type);
         return candidates;
     }
 
-    /** Admin-curated relationship between two distinct menu items. */
+    /** Confirmation fields are retained for older clients; eligibility is checked from current menu/recipe data. */
     public record VariantInput(Long baseCoffeeId, Long variantCoffeeId,
                                String upgradeType, boolean recipeConfirmed,
                                boolean experienceConfirmed, String experienceNote) {}
@@ -92,32 +102,34 @@ public class UpsellService {
 
     @Transactional
     public void registerVariant(VariantInput x) {
-        if (x == null || x.baseCoffeeId() == null || x.variantCoffeeId() == null
-                || !x.recipeConfirmed() || !x.experienceConfirmed()) {
-            throw bad("Cần chọn 2 món, xác nhận công thức và xác nhận hai món cùng gu trải nghiệm");
+        if (x == null || x.baseCoffeeId() == null || x.variantCoffeeId() == null) {
+            throw bad("Cần chọn món gốc và món được đề xuất");
         }
-        if (x.baseCoffeeId().equals(x.variantCoffeeId())) throw bad("Phiên bản phải khác SKU gốc");
+        if (x.baseCoffeeId().equals(x.variantCoffeeId())) throw bad("Món được đề xuất phải khác món gốc");
         if (!"PREMIUM_VERSION".equals(x.upgradeType())) {
-            throw bad("Upsell sản phẩm chỉ hỗ trợ phiên bản cà phê cao cấp hơn");
+            throw bad("Loại đề xuất món không hợp lệ");
         }
         String experienceNote = x.experienceNote() == null ? "" : x.experienceNote().trim();
-        if (experienceNote.length() < 12 || experienceNote.length() > 500) {
-            throw bad("Mô tả điểm chung về trải nghiệm cần từ 12 đến 500 ký tự");
+        if (experienceNote.length() > 500) {
+            throw bad("Ghi chú không được vượt quá 500 ký tự");
         }
         Coffee base = coffee(x.baseCoffeeId());
         Coffee variant = coffee(x.variantCoffeeId());
-        if (variant.getPrice().compareTo(base.getPrice()) <= 0) {
-            throw bad("Món nâng cấp phải là món khác và có giá niêm yết cao hơn món gốc");
+        if (!isSellableDrink(base)) {
+            throw bad("Món gốc phải là cà phê/đồ uống đang bán và còn hàng");
+        }
+        if (!isSellableDrink(variant)) {
+            throw bad("Món được đề xuất phải là cà phê/đồ uống khác, đang bán và còn hàng");
         }
         if (variant.getStatus() != CoffeeStatus.AVAILABLE || variant.isAutoSoldOut()) {
-            throw bad("SKU nâng cấp chưa sẵn sàng để bán");
+            throw bad("Món được đề xuất hiện chưa sẵn sàng để bán");
         }
         Integer activeRecipeCount = jdbc.queryForObject("""
                 SELECT count(*) FROM public.recipes
                 WHERE coffee_id = ? AND is_active = true AND del_flag = false
                 """, Integer.class, variant.getId());
         if (activeRecipeCount == null || activeRecipeCount == 0) {
-            throw bad("Món nâng cấp phải có công thức đang áp dụng trong app-core");
+            throw bad("Món được đề xuất phải có công thức đang áp dụng trong app-core");
         }
         jdbc.update("""
                 INSERT INTO public.upsell_variant_links
@@ -131,7 +143,7 @@ public class UpsellService {
     @Transactional
     public void deactivateVariant(long linkId) {
         int changed = jdbc.update("UPDATE public.upsell_variant_links SET enabled=false WHERE id=?", linkId);
-        if (changed == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy liên kết nâng cấp");
+        if (changed == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy liên kết đề xuất món");
     }
 
     public record RuleInput(
@@ -186,14 +198,14 @@ public class UpsellService {
                 || x.anchorCoffeeId() == null
                 || x.upgradeCoffeeId() == null) {
             throw bad(
-                    "Phải chọn món gốc và phiên bản nâng cấp"
+                    "Phải chọn món khách đang xem và món được đề xuất"
             );
         }
 
         if (x.anchorCoffeeId().equals(
                 x.upgradeCoffeeId())) {
             throw bad(
-                    "Món nâng cấp phải khác món gốc"
+                    "Món được đề xuất phải khác món khách đang xem"
             );
         }
 
@@ -201,13 +213,6 @@ public class UpsellService {
                 || x.priority() > 10000) {
             throw bad(
                     "Ưu tiên từ 0 đến 10000"
-            );
-        }
-
-        if (x.minCartAmount() != null
-                && x.minCartAmount().signum() < 0) {
-            throw bad(
-                    "Giá trị giỏ không được âm"
             );
         }
 
@@ -225,26 +230,29 @@ public class UpsellService {
 
         if (!"PREMIUM_VERSION".equals(type)) {
             throw bad(
-                    "Upsell sản phẩm chỉ hỗ trợ phiên bản cà phê cao cấp hơn"
+                "Loại đề xuất món không hợp lệ"
             );
+        }
+
+        boolean duplicatePair = r.getId() == null
+                ? rules.existsByAnchorCoffee_IdAndUpgradeCoffee_IdAndUpgradeType(
+                        x.anchorCoffeeId(), x.upgradeCoffeeId(), type)
+                : rules.existsByAnchorCoffee_IdAndUpgradeCoffee_IdAndUpgradeTypeAndIdNot(
+                        x.anchorCoffeeId(), x.upgradeCoffeeId(), type, r.getId());
+        if (duplicatePair) {
+            throw bad("Cặp món này đã có quy tắc đề xuất. Hãy sửa quy tắc hiện có hoặc chọn món khác.");
         }
 
         Coffee anchor = coffee(x.anchorCoffeeId());
         Coffee upgrade = coffee(x.upgradeCoffeeId());
 
         if (!isVerifiedVariant(anchor.getId(), upgrade.getId(), type)) {
-            throw bad("Cần liên kết hai món khác nhau, giá món nâng cấp cao hơn và có xác nhận cùng gu trải nghiệm.");
-        }
-        if (upgrade.getPrice()
-                .compareTo(anchor.getPrice()) <= 0) {
-            throw bad(
-                    "Món nâng cấp phải có giá niêm yết cao hơn món gốc"
-            );
+            throw bad("Món gốc và món được đề xuất phải khác nhau, đang bán, còn hàng; món được đề xuất cần có công thức đang áp dụng.");
         }
 
         String name = x.name() == null
                 || x.name().isBlank()
-                ? "Nâng cấp - " + anchor.getName()
+                ? "Đề xuất món - " + anchor.getName()
                 : x.name().trim();
 
         if (name.length() > 150) {
@@ -259,11 +267,8 @@ public class UpsellService {
         r.setUpgradeType(type);
         r.setPriority(x.priority());
 
-        r.setMinCartAmount(
-                x.minCartAmount() == null
-                        ? BigDecimal.ZERO
-                        : x.minCartAmount()
-        );
+        // Keep the legacy database column/API field for compatibility, but no longer gate recommendations by cart value.
+        r.setMinCartAmount(BigDecimal.ZERO);
 
         r.setStartsAt(x.startsAt());
         r.setEndsAt(x.endsAt());
@@ -409,17 +414,13 @@ public class UpsellService {
         }
 
         if ("ACTIVE".equals(status)) {
+            if (rules.existsByAnchorCoffee_IdAndUpgradeCoffee_IdAndUpgradeTypeAndIdNot(
+                    r.getAnchorCoffee().getId(), r.getUpgradeCoffee().getId(), r.getUpgradeType(), r.getId())) {
+                throw bad("Cặp món này đã có quy tắc đề xuất khác. Hãy xử lý quy tắc bị trùng trước khi kích hoạt.");
+            }
             if (!isVerifiedVariant(r.getAnchorCoffee().getId(),
                     r.getUpgradeCoffee().getId(), r.getUpgradeType())) {
-                throw bad("Quy tắc cần một món khác, giá cao hơn và có liên kết cùng gu trải nghiệm đã xác nhận.");
-            }
-            if (r.getUpgradeCoffee().getStatus()
-                    != CoffeeStatus.AVAILABLE
-                    || r.getUpgradeCoffee()
-                    .isAutoSoldOut()) {
-                throw bad(
-                        "Sản phẩm nâng cấp hiện không bán"
-                );
+                throw bad("Hai món phải là đồ uống khác nhau, đang bán, có công thức và liên kết cùng gu đã xác nhận.");
             }
         }
 
@@ -446,25 +447,16 @@ public class UpsellService {
         rules.delete(r);
     }
 
-    // Gợi ý món nâng cấp cho khách hàng
+    // Đề xuất món phù hợp cho khách hàng
     @Transactional(readOnly = true)
-    public List<Map<String, Object>> suggest(
-            long anchorId,
-            BigDecimal total
-    ) {
+    public List<Map<String, Object>> suggest(long anchorId) {
 
         List<Map<String, Object>> result =
                 new ArrayList<>();
 
         Set<Long> seen = new HashSet<>();
 
-        for (UpsellRule r : rules.eligible(
-                anchorId,
-                total == null
-                        ? BigDecimal.ZERO
-                        : total,
-                LocalDateTime.now()
-        )) {
+        for (UpsellRule r : rules.eligible(anchorId, LocalDateTime.now())) {
 
             Coffee c = r.getUpgradeCoffee();
             if (!isVerifiedVariant(r.getAnchorCoffee().getId(), c.getId(), r.getUpgradeType())) continue;
@@ -546,7 +538,7 @@ public class UpsellService {
 
         if (!"ACTIVE".equals(r.getStatus()) ||
                 !isVerifiedVariant(r.getAnchorCoffee().getId(), r.getUpgradeCoffee().getId(), r.getUpgradeType())) {
-            throw bad("Quy tắc chưa hoạt động hoặc chưa có phiên bản hợp lệ");
+            throw bad("Đề xuất chưa hoạt động hoặc món không còn phù hợp");
         }
 
         // 5. Chống ghi trùng bằng PostgreSQL
@@ -568,7 +560,7 @@ public class UpsellService {
         );
     }
 
-    // Thống kê hiệu quả Upsell
+    // Thống kê hiệu quả đề xuất món
     @Transactional(readOnly = true)
     public Map<String, Object> analytics(long id) {
 
@@ -595,7 +587,7 @@ public class UpsellService {
                         : (double) accepted / views,
                 "purchasesTracked", false,
                 "note",
-                "ACCEPT chỉ là khách chọn nâng cấp, "
+                "ACCEPT chỉ là khách chọn món được đề xuất, "
                         + "chưa xác nhận thanh toán thành công."
         );
     }

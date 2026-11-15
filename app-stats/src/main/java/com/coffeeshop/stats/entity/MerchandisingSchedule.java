@@ -25,7 +25,7 @@ public class MerchandisingSchedule {
     private String section = "FEATURED";
 
     @Column(nullable = false, length = 24)
-    private String slot = "CUSTOM";
+    private String slot = "MORNING";
 
     @Column(nullable = false)
     private Integer priority = 0;

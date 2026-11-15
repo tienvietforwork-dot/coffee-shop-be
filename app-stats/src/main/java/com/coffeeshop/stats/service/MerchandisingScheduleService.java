@@ -17,7 +17,7 @@ public class MerchandisingScheduleService {
     private final CoffeeRepository coffees;
     private static final ZoneId SHOP_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private static final Set<String> SECTIONS = Set.of("HOME","FEATURED","BEST_SELLER","NEW_ARRIVAL","RECOMMENDED");
-    private static final Set<String> SLOTS = Set.of("MORNING","AFTERNOON","WEEKEND","SEASONAL","CUSTOM");
+    private static final Set<String> SLOTS = Set.of("MORNING","AFTERNOON","WEEKEND");
     public record Input(String name,Long coffeeId,String section,String slot,Integer priority,LocalDateTime startsAt,LocalDateTime endsAt,List<Integer> weekdays,List<Integer> months) {}
     private ResponseStatusException bad(String message){return new ResponseStatusException(HttpStatus.BAD_REQUEST,message);}
     private MerchandisingSchedule require(long id){return schedules.findById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Không tìm thấy lịch"));}
@@ -35,7 +35,8 @@ public class MerchandisingScheduleService {
     }
     private void validate(Input x){
         if(x==null||x.coffeeId()==null||x.name()==null||x.name().isBlank()||x.name().length()>150)throw bad("Tên lịch và sản phẩm bắt buộc, tên tối đa 150 ký tự");
-        if(x.section()==null||x.slot()==null||!SECTIONS.contains(x.section())||!SLOTS.contains(x.slot()))throw bad("Khu vực hoặc loại lịch không hợp lệ");
+        if(x.section()==null||!SECTIONS.contains(x.section()))throw bad("Khu vực trưng bày không hợp lệ");
+        if(x.slot()==null||!SLOTS.contains(x.slot()))throw bad("Khung lịch chỉ hỗ trợ buổi sáng, buổi chiều hoặc cuối tuần");
         if(x.startsAt()==null||x.endsAt()==null||!x.startsAt().isBefore(x.endsAt()))throw bad("Ngày bắt đầu phải nhỏ hơn ngày kết thúc");
         if(x.priority()!=null&&(x.priority()<0||x.priority()>10000))throw bad("Ưu tiên từ 0 đến 10000");
         if(x.weekdays()!=null&&x.weekdays().stream().anyMatch(v->v==null||v<1||v>7))throw bad("Ngày trong tuần phải từ 1 đến 7");
@@ -45,10 +46,19 @@ public class MerchandisingScheduleService {
 
     private void apply(MerchandisingSchedule r, Input x) {
         validate(x);
+        r.setName(x.name().trim());
         r.setCoffee(
                 coffees.findById(x.coffeeId())
                         .orElseThrow(() -> bad("Sản phẩm không tồn tại"))
         );
+        r.setSection(x.section());
+        r.setSlot(x.slot());
+        r.setPriority(x.priority() == null ? 0 : x.priority());
+        r.setStartsAt(x.startsAt());
+        r.setEndsAt(x.endsAt());
+        r.setWeekdays(encode(x.weekdays()));
+        r.setMonths(encode(x.months()));
+        r.setUpdatedAt(now());
     }
 
     private boolean intersects(Set<Integer> x,Set<Integer> y){return !Collections.disjoint(x,y);}
@@ -67,7 +77,7 @@ public class MerchandisingScheduleService {
     @Transactional(readOnly=true) public List<Map<String,Object>> list(){LocalDateTime t=now();return schedules.findAllByOrderByPriorityDescIdDesc().stream().map(r->output(r,t)).toList();}
     @Transactional public Map<String,Object> create(Input x){MerchandisingSchedule r=new MerchandisingSchedule();apply(r,x);return output(schedules.saveAndFlush(r),now());}
     @Transactional public Map<String,Object> update(long id,Input x){MerchandisingSchedule r=require(id);if("PUBLISHED".equals(r.getStatus()))throw bad("Thu hồi lịch trước khi chỉnh sửa");apply(r,x);return output(schedules.saveAndFlush(r),now());}
-    @Transactional public Map<String,Object> publish(long id){MerchandisingSchedule r=require(id);if(!r.getEndsAt().isAfter(now()))throw bad("Không thể công bố lịch hết hạn");if(r.getCoffee().getStatus()!=CoffeeStatus.AVAILABLE||r.getCoffee().isAutoSoldOut())throw bad("Sản phẩm không sẵn bán");checkConflict(r);r.setStatus("PUBLISHED");return output(schedules.saveAndFlush(r),now());}
+    @Transactional public Map<String,Object> publish(long id){MerchandisingSchedule r=require(id);if(!SLOTS.contains(r.getSlot()))throw bad("Khung lịch cũ không còn hỗ trợ; hãy sửa lịch và chọn buổi sáng, buổi chiều hoặc cuối tuần");if(!r.getEndsAt().isAfter(now()))throw bad("Không thể công bố lịch hết hạn");if(r.getCoffee().getStatus()!=CoffeeStatus.AVAILABLE||r.getCoffee().isAutoSoldOut())throw bad("Sản phẩm không sẵn bán");checkConflict(r);r.setStatus("PUBLISHED");return output(schedules.saveAndFlush(r),now());}
     @Transactional public Map<String,Object> unpublish(long id){MerchandisingSchedule r=require(id);r.setStatus("DRAFT");return output(schedules.saveAndFlush(r),now());}
     @Transactional public void delete(long id){MerchandisingSchedule r=require(id);if("PUBLISHED".equals(r.getStatus()))throw bad("Thu hồi lịch trước khi xóa");schedules.delete(r);}
     @Transactional(readOnly=true) public List<Map<String,Object>> preview(long id){MerchandisingSchedule r=require(id);return List.of(output(r,now()));}

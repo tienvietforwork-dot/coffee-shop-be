@@ -1,13 +1,12 @@
 BEGIN;
 
--- Product-to-product upsells need a manager-written reason explaining the
--- sensory match. Existing links remain stored, but links without this note are
--- not eligible for public recommendations until reviewed.
+-- Optional manager note for product-to-product recommendations. Recommendation
+-- eligibility is based on the live menu items and active recipe, not this note.
 ALTER TABLE public.upsell_variant_links
     ADD COLUMN IF NOT EXISTS experience_note TEXT;
 
--- Seed the example requested for this menu: both drinks are black coffee with
--- no milk, while the cold brew offers a different, higher-priced brew style.
+-- Seed a taste-matched example: both drinks are black coffee without milk,
+-- with different brewing methods and flavor profiles.
 INSERT INTO public.upsell_variant_links
     (base_coffee_id, variant_coffee_id, upgrade_type, enabled, experience_note)
 SELECT base.id, premium.id, 'PREMIUM_VERSION', TRUE,
@@ -16,7 +15,6 @@ FROM public.coffees base
 JOIN public.coffees premium ON lower(trim(premium.name)) = lower('Cold Brew truyền thống')
 WHERE lower(trim(base.name)) = lower('Americano')
   AND base.id <> premium.id
-  AND premium.price > base.price
   AND base.del_flag = FALSE
   AND premium.del_flag = FALSE
   AND premium.status = 'AVAILABLE'
@@ -38,7 +36,7 @@ END;
 INSERT INTO public.upsell_rules
     (name, anchor_coffee_id, upgrade_coffee_id, upgrade_type, priority,
      min_cart_amount, status, created_at)
-SELECT 'Americano → Cold Brew truyền thống', base.id, premium.id,
+SELECT 'Đề xuất món: Americano và Cold Brew truyền thống', base.id, premium.id,
        'PREMIUM_VERSION', 100, 0, 'ACTIVE', now()
 FROM public.coffees base
 JOIN public.coffees premium ON lower(trim(premium.name)) = lower('Cold Brew truyền thống')
@@ -48,7 +46,6 @@ JOIN public.upsell_variant_links link
  AND link.upgrade_type = 'PREMIUM_VERSION'
  AND link.enabled = TRUE
 WHERE lower(trim(base.name)) = lower('Americano')
-  AND premium.price > base.price
   AND base.del_flag = FALSE
   AND premium.del_flag = FALSE
   AND premium.status = 'AVAILABLE'
