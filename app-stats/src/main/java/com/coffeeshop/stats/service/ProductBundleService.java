@@ -413,6 +413,14 @@ public class ProductBundleService {
                 && item.getCoffee().getCategory().getProductType() == CategoryProductType.DRINK);
     }
 
+    private boolean isDrink(Coffee coffee) {
+        return coffee.getCategory() != null && coffee.getCategory().getProductType() == CategoryProductType.DRINK;
+    }
+
+    private boolean isSellable(Coffee coffee) {
+        return coffee.getStatus() == com.coffeeshop.stats.entity.enums.CoffeeStatus.AVAILABLE && !coffee.isAutoSoldOut();
+    }
+
     private boolean isSellableDrink(Coffee coffee) {
         return coffee != null
                 && coffee.getCategory() != null
