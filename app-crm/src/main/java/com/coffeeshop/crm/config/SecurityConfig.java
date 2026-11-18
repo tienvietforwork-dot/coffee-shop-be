@@ -34,6 +34,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
+                                // /error: lượt forward lỗi không chạy lại JWT filter; chặn nó sẽ biến mọi lỗi 4xx/5xx thành 403.
+                                "/error",
                                 "/actuator/health", "/actuator/health/**",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
                                 "/api/v1/feedbacks/public"
