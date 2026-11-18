@@ -43,8 +43,8 @@ public class VoucherController {
     }
 
     @PutMapping("/vouchers/{id}/voucher-detail")
-    public  ResponseEntity<VoucherResponse> createVoucherDetail(@PathVariable Long id, @Valid @RequestBody VoucherDetailRequest request){
-        VoucherResponse response = voucherService.createVoucherDetail(id, request);
+    public  ResponseEntity<VoucherResponse> createVoucherDetail(@PathVariable Long id, @Valid @RequestBody List<VoucherDetailRequest> request){
+        VoucherResponse response = voucherService.createVoucherDetails(id, request);
         return ResponseEntity.ok(response);
     }
 

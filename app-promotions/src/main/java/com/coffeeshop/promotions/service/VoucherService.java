@@ -154,9 +154,9 @@ public class VoucherService {
     public void delete(@PathVariable Long id){
         Voucher voucher = findVoucherById(id);
 
-        if (voucher.getStatus() != VoucherTypeStatus.DRAFT){
-            throw new RuntimeException("Chỉ có thể xóa Voucher đang ở trạng thái DRAFT");
-        }
+//        if (voucher.getStatus() != VoucherTypeStatus.DRAFT){
+//            throw new RuntimeException("Chỉ có thể xóa Voucher đang ở trạng thái DRAFT");
+//        }
 
         for(VoucherDetail items : voucher.getVoucherDetails()){
             items.setDelFlag(true);
@@ -165,58 +165,74 @@ public class VoucherService {
     }
 
     @Transactional
-    public VoucherResponse createVoucherDetail(Long id, VoucherDetailRequest request) {
+    public VoucherResponse createVoucherDetails(Long id, List<VoucherDetailRequest> requests) {
+        if (requests == null || requests.isEmpty()) {
+            throw new RuntimeException("Danh sách voucher detail không được để trống!");
+        }
+
         Voucher voucher = findVoucherById(id);
 
         if (voucher.getStatus() != VoucherTypeStatus.ACTIVE) {
             throw new RuntimeException("Voucher đã hết hạn hoặc không còn hoạt động!");
         }
 
-        if (voucher.getQuantity() == null || voucher.getQuantity() <= 0){
-            throw new RuntimeException("Voucher đã phát hàng hết số lượng!");
+        int currentExistingQty = voucher.getVoucherDetails() != null ? voucher.getVoucherDetails().size() : 0;
+        int requestSize = requests.size();
+        int maxLimit = voucher.getMaxQuantity() != null ? voucher.getMaxQuantity() : Integer.MAX_VALUE;
+
+        int newTotalQuantity = currentExistingQty + requestSize;
+
+        if (newTotalQuantity > maxLimit) {
+            throw new RuntimeException("Số lượng voucher vượt quá giới hạn tối đa cho phép (" + maxLimit + ")!");
         }
 
-        voucher.setQuantity(voucher.getQuantity() + 1);
+        voucher.setQuantity(newTotalQuantity);
 
+        Long defaultCustomerId = null;
 
-        Customer customer;
-        if (request.getCustomerId() != null) {
-            customer = findCustomerById(request.getCustomerId());
-        } else {
-            Long currentCustomerId = getCurrentCustomerId();
-            customer = findCustomerById(currentCustomerId);
+        for (VoucherDetailRequest request : requests) {
+            Customer customer;
+            if (request.getCustomerId() != null) {
+                customer = findCustomerById(request.getCustomerId());
+            } else {
+                if (defaultCustomerId == null) {
+                    defaultCustomerId = getCurrentCustomerId();
+                }
+                customer = findCustomerById(defaultCustomerId);
+            }
+
+            VoucherStatus detailStatus = request.getStatus() != null ? request.getStatus() : VoucherStatus.ISSUED;
+
+            Order order = null;
+            if (detailStatus != VoucherStatus.ISSUED && request.getOrderId() != null) {
+                order = findOrderById(request.getOrderId());
+            }
+
+            Incident incident = null;
+            if (request.getIncidentId() != null) {
+                incident = findIncidentById(request.getIncidentId());
+            }
+
+            String code = request.getCode();
+            if (code == null || code.isBlank()) {
+                code = getRandomCode();
+            }
+
+            VoucherDetail voucherDetail = VoucherDetail.builder()
+                    .voucher(voucher)
+                    .customer(customer)
+                    .order(order)
+                    .incident(incident)
+                    .code(code)
+                    .status(detailStatus)
+                    .issuedAt(request.getIssuedAt() != null ? request.getIssuedAt() : LocalDateTime.now())
+                    .expiresAt(request.getExpiresAt() != null ? request.getExpiresAt() : LocalDateTime.now().plusDays(voucher.getValidDays()))
+                    .build();
+
+            voucher.addVoucherDetail(voucherDetail);
         }
-
-        Order order = null;
-        if (request.getOrderId() != null) {
-            order = findOrderById(request.getOrderId());
-        }
-
-        Incident incident = null;
-        if (request.getIncidentId() != null) {
-            incident = findIncidentById(request.getIncidentId());
-        }
-
-        String code = request.getCode();
-        if (code == null || code.isBlank()){
-            code = getRandomCode();
-        }
-
-        VoucherDetail voucherDetail = VoucherDetail.builder()
-                .voucher(voucher)
-                .customer(customer)
-                .order(order)
-                .incident(incident)
-                .code(code)
-                .status(request.getStatus() != null ? request.getStatus() : VoucherStatus.ISSUED)
-                .issuedAt(request.getIssuedAt() != null ? request.getIssuedAt() : LocalDateTime.now())
-                .expiresAt(request.getExpiresAt() != null ? request.getExpiresAt() : LocalDateTime.now().plusDays(voucher.getValidDays()))
-                .build();
-
-        voucher.addVoucherDetail(voucherDetail);
 
         Voucher savedVoucher = voucherRepository.save(voucher);
-
         return new VoucherResponse(savedVoucher);
     }
 //
@@ -247,10 +263,7 @@ public class VoucherService {
 //
 //        return new VoucherDetailResponse(updated);
 //    }
-//
-//
-//
-//
+
     @Transactional
     public void activeVoucher(Long id) {
         Voucher voucher = findVoucherById(id);

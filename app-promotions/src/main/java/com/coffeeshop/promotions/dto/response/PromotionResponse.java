@@ -25,6 +25,7 @@ public class PromotionResponse {
     private LocalDateTime startDate;
     private LocalDateTime endDate;
     private PromotionStatus status;
+//    private String promotionDiscount;
     private List<PromotionItemResponse> items;
 
     public  PromotionResponse(Promotion promotion) {
@@ -38,6 +39,7 @@ public class PromotionResponse {
         this.startDate = promotion.getStartDate();
         this.endDate = promotion.getEndDate();
         this.status = promotion.getStatus();
+//        this.promotionDiscount = promotion.getPromotionDiscountPercent();
 
         if (promotion.getPromotionItems() != null) {
             this.items = promotion.getPromotionItems().stream()
