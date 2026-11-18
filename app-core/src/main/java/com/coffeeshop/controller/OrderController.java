@@ -30,6 +30,47 @@ public class OrderController {
     private final IncidentService incidentService;
     private final com.coffeeshop.service.OnlinePaymentService onlinePaymentService;
 
+    /** Sơ đồ bàn của màn order tại quầy: bàn nào đang có khách, tổng tiền đang mở. */
+    @GetMapping("/api/tables/board")
+    @PreAuthorize(Perm.CAN_READ_TABLES)
+    public List<com.coffeeshop.dto.response.TableBoardResponse> tableBoard() {
+        return orderService.tableBoard();
+    }
+
+    /** Các đơn đang mở của bàn (đang làm hoặc chưa thu tiền). */
+    @GetMapping("/api/tables/{id}/orders")
+    @PreAuthorize(Perm.CAN_READ_TABLES)
+    public List<OrderResponse> tableOrders(@PathVariable Long id) {
+        return orderService.openAtTable(id);
+    }
+
+    /** Nhân viên quét QR dán trên bàn: thông tin bàn + đơn đang mở. */
+    @GetMapping("/api/tables/qr/{qr}")
+    @PreAuthorize(Perm.CAN_READ_TABLES)
+    public com.coffeeshop.dto.response.TableBoardResponse tableByQr(@PathVariable String qr) {
+        return orderService.tableByQr(qr);
+    }
+
+    public record TableStatusRequest(com.coffeeshop.entity.enums.TableStatus status) {
+    }
+
+    /** Đổi trạng thái bàn bằng tay: có khách / trống / tạm ngưng. */
+    @PostMapping("/api/tables/{id}/status")
+    @PreAuthorize(Perm.CAN_READ_TABLES)
+    public com.coffeeshop.dto.response.TableBoardResponse setTableStatus(@PathVariable Long id, @RequestBody TableStatusRequest request) {
+        return orderService.setTableStatus(id, request.status());
+    }
+
+    public record TableCheckoutRequest(com.coffeeshop.entity.enums.PaymentMethod paymentMethod) {
+    }
+
+    /** Thanh toán bàn: thu hết khoản còn nợ, hoàn tất các đơn và mở lại bàn. */
+    @PostMapping("/api/tables/{id}/checkout")
+    @PreAuthorize(Perm.CAN_COLLECT)
+    public List<OrderResponse> checkoutTable(@PathVariable Long id, @RequestBody(required = false) TableCheckoutRequest request) {
+        return orderService.checkoutTable(id, request == null ? null : request.paymentMethod());
+    }
+
     @GetMapping("/api/orders")
     @PreAuthorize(Perm.CAN_READ_ORDERS)
     public List<OrderResponse> search(@RequestParam(required = false) OrderStatus status,

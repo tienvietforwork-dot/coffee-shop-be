@@ -64,6 +64,14 @@ public class DiningTableService {
         get(id).softDelete();
     }
 
+    /**
+     * Sơ đồ bàn: theo số bàn. Tầng / khu vực xếp theo bàn nhỏ nhất của nó (B01 ở tầng trệt thì tầng trệt đứng đầu),
+     * không theo chữ cái — màn order nhóm theo thứ tự xuất hiện.
+     */
+    List<DiningTable> all() {
+        return tableRepository.findAllByOrderByTableNoAsc();
+    }
+
     DiningTable get(Long id) {
         return tableRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bàn: " + id));
@@ -76,8 +84,13 @@ public class DiningTableService {
 
     private void apply(DiningTable table, DiningTableRequest request) {
         table.setTableNo(request.tableNo().trim());
-        table.setArea(request.area());
+        table.setFloor(blankToNull(request.floor()));
+        table.setArea(blankToNull(request.area()));
         table.setCapacity(request.capacity());
         if (request.status() != null) table.setStatus(request.status());
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
     }
 }
