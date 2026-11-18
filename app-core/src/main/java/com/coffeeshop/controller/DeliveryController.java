@@ -28,13 +28,13 @@ public class DeliveryController {
 
     /** what the checkout needs: địa chỉ quán, giờ mở cửa, miễn phí từ, đơn tối thiểu, các tỉnh giao được */
     public record PublicConfig(String shopAddress, LocalTime openTime, LocalTime closeTime, BigDecimal freeShipThreshold,
-                               BigDecimal minOrderAmount, BigDecimal speedKmh, List<String> provinces) {
+                               BigDecimal minOrderAmount, List<String> provinces) {
     }
 
     @GetMapping("/api/public/delivery-settings")
     public PublicConfig publicConfig() {
         var s = feeService.settings();
-        return new PublicConfig(s.shopAddress(), s.openTime(), s.closeTime(), s.freeShipThreshold(), s.minOrderAmount(), s.speedKmh(),
+        return new PublicConfig(s.shopAddress(), s.openTime(), s.closeTime(), s.freeShipThreshold(), s.minOrderAmount(),
                 feeService.areas().stream().filter(DeliveryFeeService.Area::active).map(DeliveryFeeService.Area::name).toList());
     }
 

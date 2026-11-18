@@ -73,7 +73,7 @@ class OperationsFeaturesFlowTest {
         latte = coffeeRepository.save(Coffee.builder().category(c).name("Latte " + UUID.randomUUID()).price(new BigDecimal("40000")).build());
         provinceRepository.deleteAll();
         call(body(put("/api/delivery-settings"), Map.of("shopAddress", "Quán", "openTime", "00:00", "closeTime", "23:59")));
-        call(body(post("/api/delivery-areas"), Map.of("name", "Thành phố Hà Nội", "fee", 15000, "active", true, "wards", List.of())));
+        call(body(post("/api/delivery-areas"), Map.of("name", "Thành phố Hà Nội", "fee", 15000, "deliveryMinutes", 30, "active", true, "wards", List.of())));
     }
 
     private MockHttpServletRequestBuilder body(MockHttpServletRequestBuilder b, Object o) throws Exception {

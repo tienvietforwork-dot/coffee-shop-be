@@ -5,7 +5,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 
-/** Phường / xã có phí ship riêng ({@code fee}; null = theo tỉnh) hoặc không giao ({@code blocked}). */
+/** Phường / xã có phí ship / thời gian giao riêng ({@code fee}, {@code deliveryMinutes}; null = theo tỉnh) hoặc không giao ({@code blocked}). */
 @Getter
 @Setter
 @NoArgsConstructor
@@ -24,6 +24,9 @@ public class DeliveryWard {
     private String name;
     @Column(precision = 12, scale = 2)
     private BigDecimal fee;
+    /** thời gian giao riêng (phút); null = theo tỉnh */
+    @Column(name = "delivery_minutes")
+    private Integer deliveryMinutes;
     @Builder.Default
     @Column(nullable = false)
     private boolean blocked = false;

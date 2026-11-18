@@ -57,29 +57,30 @@ public class DeliveryFeeService {
 
     /** {@code freeShipGroupIds}: nhóm khách CRM được miễn phí ship; {@code groups}: mọi nhóm CRM để chọn (chỉ đọc) */
     public record Settings(String shopAddress, Double shopLat, Double shopLng, LocalTime openTime, LocalTime closeTime,
-                           BigDecimal freeShipThreshold, BigDecimal minOrderAmount, BigDecimal speedKmh,
+                           BigDecimal freeShipThreshold, BigDecimal minOrderAmount,
                            List<Long> freeShipGroupIds, List<Group> groups, String provider) {
     }
 
     public record Group(Long id, String name) {
     }
 
-    /** phường / xã khai báo riêng: {@code fee} null = theo phí tỉnh; {@code blocked} = không giao */
-    public record Ward(String name, BigDecimal fee, boolean blocked) {
+    /** phường / xã khai báo riêng: {@code fee} / {@code deliveryMinutes} null = theo tỉnh; {@code blocked} = không giao */
+    public record Ward(String name, BigDecimal fee, Integer deliveryMinutes, boolean blocked) {
     }
 
-    public record Area(Long id, String name, BigDecimal fee, boolean active, List<Ward> wards) {
+    /** {@code deliveryMinutes}: thời gian giao mặc định (phút) tới mọi phường / xã của tỉnh */
+    public record Area(Long id, String name, BigDecimal fee, Integer deliveryMinutes, boolean active, List<Ward> wards) {
         static Area from(DeliveryProvince p) {
-            return new Area(p.getId(), p.getName(), p.getFee(), p.isActive(),
-                    p.getWards().stream().map(w -> new Ward(w.getName(), w.getFee(), w.isBlocked())).toList());
+            return new Area(p.getId(), p.getName(), p.getFee(), p.getDeliveryMinutes(), p.isActive(),
+                    p.getWards().stream().map(w -> new Ward(w.getName(), w.getFee(), w.getDeliveryMinutes(), w.isBlocked())).toList());
         }
     }
 
     /**
-     * Một lần giao tới một địa chỉ: khu vực ("Phường Ba Đình, Thành phố Hà Nội"), quãng đường đo được (có thể null),
+     * Một lần giao tới một địa chỉ: khu vực ("Phường Ba Đình, Thành phố Hà Nội"), thời gian giao theo khu vực (phút), quãng đường đo được (có thể null),
      * ghi chú cho khách (miễn phí vì là khách VIP…) và phí tính từ tiền hàng còn phải trả.
      */
-    public record Rule(BigDecimal distanceKm, Integer minutes, String zone, String note, Function<BigDecimal, BigDecimal> fee) {
+    public record Rule(BigDecimal distanceKm, Integer deliveryMinutes, String zone, String note, Function<BigDecimal, BigDecimal> fee) {
         public String label() {
             return zone;
         }
@@ -91,7 +92,7 @@ public class DeliveryFeeService {
     public Settings settings() {
         DeliverySetting s = setting();
         return new Settings(s.getShopAddress(), s.getShopLat(), s.getShopLng(), s.getOpenTime(), s.getCloseTime(),
-                s.getFreeShipThreshold(), s.getMinOrderAmount(), s.getSpeedKmh(), s.freeShipGroups(), groups(), distance.provider());
+                s.getFreeShipThreshold(), s.getMinOrderAmount(), s.freeShipGroups(), groups(), distance.provider());
     }
 
     /** địa chỉ quán đổi (hoặc chưa có toạ độ) thì đo lại toạ độ */
@@ -108,7 +109,6 @@ public class DeliveryFeeService {
         s.setCloseTime(r.closeTime());
         s.setFreeShipThreshold(positiveOrNull(r.freeShipThreshold()));
         s.setMinOrderAmount(positiveOrNull(r.minOrderAmount()));
-        s.setSpeedKmh(positiveOrNull(r.speedKmh()));
         List<Long> ids = r.freeShipGroupIds() == null ? List.of() : r.freeShipGroupIds().stream().filter(Objects::nonNull).distinct().toList();
         s.setFreeShipGroupIds(ids.isEmpty() ? null : ids.stream().map(String::valueOf).collect(Collectors.joining(",")));
         if (moved || s.getShopLat() == null || s.getShopLng() == null) {
@@ -145,6 +145,7 @@ public class DeliveryFeeService {
     public Area saveArea(Long id, Area r) {
         if (r.name() == null || r.name().isBlank()) throw new BadRequestException("Chọn tỉnh / thành phố");
         if (r.fee() == null || r.fee().signum() < 0) throw new BadRequestException("Nhập phí giao hàng của tỉnh");
+        if (r.deliveryMinutes() == null || r.deliveryMinutes() <= 0) throw new BadRequestException("Nhập thời gian giao của tỉnh (phút)");
         String name = adminUnits.province(r.name().trim());
         for (DeliveryProvince other : provinceRepository.findAllByOrderByNameAsc()) {
             if (!other.getId().equals(id) && key(other.getName()).equals(key(name))) {
@@ -154,6 +155,7 @@ public class DeliveryFeeService {
         DeliveryProvince p = id == null ? new DeliveryProvince() : province(id);
         p.setName(name);
         p.setFee(r.fee());
+        p.setDeliveryMinutes(r.deliveryMinutes());
         p.setActive(r.active());
         p.getWards().clear();
         provinceRepository.saveAndFlush(p);
@@ -161,9 +163,12 @@ public class DeliveryFeeService {
         for (Ward w : r.wards() == null ? List.<Ward>of() : r.wards()) {
             if (w == null || w.name() == null || w.name().isBlank()) continue;
             if (!seen.add(key(w.name()))) throw new BadRequestException("Phường / xã bị trùng: " + w.name());
-            if (!w.blocked() && w.fee() == null) continue; // không khác tỉnh: không cần lưu
+            if (!w.blocked() && w.fee() == null && w.deliveryMinutes() == null) continue; // không khác tỉnh: không cần lưu
             if (w.fee() != null && w.fee().signum() < 0) throw new BadRequestException("Phí không hợp lệ: " + w.name());
-            p.getWards().add(DeliveryWard.builder().province(p).name(adminUnits.ward(w.name().trim(), name)).fee(w.blocked() ? null : w.fee()).blocked(w.blocked()).build());
+            if (w.deliveryMinutes() != null && w.deliveryMinutes() <= 0) throw new BadRequestException("Thời gian giao không hợp lệ: " + w.name());
+            p.getWards().add(DeliveryWard.builder().province(p).name(adminUnits.ward(w.name().trim(), name))
+                    .fee(w.blocked() ? null : w.fee()).deliveryMinutes(w.blocked() ? null : w.deliveryMinutes())
+                    .blocked(w.blocked()).build());
         }
         return Area.from(provinceRepository.save(p));
     }
@@ -174,16 +179,32 @@ public class DeliveryFeeService {
     }
 
     /** kết quả kiểm tra một phường / xã: giao được không, phí bao nhiêu, vì sao không giao */
-    public record AreaCheck(boolean outside, BigDecimal fee, String zone, String message) {
+    public record AreaCheck(boolean outside, BigDecimal fee, Integer deliveryMinutes, String zone, String message) {
     }
 
     @Transactional(readOnly = true)
     public AreaCheck checkArea(String ward, String province) {
         try {
             Zone z = zone(ward, province);
-            return new AreaCheck(false, z.fee(), z.label(), null);
+            return new AreaCheck(false, z.fee(), z.minutes(), z.label(), null);
         } catch (BadRequestException e) {
-            return new AreaCheck(true, null, null, e.getMessage());
+            return new AreaCheck(true, null, null, null, e.getMessage());
+        }
+    }
+
+    /**
+     * Thời gian giao (phút) tới một địa chỉ "…, Phường …, Tỉnh …" theo cấu hình khu vực; ngoài khu vực / địa chỉ thiếu
+     * phần phường, tỉnh: null. Dùng cho lịch pha chế (gói định kỳ, đơn cũ chưa lưu số phút).
+     */
+    @Transactional(readOnly = true)
+    public Integer deliveryMinutes(String address) {
+        if (address == null) return null;
+        String[] parts = address.split(",");
+        if (parts.length < 2) return null;
+        try {
+            return zone(parts[parts.length - 2], parts[parts.length - 1]).minutes();
+        } catch (BadRequestException e) {
+            return null;
         }
     }
 
@@ -202,14 +223,12 @@ public class DeliveryFeeService {
         DeliverySetting s = setting();
         List<String> freeGroups = freeShipGroupsOf(s, customerId);
         BigDecimal km = null;
-        Integer minutes = null;
-        try { // quãng đường chỉ để ước tính giờ giao / vẽ tuyến; không thấy số nhà thì đo tới trung tâm phường
+        try { // quãng đường chỉ để hiển thị / vẽ tuyến; không thấy số nhà thì đo tới trung tâm phường
             DistanceGateway.Point shop = shopPoint(s);
             Located to = locate(address, shop);
             if (to != null) {
                 var route = distance.route(shop, to.point());
                 km = BigDecimal.valueOf(route.km()).setScale(2, RoundingMode.HALF_UP);
-                minutes = route.minutes();
             }
         } catch (RuntimeException e) {
             log.debug("Không đo được quãng đường tới {}: {}", address, e.getMessage());
@@ -217,7 +236,7 @@ public class DeliveryFeeService {
         BigDecimal free = s.getFreeShipThreshold();
         BigDecimal min = s.getMinOrderAmount();
         String note = freeGroups.isEmpty() ? null : "Miễn phí giao hàng cho khách " + String.join(", ", freeGroups);
-        return new Rule(km, minutes, zone.label(), note, amount -> {
+        return new Rule(km, zone.minutes(), zone.label(), note, amount -> {
             if (min != null && amount.compareTo(min) < 0) {
                 throw new BadRequestException("Đơn giao hàng tối thiểu " + min.stripTrailingZeros().toPlainString() + "đ");
             }
@@ -242,7 +261,7 @@ public class DeliveryFeeService {
         }
     }
 
-    private record Zone(String ward, String province, BigDecimal fee) {
+    private record Zone(String ward, String province, BigDecimal fee, Integer minutes) {
         String label() {
             return ward + ", " + province;
         }
@@ -259,7 +278,8 @@ public class DeliveryFeeService {
         adminUnits.ward(ward, p.getName()); // phường phải thuộc tỉnh theo danh mục
         DeliveryWard w = p.getWards().stream().filter(x -> key(x.getName()).equals(key(ward))).findFirst().orElse(null);
         if (w != null && w.isBlocked()) throw new BadRequestException("Quán chưa giao tới " + w.getName().trim());
-        return new Zone(ward.trim(), p.getName(), w != null && w.getFee() != null ? w.getFee() : p.getFee());
+        return new Zone(ward.trim(), p.getName(), w != null && w.getFee() != null ? w.getFee() : p.getFee(),
+                w != null && w.getDeliveryMinutes() != null ? w.getDeliveryMinutes() : p.getDeliveryMinutes());
     }
 
     /** "Thành phố Hà Nội" = "TP. Hà Nội" = "ha noi": bỏ dấu, tiền tố hành chính, chữ hoa (giống unitKey ở FE) */

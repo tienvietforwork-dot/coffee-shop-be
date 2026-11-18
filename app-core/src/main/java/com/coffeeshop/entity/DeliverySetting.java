@@ -41,10 +41,6 @@ public class DeliverySetting extends BaseEntity {
     /** đơn tối thiểu để giao; null = không giới hạn */
     @Column(name = "min_order_amount", precision = 12, scale = 2)
     private BigDecimal minOrderAmount;
-    /** tốc độ di chuyển (km/h) để ước tính giờ giao tới; null = không ước tính */
-    @Column(name = "speed_kmh", precision = 5, scale = 1)
-    private BigDecimal speedKmh;
-
     /** nhóm khách CRM (customer_groups.id, phân cách dấu phẩy) được miễn phí giao hàng — VD "Thân thiết", "VIP"; null = không */
     @Column(name = "free_ship_group_ids", length = 255)
     private String freeShipGroupIds;

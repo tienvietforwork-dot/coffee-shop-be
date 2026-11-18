@@ -276,11 +276,11 @@ COMMIT;
 -- Giao hàng: chỉ trong Hà Nội, phí theo khu vực; ca làm việc mẫu
 INSERT INTO delivery_settings (id, shop_address, shop_lat, shop_lng, free_ship_threshold, min_order_amount) VALUES
  (1, '15 Tràng Tiền, Phường Hoàn Kiếm, Thành phố Hà Nội', 21.0245, 105.8553, 200000, 50000);
-UPDATE delivery_settings SET open_time = '06:00', close_time = '22:00', speed_kmh = 20 WHERE id = 1;
-INSERT INTO delivery_provinces (name, fee) VALUES ('Thành phố Hà Nội', 15000);
--- xã ngoại thành xa: phí cao hơn
-INSERT INTO delivery_wards (province_id, name, fee)
-SELECT p.id, v.n, v.fee FROM delivery_provinces p, (VALUES ('Xã Sóc Sơn', 40000), ('Xã Ba Vì', 45000)) AS v(n, fee);
+UPDATE delivery_settings SET open_time = '06:00', close_time = '22:00' WHERE id = 1;
+INSERT INTO delivery_provinces (name, fee, delivery_minutes) VALUES ('Thành phố Hà Nội', 15000, 30);
+-- xã ngoại thành xa: phí cao hơn, giao lâu hơn
+INSERT INTO delivery_wards (province_id, name, fee, delivery_minutes)
+SELECT p.id, v.n, v.fee, v.m FROM delivery_provinces p, (VALUES ('Xã Sóc Sơn', 40000, 60), ('Xã Ba Vì', 45000, 75)) AS v(n, fee, m);
 -- hóa đơn bán hàng (hộ kinh doanh), ký hiệu 2C{YY}MCH, địa chỉ = địa chỉ quán
 INSERT INTO invoice_settings (id, seller_name, seller_tax_code, series_suffix, lookup_url) VALUES
  (1, 'HỘ KINH DOANH COFFEEHOLIC', '0312345678', 'CH', 'https://www.meinvoice.vn/tra-cuu');
