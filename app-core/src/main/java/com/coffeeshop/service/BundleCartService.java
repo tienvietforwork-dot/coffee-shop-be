@@ -36,9 +36,8 @@ public class BundleCartService {
                 },id);
         if(bs.isEmpty()) throw new BadRequestException("Combo đã ngừng bán hoặc hết hạn");
         Bundle b=bs.get(0);
-        List<Component> parts=jdbc.query("SELECT bi.id,bi.coffee_id,c.name,bi.quantity,bi.optional,c.price FROM product_bundle_items bi JOIN coffees c ON c.id=bi.coffee_id JOIN categories cat ON cat.id=c.category_id WHERE bi.bundle_id=? AND bi.del_flag=false AND c.del_flag=false AND c.status='AVAILABLE' AND c.auto_sold_out=false AND cat.del_flag=false AND cat.product_type='DRINK' AND bi.optional=false AND EXISTS (SELECT 1 FROM recipes r WHERE r.coffee_id=c.id AND r.is_active=true AND r.del_flag=false) ORDER BY bi.display_order,bi.id",
-                (rs,n)->new Component(rs.getLong(1),rs.getLong(2),rs.getString(3),rs.getInt(4),rs.getBoolean(5),
-                        null,rs.getBigDecimal(6),true,"DRINK"),id); // query already keeps only available, required DRINK items
+        List<Component> parts=jdbc.query("SELECT bi.id,bi.coffee_id,c.name,bi.quantity,bi.optional,bi.choice_group,c.price,(c.status='AVAILABLE' AND c.auto_sold_out=false),cat.product_type FROM product_bundle_items bi JOIN coffees c ON c.id=bi.coffee_id JOIN categories cat ON cat.id=c.category_id WHERE bi.bundle_id=? AND bi.del_flag=false AND c.del_flag=false AND c.status='AVAILABLE' AND c.auto_sold_out=false AND cat.del_flag=false AND cat.product_type='DRINK' AND bi.optional=false AND EXISTS (SELECT 1 FROM recipes r WHERE r.coffee_id=c.id AND r.is_active=true AND r.del_flag=false) ORDER BY bi.display_order,bi.id",
+                (rs,n)->new Component(rs.getLong(1),rs.getLong(2),rs.getString(3),rs.getInt(4),rs.getBoolean(5),rs.getString(6),rs.getBigDecimal(7),rs.getBoolean(8),rs.getString(9)),id);
         Long all=jdbc.queryForObject("SELECT count(*) FROM product_bundle_items WHERE bundle_id=? AND del_flag=false",Long.class,id);
         if(all==null || all<MIN_BUNDLE_COMPONENTS || all>MAX_BUNDLE_COMPONENTS || parts.size()!=all.intValue()
                 || parts.stream().anyMatch(Component::optional)
