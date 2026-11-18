@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 
 public record DiningTableRequest(
         @NotBlank @Size(max = 10) String tableNo,
+        @Size(max = 50) String floor,
         @Size(max = 50) String area,
         @Min(1) Integer capacity,
         TableStatus status) {

@@ -244,10 +244,10 @@ SELECT r.id, v.n, v.s FROM (VALUES
 ) AS v(coffee, n, s)
 JOIN coffees c ON c.name = v.coffee JOIN recipes r ON r.coffee_id = c.id AND r.is_active;
 
-INSERT INTO dining_tables (table_no, qr_code, area, capacity) VALUES
- ('B01','tbl-b01-7f3k2m','Tầng trệt',2), ('B02','tbl-b02-9q4x1p','Tầng trệt',4),
- ('B03','tbl-b03-2h8n5r','Tầng trệt',4), ('B04','tbl-b04-6w1c7v','Sân vườn',6),
- ('B05','tbl-b05-3j9t4y','Sân vườn',4), ('B06','tbl-b06-8d2z6s','Lầu 1',2);
+INSERT INTO dining_tables (table_no, qr_code, floor, area, capacity) VALUES
+ ('B01','tbl-b01-7f3k2m','Tầng trệt','Trong nhà',2), ('B02','tbl-b02-9q4x1p','Tầng trệt','Trong nhà',4),
+ ('B03','tbl-b03-2h8n5r','Tầng trệt','Trong nhà',4), ('B04','tbl-b04-6w1c7v','Tầng trệt','Sân vườn',6),
+ ('B05','tbl-b05-3j9t4y','Tầng trệt','Sân vườn',4), ('B06','tbl-b06-8d2z6s','Lầu 1','Ban công',2);
 
 INSERT INTO promotions (name, description, apply_scope, discount_percent, min_order_amount, start_date, end_date, status) VALUES
  ('Giảm 10% đơn từ 150K', 'Áp dụng cho mọi đơn từ 150.000đ', 'ORDER', 10, 150000,

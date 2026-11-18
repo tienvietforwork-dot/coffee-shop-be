@@ -400,6 +400,7 @@ CREATE TABLE dining_tables (
     id       BIGSERIAL PRIMARY KEY,
     table_no VARCHAR(10)  NOT NULL,
     qr_code  VARCHAR(255) NOT NULL,
+    floor    VARCHAR(50),
     area     VARCHAR(50),
     capacity INT          CHECK (capacity > 0),
     status   VARCHAR(20)  NOT NULL DEFAULT 'AVAILABLE' CHECK (status IN ('AVAILABLE', 'OCCUPIED', 'INACTIVE')),

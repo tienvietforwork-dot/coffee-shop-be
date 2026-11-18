@@ -10,6 +10,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * Thin wrapper around {@link SimpMessagingTemplate} so services don't need to
  * know STOMP destination names directly. Topics:
  *  - /topic/orders             -> broadcast whenever an order is created/updated
+ *  - /topic/tables             -> trạng thái bàn đổi bằng tay (sơ đồ bàn / quét QR)
  * Inside a transaction the message goes out only after it commits: clients refetch on it,
  * and a message sent before the commit makes them read the old data.
  */
@@ -18,11 +19,17 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class NotificationService {
 
     private static final String ORDERS_TOPIC = "/topic/orders";
+    private static final String TABLES_TOPIC = "/topic/tables";
 
     private final SimpMessagingTemplate messagingTemplate;
 
     public void notifyOrderChanged(Object payload) {
         send(ORDERS_TOPIC, payload);
+    }
+
+    /** nhân viên đổi trạng thái bàn bằng tay: các màn sơ đồ bàn tải lại */
+    public void notifyTablesChanged() {
+        send(TABLES_TOPIC, java.util.Map.of("changed", true));
     }
 
     private void send(String topic, Object payload) {

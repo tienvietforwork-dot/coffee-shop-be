@@ -5,6 +5,7 @@ import com.coffeeshop.dto.response.OrderResponse;
 import com.coffeeshop.dto.response.OrderStatusHistoryResponse;
 import com.coffeeshop.dto.response.PaymentResponse;
 import com.coffeeshop.dto.response.PriceQuoteResponse;
+import com.coffeeshop.dto.response.TableBoardResponse;
 import com.coffeeshop.entity.*;
 import com.coffeeshop.entity.enums.*;
 import com.coffeeshop.exception.BadRequestException;
@@ -23,6 +24,7 @@ import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -175,9 +177,13 @@ public class OrderService {
     /** Staff takes an order at the counter: made straight away. */
     @Transactional
     public OrderResponse createAtCounter(CounterOrderRequest request) {
-        DiningTable table = request.tableId() == null ? null : tableService.get(request.tableId());
+        DiningTable table = request.tableId() == null || request.orderType() != OrderType.DINE_IN
+                ? null : tableService.get(request.tableId());
         if (request.orderType() == OrderType.DINE_IN && table == null) {
             throw new BadRequestException("Đơn tại bàn cần chọn bàn");
+        }
+        if (table != null && table.getStatus() == TableStatus.INACTIVE) {
+            throw new BadRequestException("Bàn " + table.getTableNo() + " đang ngưng phục vụ");
         }
         Draft draft = new Draft(toLines(request.items()), request.orderType(), OrderChannel.COUNTER, table, null,
                 request.customerPhone(), request.customerName(), null, request.delivery(), null,
@@ -415,8 +421,10 @@ public class OrderService {
 
     private void completeInternal(Order order) {
         LocalDateTime now = LocalDateTime.now();
-        // "thu tiền nếu chưa thanh toán": hand-over means cash was collected
-        order.getPayments().stream().filter(p -> p.getStatus() == PaymentStatus.PENDING).forEach(p -> {
+        // "thu tiền nếu chưa thanh toán": hand-over means cash was collected — trừ khách ngồi bàn: phục vụ xong món
+        // nhưng trả sau, giữ bàn tới khi thanh toán bàn (checkoutTable)
+        boolean payLater = order.getTable() != null && order.getOrderType() == OrderType.DINE_IN;
+        if (!payLater) order.getPayments().stream().filter(p -> p.getStatus() == PaymentStatus.PENDING).forEach(p -> {
             p.setStatus(PaymentStatus.PAID);
             p.setPaidAt(now);
         });
@@ -445,14 +453,94 @@ public class OrderService {
     @Transactional
     public OrderResponse collectPayment(Long id) {
         Order order = get(id);
-        if (!ACTIVE.contains(order.getStatus())) throw new BadRequestException("Đơn đã đóng");
+        // đơn tại bàn đã phục vụ (COMPLETED) vẫn có thể còn khoản trả sau
+        if (!ACTIVE.contains(order.getStatus()) && order.getStatus() != OrderStatus.COMPLETED) {
+            throw new BadRequestException("Đơn đã đóng");
+        }
         var pending = order.getPayments().stream().filter(p -> p.getStatus() == PaymentStatus.PENDING).toList();
         if (pending.isEmpty()) throw new BadRequestException("Đơn không có khoản cần thu");
         pending.forEach(p -> {
             p.setStatus(PaymentStatus.PAID);
             p.setPaidAt(LocalDateTime.now());
         });
+        releaseTable(order);
         return publish(order);
+    }
+
+    // ---- bàn: sơ đồ bàn ở màn order tại quầy, khách ngồi bàn trả sau ------------------
+
+    @Transactional(readOnly = true)
+    public List<TableBoardResponse> tableBoard() {
+        Map<Long, List<Order>> open = new HashMap<>();
+        for (Order o : orderRepository.findOpenAtTables(null, ACTIVE)) {
+            open.computeIfAbsent(o.getTable().getId(), k -> new ArrayList<>()).add(o);
+        }
+        return tableService.all().stream()
+                .map(t -> TableBoardResponse.of(t, open.getOrDefault(t.getId(), List.of()))).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrderResponse> openAtTable(Long tableId) {
+        tableService.get(tableId);
+        return orderRepository.findOpenAtTables(tableId, ACTIVE).stream().map(OrderResponse::from).toList();
+    }
+
+    /** Ô bàn theo mã QR dán trên bàn: nhân viên quét bằng điện thoại để xem / đổi trạng thái. */
+    @Transactional(readOnly = true)
+    public TableBoardResponse tableByQr(String qrCode) {
+        DiningTable table = tableService.getByQr(qrCode);
+        return TableBoardResponse.of(table, orderRepository.findOpenAtTables(table.getId(), ACTIVE));
+    }
+
+    /**
+     * Nhân viên đổi trạng thái bàn bằng tay (trên sơ đồ bàn hoặc quét QR): có khách (khách vừa ngồi, chưa gọi món),
+     * trống, tạm ngưng. Bàn còn đơn đang làm / chưa thu tiền thì không cho trả hay tạm ngưng — phải thanh toán bàn.
+     */
+    @Transactional
+    public TableBoardResponse setTableStatus(Long tableId, TableStatus status) {
+        if (status == null) throw new BadRequestException("Chọn trạng thái bàn");
+        DiningTable table = tableService.get(tableId);
+        List<Order> open = orderRepository.findOpenAtTables(tableId, ACTIVE);
+        if (status != TableStatus.OCCUPIED && !open.isEmpty()) {
+            throw new BadRequestException("Bàn " + table.getTableNo() + " còn " + open.size()
+                    + " đơn chưa thanh toán — thanh toán bàn trước");
+        }
+        table.setStatus(status);
+        notificationService.notifyTablesChanged();
+        return TableBoardResponse.of(table, open);
+    }
+
+    /**
+     * Thanh toán bàn: thu mọi khoản còn nợ của các đơn đang mở trên bàn bằng {@code method}, đơn đang pha / chờ giao
+     * coi như đã phục vụ xong (hoàn tất), rồi mở lại bàn. Đơn khách tự gọi qua QR chưa được nhận pha phải nhận hoặc
+     * hủy trước.
+     */
+    @Transactional
+    public List<OrderResponse> checkoutTable(Long tableId, PaymentMethod method) {
+        DiningTable table = tableService.get(tableId);
+        List<Order> open = orderRepository.findOpenAtTables(tableId, ACTIVE);
+        List<String> waiting = open.stream()
+                .filter(o -> o.getStatus() == OrderStatus.PENDING || o.getStatus() == OrderStatus.CONFIRMED)
+                .map(Order::getOrderCode).toList();
+        if (!waiting.isEmpty()) {
+            throw new BadRequestException("Bàn còn đơn chưa nhận pha: " + String.join(", ", waiting)
+                    + " — nhận hoặc hủy trước khi thanh toán");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        List<OrderResponse> result = new ArrayList<>();
+        for (Order order : open) {
+            for (Payment p : order.getPayments()) {
+                if (p.getStatus() != PaymentStatus.PENDING) continue;
+                onlinePaymentService.closePending(p); // link VNPAY khách chưa trả: hết hiệu lực, thu tại quầy
+                if (method != null) p.setMethod(method);
+                p.setStatus(PaymentStatus.PAID);
+                p.setPaidAt(now);
+            }
+            if (ACTIVE.contains(order.getStatus())) completeInternal(order);
+            result.add(publish(order));
+        }
+        table.setStatus(TableStatus.AVAILABLE);
+        return result;
     }
 
     @Transactional
@@ -510,7 +598,8 @@ public class OrderService {
     private void releaseTable(Order order) {
         DiningTable table = order.getTable();
         if (table == null || table.getStatus() != TableStatus.OCCUPIED) return;
-        if (!orderRepository.existsByTableIdAndStatusInAndIdNot(table.getId(), ACTIVE, order.getId())) table.setStatus(TableStatus.AVAILABLE);
+        // bàn còn đơn đang làm hoặc chưa thu tiền (kể cả đơn này) thì vẫn có khách
+        if (orderRepository.findOpenAtTables(table.getId(), ACTIVE).isEmpty()) table.setStatus(TableStatus.AVAILABLE);
     }
 
     /** Logged-in customers use the phone of their own profile (vouchers are tied to it). */
