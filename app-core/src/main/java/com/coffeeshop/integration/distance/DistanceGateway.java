@@ -38,6 +38,9 @@ public class DistanceGateway {
     private final ObjectMapper json;
     private final RestClient http = RestClient.create();
     private final Map<String, Point> geocodeCache = new ConcurrentHashMap<>();
+    /** địa chỉ bản đồ không biết → lúc tra (chỉ khi bản đồ trả lời "không có", không tính lỗi mạng) */
+    private final Map<String, Long> geocodeMisses = new ConcurrentHashMap<>();
+    private static final long MISS_TTL_MS = 60 * 60_000;
     private final Map<String, Route> routeCache = new ConcurrentHashMap<>();
     private final Map<String, List<String>> suggestCache = new ConcurrentHashMap<>();
 
@@ -50,12 +53,20 @@ public class DistanceGateway {
         String key = norm(address);
         Point cached = geocodeCache.get(key);
         if (cached != null) return cached;
+        Long missedAt = geocodeMisses.get(key); // địa chỉ khách gõ tuỳ ý: không hỏi lại bản đồ mỗi lần báo giá / vẽ tuyến
+        if (missedAt != null && System.currentTimeMillis() - missedAt < MISS_TTL_MS) {
+            throw new IllegalStateException("Không tìm thấy địa chỉ trên bản đồ — chọn địa chỉ trong danh sách gợi ý");
+        }
         Point p = switch (provider()) {
             case "simulated" -> simulatedPoint(address, near);
             case "google" -> googleGeocode(address);
             case "goong" -> goongGeocode(address);
             default -> osmGeocode(address, near);
         };
+        if (p == null) {
+            if (geocodeMisses.size() > CACHE_MAX) geocodeMisses.clear();
+            geocodeMisses.put(key, System.currentTimeMillis());
+        }
         if (p == null) throw new IllegalStateException("Không tìm thấy địa chỉ trên bản đồ — chọn địa chỉ trong danh sách gợi ý");
         if (geocodeCache.size() > CACHE_MAX) geocodeCache.clear();
         geocodeCache.put(key, p);
@@ -425,7 +436,6 @@ public class DistanceGateway {
         out.add(String.join(", ", segs));
         // the old quận / phường names are gone since the 2025 merger: street + city alone usually still matches
         if (segs.size() > 2) out.add(segs.get(0) + ", " + segs.get(segs.size() - 1));
-        for (int i = 1; i <= segs.size() - 2; i++) out.add(String.join(", ", segs.subList(i, segs.size())));
         return new ArrayList<>(out);
     }
 

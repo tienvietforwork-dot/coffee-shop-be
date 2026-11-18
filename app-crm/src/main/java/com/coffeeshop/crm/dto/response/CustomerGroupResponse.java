@@ -15,6 +15,7 @@ public record CustomerGroupResponse(
         String name,
         String description,
         String groupType,
+        String classificationCode,
         JsonNode criteriaRule,
         LocalDateTime recalculatedAt
 ) {
@@ -22,7 +23,7 @@ public record CustomerGroupResponse(
         return new CustomerGroupResponse(
                 group.getId(), group.getCreatedBy(), group.getCreatedAt(),
                 group.getUpdatedBy(), group.getUpdatedAt(), group.getDelFlag(), group.getDelUser(),
-                group.getName(), group.getDescription(), group.getGroupType(), group.getCriteriaRule(),
+                group.getName(), group.getDescription(), group.getGroupType(), group.getClassificationCode(), group.getCriteriaRule(),
                 group.getRecalculatedAt());
     }
 }

@@ -13,8 +13,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -30,7 +28,7 @@ import java.util.stream.Collectors;
 
 /**
  * Lịch hẹn giao / nhận và thứ tự pha chế: mỗi đơn mang đi / giao đang xử lý có giờ cần giao tới (giờ hẹn, hoặc càng sớm
- * càng tốt), thời gian pha (công thức) và thời gian chạy xe (km ÷ tốc độ) → giờ phải bắt đầu pha. Đơn nào phải pha sớm
+ * càng tốt), thời gian pha (công thức) và thời gian giao theo khu vực (cấu hình phút theo tỉnh / phường) → giờ phải bắt đầu pha. Đơn nào phải pha sớm
  * nhất xếp trước. Lần giao sắp tới của gói định kỳ (chưa tự tạo đơn) cũng hiện để quầy chuẩn bị.
  */
 @Service
@@ -50,7 +48,7 @@ public class DeliveryScheduleService {
     /** phút dự phòng (đóng gói, bàn giao người giao) */
     @Value("${app.schedule.buffer-minutes:5}")
     private int bufferMinutes;
-    /** không đo được quãng đường: coi như chạy xe bấy nhiêu phút */
+    /** không xác định được khu vực giao: coi như giao mất bấy nhiêu phút */
     @Value("${app.schedule.default-travel-minutes:20}")
     private int defaultTravelMinutes;
     /** gói định kỳ tự tạo đơn trước giờ giao bấy nhiêu phút (như SubscriptionService) */
@@ -72,11 +70,7 @@ public class DeliveryScheduleService {
     public List<Row> schedule(LocalDate date) {
         LocalDateTime now = LocalDateTime.now(DeliveryFeeService.SHOP_ZONE);
         LocalDate day = date == null ? now.toLocalDate() : date;
-        Map<Long, Integer> brew = new HashMap<>();
-        recipeRepository.findAllActive().forEach(r -> {
-            if (r.getBrewTimeMin() != null) brew.putIfAbsent(r.getCoffee().getId(), r.getBrewTimeMin());
-        });
-        BigDecimal speed = deliveryFeeService.settings().speedKmh();
+        Map<Long, Integer> brew = brewMinutes();
         boolean today = day.equals(now.toLocalDate());
 
         List<Row> rows = new ArrayList<>();
@@ -86,7 +80,7 @@ public class DeliveryScheduleService {
             if (o.getSubscriptionId() != null) subsWithOrder.add(o.getSubscriptionId());
             int prep = o.getItems().stream().mapToInt(i -> brew.getOrDefault(i.getCoffee().getId(), 0) * i.getQuantity()).sum();
             var sh = o.getShipment();
-            int travel = o.getOrderType() != OrderType.DELIVERY ? 0 : travelMinutes(sh == null ? null : sh.getDistanceKm(), speed);
+            int travel = o.getOrderType() != OrderType.DELIVERY ? 0 : travelMinutes(sh);
             boolean scheduled = o.getPickupTime() != null;
             // không hẹn giờ: pha ngay khi nhận đơn
             LocalDateTime deliverAt = scheduled ? o.getPickupTime() : o.getOrderedAt().plusMinutes(prep + travel + bufferMinutes);
@@ -106,7 +100,7 @@ public class DeliveryScheduleService {
             LocalDateTime deliverAt = day.atTime(s.getDeliveryTime());
             if (deliverAt.isBefore(now)) continue;
             int prep = s.getItems().stream().mapToInt(i -> brew.getOrDefault(i.getCoffee().getId(), 0) * i.getQuantity()).sum();
-            int travel = defaultTravelMinutes;
+            int travel = orDefault(deliveryFeeService.deliveryMinutes(s.getAddress().getAddress()));
             LocalDateTime brewAt = deliverAt.minusMinutes(prep + travel + bufferMinutes);
             rows.add(new Row(null, null, null, OrderType.DELIVERY, s.getCustomer().getFullName(), s.getAddress().getRecipientPhone(),
                     s.getAddress().getAddress(), null,
@@ -119,9 +113,47 @@ public class DeliveryScheduleService {
         return rows;
     }
 
-    private int travelMinutes(BigDecimal km, BigDecimal speedKmh) {
-        if (km == null || speedKmh == null || speedKmh.signum() <= 0) return defaultTravelMinutes;
-        return Math.max(1, km.multiply(BigDecimal.valueOf(60)).divide(speedKmh, 0, RoundingMode.CEILING).intValue());
+    /**
+     * Giờ phải bắt đầu pha của từng đơn (id → giờ): đơn hẹn giờ = giờ hẹn − thời gian pha − chạy xe − dự phòng; đơn
+     * làm ngay = lúc đặt. Bảng điều phối dùng để tách cột "Hẹn giao" / "Chờ pha chế" và xếp thứ tự ưu tiên.
+     */
+    @Transactional(readOnly = true)
+    public Map<Long, LocalDateTime> brewStartTimes(List<Order> orders) {
+        Map<Long, LocalDateTime> out = new HashMap<>();
+        if (orders.isEmpty()) return out;
+        Map<Long, Integer> brew = null;
+        for (Order o : orders) {
+            if (o.getPickupTime() == null) {
+                out.put(o.getId(), o.getOrderedAt());
+                continue;
+            }
+            if (brew == null) brew = brewMinutes();
+            Map<Long, Integer> b = brew;
+            int prep = o.getItems().stream().mapToInt(i -> b.getOrDefault(i.getCoffee().getId(), 0) * i.getQuantity()).sum();
+            var sh = o.getShipment();
+            int travel = o.getOrderType() != OrderType.DELIVERY ? 0 : travelMinutes(sh);
+            out.put(o.getId(), o.getPickupTime().minusMinutes(prep + travel + bufferMinutes));
+        }
+        return out;
+    }
+
+    private Map<Long, Integer> brewMinutes() {
+        Map<Long, Integer> brew = new HashMap<>();
+        recipeRepository.findAllActive().forEach(r -> {
+            if (r.getBrewTimeMin() != null) brew.putIfAbsent(r.getCoffee().getId(), r.getBrewTimeMin());
+        });
+        return brew;
+    }
+
+    /** phút giao lưu trên đơn lúc đặt; đơn cũ chưa có thì tra lại theo khu vực của địa chỉ */
+    private int travelMinutes(com.coffeeshop.entity.Shipment sh) {
+        if (sh == null) return defaultTravelMinutes;
+        if (sh.getDeliveryMinutes() != null) return sh.getDeliveryMinutes();
+        return orDefault(deliveryFeeService.deliveryMinutes(sh.getAddress().getAddress()));
+    }
+
+    private int orDefault(Integer minutes) {
+        return minutes == null || minutes <= 0 ? defaultTravelMinutes : minutes;
     }
 
     private static String urgency(LocalDateTime now, LocalDateTime brewAt) {

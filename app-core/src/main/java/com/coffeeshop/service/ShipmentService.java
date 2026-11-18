@@ -167,12 +167,17 @@ public class ShipmentService {
     // ---- tuyến giao -------------------------------------------------------------
 
     public record Stop(Long shipmentId, String orderCode, String recipientName, String recipientPhone, String address,
-                       Double lat, Double lng, ShipmentStatus status) {
+                       Double lat, Double lng, ShipmentStatus status, DeliveryFeeService.Precision precision) {
+        /** toạ độ chỉ là trung tâm phường / tỉnh (bản đồ không biết số nhà khách gõ) */
+        boolean approximate() {
+            return precision != null && precision != DeliveryFeeService.Precision.ADDRESS;
+        }
     }
 
     /**
      * Tuyến giao gợi ý: xuất phát từ quán, đi điểm gần nhất trước. {@code path}: đường đi xe để vẽ (null = nối thẳng),
-     * {@code unlocated}: địa chỉ không tìm được toạ độ (vẫn có trong link Google Maps).
+     * {@code unlocated}: địa chỉ không tìm được toạ độ (vẫn có trong link Google Maps). Điểm có {@code precision} WARD / PROVINCE
+     * nằm ở trung tâm phường / tỉnh: vẫn vẽ và xếp thứ tự, nhưng link Google Maps gửi địa chỉ chữ để Google tự tìm số nhà.
      */
     public record RoutePlan(String shopAddress, Double shopLat, Double shopLng, List<Stop> stops, List<Stop> unlocated,
                             List<double[]> path, Double km, Integer minutes, String googleMapsUrl) {
@@ -188,9 +193,11 @@ public class ShipmentService {
 
         List<Stop> located = new ArrayList<>(), unlocated = new ArrayList<>();
         for (Shipment s : shipments) {
-            DistanceGateway.Point p = deliveryFeeService.locateOrNull(s.getAddress().getAddress());
+            DeliveryFeeService.Located loc = deliveryFeeService.locateOrNull(s.getAddress().getAddress());
+            DistanceGateway.Point p = loc == null ? null : loc.point();
             Stop stop = new Stop(s.getId(), s.getOrder().getOrderCode(), s.getAddress().getRecipientName(),
-                    s.getAddress().getRecipientPhone(), s.getAddress().getAddress(), p == null ? null : p.lat(), p == null ? null : p.lng(), s.getStatus());
+                    s.getAddress().getRecipientPhone(), s.getAddress().getAddress(), p == null ? null : p.lat(), p == null ? null : p.lng(), s.getStatus(),
+                    loc == null ? null : loc.precision());
             (p == null ? unlocated : located).add(stop);
         }
         // điểm gần nhất trước (đường chim bay) — đủ tốt cho vài đơn một chuyến
@@ -208,15 +215,20 @@ public class ShipmentService {
         points.add(shop);
         ordered.forEach(x -> points.add(new DistanceGateway.Point(x.lat(), x.lng())));
         DistanceGateway.Path path = distance.path(points);
-        List<String> all = new ArrayList<>(ordered.stream().map(Stop::address).toList());
+        // Google Maps hay không tìm ra địa chỉ chữ (tên cửa hàng, tên phường mới) → điểm nào đã có tọa độ thì gửi tọa độ
+        List<String> all = new ArrayList<>(ordered.stream().map(x -> x.approximate() ? x.address() : latLng(x.lat(), x.lng())).toList());
         all.addAll(unlocated.stream().map(Stop::address).toList());
         return new RoutePlan(settings.shopAddress(), shop.lat(), shop.lng(), ordered, unlocated,
                 path == null ? null : path.line().stream().map(p -> new double[]{p.lat(), p.lng()}).toList(),
                 path == null ? null : Math.round(path.km() * 10) / 10.0, path == null ? null : path.minutes(),
-                googleMapsUrl(settings.shopAddress(), all));
+                googleMapsUrl(latLng(shop.lat(), shop.lng()), all));
     }
 
-    /** link Google Maps chỉ đường xe máy: quán → các điểm theo thứ tự (điểm cuối là đích, còn lại là điểm dừng) */
+    static String latLng(double lat, double lng) {
+        return String.format(java.util.Locale.ROOT, "%.6f,%.6f", lat, lng);
+    }
+
+    /** link Google Maps chỉ đường xe máy: quán → các điểm theo thứ tự (điểm cuối là đích, còn lại là điểm dừng); mỗi điểm là "lat,lng" hoặc địa chỉ chữ */
     static String googleMapsUrl(String origin, List<String> stops) {
         if (stops.isEmpty()) return null;
         StringBuilder url = new StringBuilder("https://www.google.com/maps/dir/?api=1&travelmode=two-wheeler");

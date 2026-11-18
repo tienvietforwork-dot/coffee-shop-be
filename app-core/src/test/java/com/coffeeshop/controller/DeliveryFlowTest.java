@@ -65,8 +65,8 @@ class DeliveryFlowTest {
         provinceRepository.deleteAll();
         call(body(put("/api/delivery-settings"), Map.of("shopAddress", "Quán", "freeShipThreshold", 150000,
                 "minOrderAmount", 50000, "openTime", "06:00", "closeTime", "22:00")));
-        call(body(post("/api/delivery-areas"), Map.of("name", "Thành phố Hà Nội", "fee", 15000, "active", true,
-                "wards", List.of(Map.of("name", "Xã Sóc Sơn", "fee", 35000, "blocked", false),
+        call(body(post("/api/delivery-areas"), Map.of("name", "Thành phố Hà Nội", "fee", 15000, "deliveryMinutes", 30, "active", true,
+                "wards", List.of(Map.of("name", "Xã Sóc Sơn", "fee", 35000, "deliveryMinutes", 60, "blocked", false),
                         Map.of("name", "Phường Hoàn Kiếm", "blocked", true)))));
     }
 
@@ -91,6 +91,9 @@ class DeliveryFlowTest {
         assertThat(q.get("shippingFee").decimalValue()).isEqualByComparingTo("15000");
         assertThat(q.get("deliveryZone").asText()).isEqualTo("Phường Ba Đình, Thành phố Hà Nội");
         assertThat(q.get("deliveryDistanceKm").decimalValue()).isEqualByComparingTo("4.2");
+        // thời gian giao theo khu vực: tỉnh 30 phút, xã Sóc Sơn đặt riêng 60 phút
+        assertThat(q.get("deliveryMinutes").asInt()).isEqualTo(30);
+        assertThat(call(body(post("/api/orders/quote"), quote(2, SOC_SON))).get("deliveryMinutes").asInt()).isEqualTo(60);
         // phường có phí riêng
         assertThat(call(body(post("/api/orders/quote"), quote(2, SOC_SON))).get("shippingFee").decimalValue()).isEqualByComparingTo("35000");
         // 4 × 40.000 = 160.000 ≥ 150.000: miễn phí ship
@@ -114,7 +117,7 @@ class DeliveryFlowTest {
                 .get("message").asText()).contains("Hà Nội");
         assertThat(call(get("/api/public/delivery-settings")).get("provinces").get(0).asText()).isEqualTo("Thành phố Hà Nội");
         // the same province twice is refused
-        mvc.perform(body(post("/api/delivery-areas"), Map.of("name", "TP. Hà Nội", "fee", 1, "active", true, "wards", List.of())))
+        mvc.perform(body(post("/api/delivery-areas"), Map.of("name", "TP. Hà Nội", "fee", 1, "deliveryMinutes", 30, "active", true, "wards", List.of())))
                 .andExpect(status().isBadRequest());
     }
 

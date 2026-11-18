@@ -165,6 +165,7 @@ CREATE TABLE categories (
     id            BIGSERIAL PRIMARY KEY,
     name          VARCHAR(100) NOT NULL,
     description   TEXT,
+    product_type  VARCHAR(20) NOT NULL DEFAULT 'DRINK' CHECK (product_type IN ('DRINK', 'FOOD', 'ADD_ON')),
     display_order INT NOT NULL DEFAULT 0,
     created_by VARCHAR(50)  NOT NULL DEFAULT 'system',
     created_at TIMESTAMP    NOT NULL DEFAULT now(),
@@ -174,6 +175,7 @@ CREATE TABLE categories (
     del_user   VARCHAR(50)
 );
 CREATE UNIQUE INDEX uq_categories_name ON categories (lower(name)) WHERE NOT del_flag;
+CREATE INDEX idx_categories_product_type ON categories (product_type, del_flag);
 
 CREATE TABLE coffees (
     id          BIGSERIAL PRIMARY KEY,
@@ -285,6 +287,7 @@ CREATE TABLE customer_groups (
     name            VARCHAR(100) NOT NULL,
     description     TEXT,
     group_type      VARCHAR(20)  NOT NULL DEFAULT 'MANUAL' CHECK (group_type IN ('AUTOMATIC', 'MANUAL')),
+    classification_code VARCHAR(30),
     -- Example: {"min_spend": 5000000, "min_orders": 10, "last_order_days": 30}
     criteria_rule   JSONB,
     recalculated_at TIMESTAMP,
@@ -296,6 +299,8 @@ CREATE TABLE customer_groups (
     del_user   VARCHAR(50)
 );
 CREATE UNIQUE INDEX uq_customer_groups_name ON customer_groups (lower(name)) WHERE NOT del_flag;
+CREATE UNIQUE INDEX uq_customer_groups_classification_code ON customer_groups (classification_code)
+    WHERE classification_code IS NOT NULL AND del_flag = FALSE;
 
 CREATE TABLE customer_group_members (
     id          BIGSERIAL PRIMARY KEY,
@@ -312,6 +317,7 @@ CREATE TABLE customer_group_members (
     del_user   VARCHAR(50)
 );
 CREATE UNIQUE INDEX uq_customer_group_members ON customer_group_members (group_id, customer_id) WHERE NOT del_flag;
+CREATE UNIQUE INDEX uq_customer_group_members_one_active_group ON customer_group_members (customer_id) WHERE del_flag = FALSE AND is_excluded = FALSE;
 CREATE INDEX idx_cgm_customer ON customer_group_members (customer_id);
 
 CREATE TABLE interactions (
@@ -394,6 +400,7 @@ CREATE TABLE dining_tables (
     id       BIGSERIAL PRIMARY KEY,
     table_no VARCHAR(10)  NOT NULL,
     qr_code  VARCHAR(255) NOT NULL,
+    floor    VARCHAR(50),
     area     VARCHAR(50),
     capacity INT          CHECK (capacity > 0),
     status   VARCHAR(20)  NOT NULL DEFAULT 'AVAILABLE' CHECK (status IN ('AVAILABLE', 'OCCUPIED', 'INACTIVE')),
@@ -1031,9 +1038,6 @@ CREATE TABLE IF NOT EXISTS delivery_settings (
 ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS open_time  VARCHAR(5);   -- 'HH:mm' giờ VN; NULL = mở cả ngày
 ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS close_time VARCHAR(5);   -- < open_time = đóng sau nửa đêm
 
--- Ước tính giờ giao — xem delivery_eta.sql
-ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS speed_kmh NUMERIC(5,1) CHECK (speed_kmh > 0);
-
 -- Mã sản phẩm, giá niêm yết từng dòng đơn, voucher trên đơn — xem product_code_order_discount.sql
 ALTER TABLE coffees     ADD COLUMN IF NOT EXISTS code             VARCHAR(20);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_coffees_code ON coffees (upper(code)) WHERE NOT del_flag;
@@ -1045,11 +1049,24 @@ ALTER TABLE orders      ADD COLUMN IF NOT EXISTS voucher_discount NUMERIC(12,2) 
 ALTER TABLE materials ADD COLUMN IF NOT EXISTS quantity       NUMERIC(12,2) NOT NULL DEFAULT 0;
 ALTER TABLE orders    ADD COLUMN IF NOT EXISTS stock_deducted BOOLEAN       NOT NULL DEFAULT FALSE;
 
+-- Danh mục 34 tỉnh / thành → phường / xã (từ 1/7/2025); dữ liệu — xem vn_admin_units.sql
+CREATE TABLE IF NOT EXISTS vn_provinces (
+    code INTEGER      PRIMARY KEY,
+    name VARCHAR(100) NOT NULL
+);
+CREATE TABLE IF NOT EXISTS vn_wards (
+    code          INTEGER      PRIMARY KEY,
+    province_code INTEGER      NOT NULL REFERENCES vn_provinces (code),
+    name          VARCHAR(100) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_vn_wards_province ON vn_wards (province_code);
+
 -- Phí giao hàng theo khu vực (tỉnh + phường), miễn phí cho nhóm khách — xem delivery_areas.sql
 CREATE TABLE IF NOT EXISTS delivery_provinces (
     id     BIGSERIAL PRIMARY KEY,
     name   VARCHAR(100)  NOT NULL,                       -- "Thành phố Hà Nội" (danh mục 34 tỉnh / thành)
     fee    NUMERIC(12,2) NOT NULL CHECK (fee >= 0),      -- phí ship mặc định cho mọi phường / xã của tỉnh
+    delivery_minutes INTEGER NOT NULL DEFAULT 30 CHECK (delivery_minutes > 0), -- thời gian giao mặc định (phút)
     active BOOLEAN       NOT NULL DEFAULT TRUE           -- false = tạm ngưng giao tới tỉnh này
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_delivery_provinces_name ON delivery_provinces (lower(name));
@@ -1060,6 +1077,7 @@ CREATE TABLE IF NOT EXISTS delivery_wards (
     province_id BIGINT        NOT NULL REFERENCES delivery_provinces (id) ON DELETE CASCADE,
     name        VARCHAR(100)  NOT NULL,
     fee         NUMERIC(12,2) CHECK (fee >= 0),          -- NULL = theo phí tỉnh
+    delivery_minutes INTEGER CHECK (delivery_minutes > 0), -- NULL = theo thời gian giao của tỉnh
     blocked     BOOLEAN       NOT NULL DEFAULT FALSE
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_delivery_wards_name ON delivery_wards (province_id, lower(name));
@@ -1071,6 +1089,7 @@ ALTER TABLE delivery_settings ADD COLUMN IF NOT EXISTS free_ship_group_ids VARCH
 ALTER TABLE shipments ADD COLUMN IF NOT EXISTS shipper_id   BIGINT REFERENCES staff (id);
 ALTER TABLE shipments ADD COLUMN IF NOT EXISTS assigned_at  TIMESTAMP;
 ALTER TABLE shipments ADD COLUMN IF NOT EXISTS picked_up_at TIMESTAMP;   -- lúc người giao nhận đồ, bắt đầu đi
+ALTER TABLE shipments ADD COLUMN IF NOT EXISTS delivery_minutes INTEGER;  -- phút giao theo khu vực lúc đặt — xem delivery_minutes_by_area.sql
 CREATE INDEX IF NOT EXISTS idx_shipments_shipper ON shipments (shipper_id) WHERE NOT del_flag;
 
 -- Gói giao định kỳ — xem delivery_subscriptions.sql

@@ -30,6 +30,10 @@ public class Category extends BaseEntity {
     @Column(columnDefinition = "TEXT")
     private String description;
     @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "product_type", nullable = false, length = 20)
+    private CategoryProductType productType = CategoryProductType.DRINK;
+    @Builder.Default
     @Column(name = "display_order", nullable = false)
     private Integer displayOrder = 0;
 }

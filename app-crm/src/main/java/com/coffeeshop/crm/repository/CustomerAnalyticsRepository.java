@@ -17,6 +17,53 @@ public class CustomerAnalyticsRepository {
     @PersistenceContext
     private EntityManager entityManager;
 
+    public record CustomerListMetrics(long orderCount, BigDecimal totalSpent, LocalDateTime lastOrderAt) { }
+
+    @SuppressWarnings("unchecked")
+    public java.util.Map<Long, CustomerListMetrics> customerListMetrics(List<Long> customerIds) {
+        if (customerIds == null || customerIds.isEmpty()) return java.util.Map.of();
+        Query query = entityManager.createNativeQuery("""
+                select c.id, count(o.id), coalesce(sum(o.total_amount), 0), max(o.ordered_at)
+                from customers c
+                left join orders o on o.customer_id = c.id and o.del_flag = false and o.status = 'COMPLETED'
+                where c.id in :customerIds
+                group by c.id
+                """);
+        query.setParameter("customerIds", customerIds);
+        java.util.Map<Long, CustomerListMetrics> result = new java.util.HashMap<>();
+        for (Object item : query.getResultList()) {
+            Object[] row = (Object[]) item;
+            result.put(((Number) row[0]).longValue(), new CustomerListMetrics(
+                    ((Number) row[1]).longValue(), decimal(row[2]), dateTime(row[3])));
+        }
+        return result;
+    }
+
+    /** One deterministic classification per customer; never-purchased customers become REGULAR. */
+    @SuppressWarnings("unchecked")
+    public List<Object[]> classifyCustomers(BigDecimal potentialMin, BigDecimal vipMin, int inactiveDays) {
+        Query query = entityManager.createNativeQuery("""
+                with spend as (
+                    select c.id customer_id, coalesce(sum(o.total_amount), 0) total_spend,
+                           max(o.ordered_at) last_order_at
+                    from customers c
+                    left join orders o on o.customer_id=c.id and o.del_flag=false and o.status='COMPLETED'
+                    where c.del_flag=false
+                    group by c.id
+                )
+                select customer_id,
+                       case when last_order_at is not null and last_order_at < current_timestamp - (:inactiveDays * interval '1 day') then 'CHURN_RISK'
+                            when total_spend >= :vipMin then 'VIP'
+                            when total_spend >= :potentialMin then 'POTENTIAL'
+                            else 'REGULAR' end classification_code
+                from spend order by customer_id
+                """);
+        query.setParameter("potentialMin", potentialMin);
+        query.setParameter("vipMin", vipMin);
+        query.setParameter("inactiveDays", inactiveDays);
+        return query.getResultList();
+    }
+
     public Metrics metrics(Long customerId, LocalDateTime from, LocalDateTime to) {
         Query query = entityManager.createNativeQuery("""
                 select coalesce(sum(o.total_amount), 0), count(o.id), coalesce(avg(o.total_amount), 0), max(o.ordered_at),

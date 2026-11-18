@@ -56,7 +56,7 @@ public class OperationsController {
 
     /** nhân viên đang làm + số đơn đang cầm, hôm nay đã giao / thất bại */
     @GetMapping("/api/shippers")
-    @PreAuthorize(Perm.CAN_SHIPMENTS)
+    @PreAuthorize("hasAnyAuthority('orders','shipments')") // màn điều phối chọn người giao khi mang đi giao
     public List<ShipmentService.Shipper> shippers() {
         return shipmentService.shippers();
     }

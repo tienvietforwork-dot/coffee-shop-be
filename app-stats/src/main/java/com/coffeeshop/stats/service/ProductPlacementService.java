@@ -66,8 +66,8 @@ public class ProductPlacementService {
         return placementRuleRepository.findAllByOrderBySectionAscDisplayOrderAscIdAsc()
                 .stream()
                 .filter(rule -> section == null || rule.getSection() == section)
-                .filter(rule -> !visibleOnly || rule.isVisibleNow(now))
                 .map(rule -> ProductPlacementResponse.from(rule, now))
+                .filter(rule -> !visibleOnly || rule.visibleNow())
                 .toList();
     }
 
@@ -76,21 +76,19 @@ public class ProductPlacementService {
         LocalDateTime now = ShopTime.now();
         return placementRuleRepository.findAllByOrderBySectionAscDisplayOrderAscIdAsc().stream()
                 .filter(rule -> section == null || rule.getSection() == section)
-                .filter(rule -> rule.isVisibleNow(now))
-                .filter(rule -> rule.getCoffee().getStatus() == CoffeeStatus.AVAILABLE && !rule.getCoffee().isAutoSoldOut())
-                .map(rule -> ProductPlacementResponse.from(rule, now)).toList();
+                .map(rule -> ProductPlacementResponse.from(rule, now))
+                .filter(ProductPlacementResponse::visibleNow)
+                .toList();
     }
 
     @Transactional
     public ProductPlacementResponse create(ProductPlacementRequest request) {
         validateSchedule(request.startsAt(), request.endsAt());
-        if (placementRuleRepository.existsByCoffee_IdAndSection(request.coffeeId(), request.section())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Sản phẩm đã có trong khu vực " + request.section());
-        }
+        Category targetCategory = resolveTargetCategory(request.section(), request.targetCategoryId());
+        rejectDuplicate(request.coffeeId(), request.section(), targetCategory, null);
 
         ProductPlacementRule rule = new ProductPlacementRule();
-        apply(rule, request);
+        apply(rule, request, targetCategory);
         return ProductPlacementResponse.from(placementRuleRepository.save(rule), ShopTime.now());
     }
 
@@ -98,15 +96,13 @@ public class ProductPlacementService {
     public ProductPlacementResponse update(Long id, ProductPlacementRequest request) {
         validateSchedule(request.startsAt(), request.endsAt());
         ProductPlacementRule rule = getRule(id);
-        if (placementRuleRepository.existsByCoffee_IdAndSectionAndIdNot(request.coffeeId(), request.section(), id)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Sản phẩm đã có trong khu vực " + request.section());
-        }
+        Category targetCategory = resolveTargetCategory(request.section(), request.targetCategoryId());
+        rejectDuplicate(request.coffeeId(), request.section(), targetCategory, id);
 
         if (rule.getPublicationStatus() == PublicationStatus.PUBLISHED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Cần thu hồi cấu hình đã công bố trước khi sửa");
         }
-        apply(rule, request);
+        apply(rule, request, targetCategory);
         return ProductPlacementResponse.from(rule, ShopTime.now());
     }
 
@@ -130,11 +126,21 @@ public class ProductPlacementService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     coffee.getName() + " chưa ở trạng thái đang bán.");
         }
+        if (!rule.isActive()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Cấu hình trưng bày đang tắt. Hãy bật cấu hình trước khi công bố.");
+        }
+        if (rule.getSection() == ProductPlacementSection.CATEGORY) {
+            Long targetCategoryId = rule.getTargetCategory() == null ? null : rule.getTargetCategory().getId();
+            if (targetCategoryId == null || categoryRepository.findById(targetCategoryId).isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Danh mục đích không còn tồn tại. Hãy sửa cấu hình và chọn danh mục khác.");
+            }
+        }
         if (rule.getEndsAt() != null && !rule.getEndsAt().isAfter(ShopTime.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không công bố cấu hình đã hết hạn");
         }
         rule.setPublicationStatus(PublicationStatus.PUBLISHED);
-        rule.setActive(true);
         return ProductPlacementResponse.from(rule, ShopTime.now());
     }
 
@@ -180,23 +186,74 @@ public class ProductPlacementService {
         return CategoryPlacementResponse.from(category);
     }
 
-    private void apply(ProductPlacementRule rule, ProductPlacementRequest request) {
+    private void apply(ProductPlacementRule rule, ProductPlacementRequest request, Category targetCategory) {
         Coffee coffee = getCoffee(request.coffeeId());
         if (coffee.getStatus() == CoffeeStatus.DISCONTINUED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     coffee.getName() + " đã ngừng bán và không thể đưa vào khu vực trưng bày.");
         }
+        boolean coffeeChanged = rule.getId() == null || rule.getCoffee() == null
+                || !rule.getCoffee().getId().equals(coffee.getId());
+        if (coffeeChanged && (coffee.getStatus() != CoffeeStatus.AVAILABLE || coffee.isAutoSoldOut())) {
+            throw unavailableCoffee(coffee);
+        }
+        if (request.publicationStatus() != null && request.publicationStatus() != PublicationStatus.DRAFT) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dùng API publish để công bố cấu hình");
+        }
         rule.setCoffee(coffee);
+        rule.setTargetCategory(targetCategory);
         rule.setSection(request.section());
         rule.setTitle(blankToNull(request.title()));
         rule.setDisplayOrder(request.displayOrder() == null ? 0 : request.displayOrder());
         rule.setStartsAt(request.startsAt());
         rule.setEndsAt(request.endsAt());
         rule.setActive(request.active() == null || request.active());
-        if (request.publicationStatus() == PublicationStatus.PUBLISHED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Dùng API publish để công bố cấu hình");
-        }
         rule.setPublicationStatus(PublicationStatus.DRAFT);
+    }
+
+    private Category resolveTargetCategory(ProductPlacementSection section, Long targetCategoryId) {
+        if (section == ProductPlacementSection.CATEGORY) {
+            if (targetCategoryId == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Chọn danh mục cần đặt sản phẩm ở đầu danh mục.");
+            }
+            return categoryRepository.findById(targetCategoryId)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Không tìm thấy danh mục trưng bày: " + targetCategoryId));
+        }
+        if (targetCategoryId != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Chỉ khu vực Đầu danh mục mới được chọn danh mục đích.");
+        }
+        return null;
+    }
+
+    private void rejectDuplicate(Long coffeeId, ProductPlacementSection section, Category targetCategory, Long exceptId) {
+        boolean duplicate = targetCategory == null
+                ? (exceptId == null
+                    ? placementRuleRepository.existsByCoffee_IdAndSectionAndTargetCategoryIsNull(coffeeId, section)
+                    : placementRuleRepository.existsByCoffee_IdAndSectionAndTargetCategoryIsNullAndIdNot(coffeeId, section, exceptId))
+                : (exceptId == null
+                    ? placementRuleRepository.existsByCoffee_IdAndSectionAndTargetCategory_Id(coffeeId, section, targetCategory.getId())
+                    : placementRuleRepository.existsByCoffee_IdAndSectionAndTargetCategory_IdAndIdNot(coffeeId, section, targetCategory.getId(), exceptId));
+        if (duplicate) {
+            String location = targetCategory == null ? section.name() : "đầu danh mục " + targetCategory.getName();
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Sản phẩm đã có cấu hình trong khu vực " + location + ". Hãy sửa cấu hình hiện có.");
+        }
+    }
+
+    private ResponseStatusException unavailableCoffee(Coffee coffee) {
+        if (coffee.isAutoSoldOut() || coffee.getStatus() == CoffeeStatus.SOLD_OUT) {
+            return new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    coffee.getName() + " đã hết hàng. Chỉ có thể chọn món đang bán và còn hàng.");
+        }
+        if (coffee.getStatus() == CoffeeStatus.HIDDEN) {
+            return new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    coffee.getName() + " đang bị ẩn. Hãy chuyển sang Đang bán trước khi chọn.");
+        }
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                coffee.getName() + " hiện không thể trưng bày.");
     }
 
     private ProductPlacementRule getRule(Long id) {

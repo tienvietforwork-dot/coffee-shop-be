@@ -33,7 +33,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             select o from Order o
             where (:status is null or o.status = :status)
               and (:channel is null or o.channel = :channel)
-              and o.orderedAt >= :from and o.orderedAt < :to
+              and ((o.orderedAt >= :from and o.orderedAt < :to) or (o.pickupTime >= :from and o.pickupTime < :to))
             order by o.orderedAt desc
             """)
     List<Order> search(OrderStatus status, OrderChannel channel, LocalDateTime from, LocalDateTime to);
@@ -42,12 +42,24 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     long countByStatusIn(List<OrderStatus> statuses);
 
-    boolean existsByTableIdAndStatusInAndIdNot(Long tableId, java.util.Collection<OrderStatus> statuses, Long id);
+    /**
+     * Đơn đang mở của bàn ({@code tableId} null = mọi bàn): còn đang xử lý, hoặc đã phục vụ xong nhưng chưa thu tiền
+     * (khách ngồi bàn trả sau). Bàn trống lại khi không còn đơn nào như vậy.
+     */
+    @Query("""
+            select o from Order o
+            where o.table is not null and (:tableId is null or o.table.id = :tableId)
+              and (o.status in :active
+                   or (o.status = com.coffeeshop.entity.enums.OrderStatus.COMPLETED
+                       and exists (select 1 from Payment p where p.order = o
+                                   and p.status = com.coffeeshop.entity.enums.PaymentStatus.PENDING)))
+            order by o.orderedAt""")
+    List<Order> findOpenAtTables(Long tableId, java.util.Collection<OrderStatus> active);
 
     @Query("""
             select coalesce(sum(o.totalAmount), 0) from Order o
             where o.status = com.coffeeshop.entity.enums.OrderStatus.COMPLETED
-              and o.orderedAt >= :from and o.orderedAt < :to
+              and ((o.orderedAt >= :from and o.orderedAt < :to) or (o.pickupTime >= :from and o.pickupTime < :to))
             """)
     BigDecimal revenueBetween(LocalDateTime from, LocalDateTime to);
 }

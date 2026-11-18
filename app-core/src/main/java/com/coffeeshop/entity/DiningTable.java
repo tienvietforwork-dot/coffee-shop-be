@@ -29,6 +29,9 @@ public class DiningTable extends BaseEntity {
     private String tableNo;
     @Column(name = "qr_code", nullable = false, length = 255)
     private String qrCode;
+    /** tầng (Tầng trệt, Lầu 1…): sơ đồ bàn ở màn order tại quầy nhóm theo tầng rồi theo khu vực */
+    @Column(length = 50)
+    private String floor;
     @Column(length = 50)
     private String area;
     private Integer capacity;

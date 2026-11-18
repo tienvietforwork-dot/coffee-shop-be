@@ -2,6 +2,7 @@ package com.coffeeshop.crm.service;
 
 import com.coffeeshop.crm.dto.request.CriteriaRuleDTO;
 import com.coffeeshop.crm.dto.request.CustomerGroupRequest;
+import com.coffeeshop.crm.dto.request.CustomerClassificationConfigRequest;
 import com.coffeeshop.crm.entity.Customer;
 import com.coffeeshop.crm.entity.CustomerGroup;
 import com.coffeeshop.crm.entity.CustomerGroupMember;
@@ -17,6 +18,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.List;
 
 /** Tạo nhóm khách, xem trước tiêu chí, tính lại thành viên và quản lý thành viên thủ công. */
@@ -28,6 +32,75 @@ public class CustomerGroupService {
     private final CustomerRepository customerRepository;
     private final CustomerAnalyticsRepository analyticsRepository;
     private final ObjectMapper objectMapper;
+
+    public record ClassificationConfig(BigDecimal potentialSpendMin, BigDecimal vipSpendMin, Integer inactiveDays) { }
+
+    @Transactional(readOnly = true)
+    public ClassificationConfig classificationConfig() {
+        Map<String, CustomerGroup> groups = classificationGroups();
+        CriteriaRuleDTO regular = rules(groups.get("REGULAR"));
+        CriteriaRuleDTO vip = rules(groups.get("VIP"));
+        CriteriaRuleDTO churn = rules(groups.get("CHURN_RISK"));
+        return new ClassificationConfig(regular.getMaxSpend(), vip.getMinSpend(), churn.getInactiveDays());
+    }
+
+    @Transactional
+    public ClassificationConfig saveClassificationConfig(CustomerClassificationConfigRequest request) {
+        if (request.potentialSpendMin().compareTo(request.vipSpendMin()) >= 0) {
+            throw new IllegalArgumentException("Mốc VIP phải lớn hơn mốc Tiềm năng; các khoảng không được trùng hoặc đảo ngược");
+        }
+        Map<String, CustomerGroup> groups = classificationGroups();
+        setRule(groups.get("REGULAR"), Map.of("minSpend", BigDecimal.ZERO, "maxSpend", request.potentialSpendMin()));
+        setRule(groups.get("POTENTIAL"), Map.of("minSpend", request.potentialSpendMin(), "maxSpend", request.vipSpendMin()));
+        setRule(groups.get("VIP"), Map.of("minSpend", request.vipSpendMin()));
+        setRule(groups.get("CHURN_RISK"), Map.of("inactiveDays", request.inactiveDays()));
+        groups.values().forEach(groupRepository::save);
+        recalculateClassification();
+        return new ClassificationConfig(request.potentialSpendMin(), request.vipSpendMin(), request.inactiveDays());
+    }
+
+    @Transactional
+    public int recalculateClassification() {
+        Map<String, CustomerGroup> groups = classificationGroups();
+        ClassificationConfig config = classificationConfig();
+        List<Object[]> assignments = analyticsRepository.classifyCustomers(config.potentialSpendMin(), config.vipSpendMin(), config.inactiveDays());
+        Map<String, Long> ids = new HashMap<>();
+        groups.forEach((code, group) -> ids.put(code, group.getId()));
+        groups.values().forEach(group -> memberRepository.softDeleteGroupMembers(group.getId()));
+        LocalDateTime now = LocalDateTime.now();
+        for (Object[] assignment : assignments) {
+            Long customerId = ((Number) assignment[0]).longValue();
+            String code = (String) assignment[1];
+            memberRepository.softDeleteAllMembershipsForCustomer(customerId);
+            CustomerGroupMember member = new CustomerGroupMember();
+            member.setCustomerId(customerId);
+            member.setGroupId(ids.get(code));
+            member.setIsManual(false);
+            member.setIsExcluded(false);
+            memberRepository.save(member);
+        }
+        groups.values().forEach(group -> { group.setRecalculatedAt(now); groupRepository.save(group); });
+        return assignments.size();
+    }
+
+    private Map<String, CustomerGroup> classificationGroups() {
+        Map<String, CustomerGroup> result = new HashMap<>();
+        for (CustomerGroup group : groupRepository.findAllByDelFlagFalseOrderByNameAsc()) {
+            if (group.getClassificationCode() != null) result.put(group.getClassificationCode(), group);
+        }
+        for (String code : List.of("REGULAR", "POTENTIAL", "VIP", "CHURN_RISK")) {
+            if (!result.containsKey(code)) throw new IllegalStateException("Thiếu nhóm phân loại " + code + "; cần chạy migration_crm_classification.sql");
+        }
+        return result;
+    }
+
+    private CriteriaRuleDTO rules(CustomerGroup group) {
+        return objectMapper.convertValue(group.getCriteriaRule(), CriteriaRuleDTO.class);
+    }
+
+    private void setRule(CustomerGroup group, Map<String, ?> values) {
+        group.setCriteriaRule(objectMapper.valueToTree(values));
+    }
 
     @Transactional(readOnly = true)
     public List<CustomerGroup> getGroups() {
@@ -64,6 +137,8 @@ public class CustomerGroupService {
     public CustomerGroup updateGroup(Long groupId, CustomerGroupRequest request) {
         validateRules(request.getGroupType(), request.getCriteriaRule());
         CustomerGroup group = findGroup(groupId);
+        if (group.getClassificationCode() != null) throw new IllegalArgumentException("Dùng cấu hình phân loại để sửa nhóm cố định");
+        if (group.getClassificationCode() != null) throw new IllegalArgumentException("Dùng cấu hình phân loại để sửa nhóm cố định");
         String name = request.getName().trim();
         if (groupRepository.existsByNameIgnoreCaseAndDelFlagFalseAndIdNot(name, groupId)) {
             throw new CrmConflictException("Tên nhóm khách hàng đã tồn tại");
@@ -84,6 +159,15 @@ public class CustomerGroupService {
         if (!"AUTOMATIC".equals(group.getGroupType())) {
             throw new IllegalArgumentException("Chỉ xem trước được nhóm AUTOMATIC");
         }
+        if (group.getClassificationCode() != null) {
+            ClassificationConfig config = classificationConfig();
+            List<Long> matchingIds = analyticsRepository.classifyCustomers(
+                            config.potentialSpendMin(), config.vipSpendMin(), config.inactiveDays()).stream()
+                    .filter(row -> group.getClassificationCode().equals(row[1]))
+                    .map(row -> ((Number) row[0]).longValue())
+                    .toList();
+            return matchingIds.isEmpty() ? List.of() : customerRepository.findAllById(matchingIds);
+        }
         return findMatches(readRules(group));
     }
 
@@ -93,9 +177,15 @@ public class CustomerGroupService {
         if (!"AUTOMATIC".equals(group.getGroupType())) {
             throw new IllegalArgumentException("Chỉ tính lại được nhóm AUTOMATIC");
         }
+        if (group.getClassificationCode() != null) {
+            recalculateClassification();
+            return memberRepository.findAllByGroupIdAndDelFlagFalseAndIsExcludedFalseOrderByAddedAtDesc(groupId).size();
+        }
         List<Customer> matchingCustomers = findMatches(readRules(group));
         memberRepository.softDeleteAutomaticMembers(groupId);
         for (Customer customer : matchingCustomers) {
+            // Bốn nhóm phân loại chiếm mỗi khách một vị trí duy nhất; nhóm tự tạo không được ghi đè chúng.
+            if (memberRepository.existsByCustomerIdAndDelFlagFalseAndIsExcludedFalse(customer.getId())) continue;
             if (!memberRepository.existsByGroupIdAndCustomerIdAndDelFlagFalse(groupId, customer.getId())) {
                 CustomerGroupMember member = new CustomerGroupMember();
                 member.setGroupId(groupId);
@@ -111,9 +201,15 @@ public class CustomerGroupService {
 
     @Transactional
     public CustomerGroupMember addMember(Long groupId, Long customerId) {
-        findGroup(groupId);
+        CustomerGroup group = findGroup(groupId);
+        if (group.getClassificationCode() != null) throw new IllegalArgumentException("Nhóm phân loại được hệ thống tự cập nhật");
+        if (group.getClassificationCode() != null) throw new IllegalArgumentException("Nhóm phân loại được hệ thống tự cập nhật");
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new CrmNotFoundException("Không tìm thấy khách hàng ID " + customerId));
+        if (memberRepository.existsByCustomerIdAndDelFlagFalseAndIsExcludedFalse(customerId)
+                && !memberRepository.existsByGroupIdAndCustomerIdAndDelFlagFalse(groupId, customerId)) {
+            throw new IllegalArgumentException("Mỗi khách hàng chỉ được thuộc một nhóm tại một thời điểm");
+        }
         return memberRepository.findByGroupIdAndCustomerIdAndDelFlagFalse(groupId, customerId)
                 .map(existing -> {
                     existing.setIsManual(true);
@@ -133,6 +229,8 @@ public class CustomerGroupService {
     @Transactional
     public void removeMember(Long groupId, Long customerId) {
         CustomerGroup group = findGroup(groupId);
+        if (group.getClassificationCode() != null) throw new IllegalArgumentException("Nhóm phân loại được hệ thống tự cập nhật");
+        if (group.getClassificationCode() != null) throw new IllegalArgumentException("Nhóm phân loại được hệ thống tự cập nhật");
         Customer customer = customerRepository.findById(customerId)
                 .orElseThrow(() -> new CrmNotFoundException("Không tìm thấy khách hàng ID " + customerId));
         CustomerGroupMember member = memberRepository.findByGroupIdAndCustomerIdAndDelFlagFalse(groupId, customerId).orElse(null);
@@ -156,6 +254,8 @@ public class CustomerGroupService {
     @Transactional
     public void deleteGroup(Long groupId) {
         CustomerGroup group = findGroup(groupId);
+        if (group.getClassificationCode() != null) throw new IllegalArgumentException("Không thể xóa nhóm phân loại cố định");
+        if (group.getClassificationCode() != null) throw new IllegalArgumentException("Không thể xóa nhóm phân loại cố định");
         memberRepository.softDeleteGroupMembers(groupId);
         group.setDelFlag(true);
         group.setDelUser(null);

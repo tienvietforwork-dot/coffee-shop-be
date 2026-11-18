@@ -3,7 +3,6 @@ import com.coffeeshop.stats.service.UpsellService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
-import java.math.BigDecimal;
 import java.util.*;
 @RestController @RequiredArgsConstructor
 public class UpsellController {
@@ -66,8 +65,8 @@ public class UpsellController {
     }
 
     @GetMapping("/api/public/merchandising/upsell")
-    public List<Map<String,Object>> suggest(@RequestParam long anchorCoffeeId,@RequestParam(defaultValue="0") BigDecimal cartTotal){
-        return service.suggest(anchorCoffeeId,cartTotal);
+    public List<Map<String,Object>> suggest(@RequestParam long anchorCoffeeId){
+        return service.suggest(anchorCoffeeId);
     }
 
     @PostMapping("/api/public/merchandising/upsell/events") @ResponseStatus(HttpStatus.NO_CONTENT)

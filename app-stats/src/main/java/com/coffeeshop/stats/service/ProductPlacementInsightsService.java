@@ -9,6 +9,8 @@ import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import com.coffeeshop.stats.util.ShopTime;
 import java.util.*;
@@ -54,7 +56,8 @@ public class ProductPlacementInsightsService {
     public List<Suggestion> suggest(ProductPlacementSection section, int limit) {
         if (section != ProductPlacementSection.BEST_SELLER && section != ProductPlacementSection.NEW_ARRIVAL
                 && section != ProductPlacementSection.RECOMMENDED) {
-            throw new IllegalArgumentException("Chỉ hỗ trợ BEST_SELLER, NEW_ARRIVAL và RECOMMENDED");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Chỉ hỗ trợ gợi ý Bán chạy, Sản phẩm mới và Đề xuất.");
         }
         int capped = Math.max(1, Math.min(20, limit));
         LocalDateTime start = ShopTime.now().minusDays(30);

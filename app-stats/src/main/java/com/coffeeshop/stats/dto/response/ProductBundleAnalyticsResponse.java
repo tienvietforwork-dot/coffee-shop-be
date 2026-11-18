@@ -11,6 +11,6 @@ public record ProductBundleAnalyticsResponse(Long bundleId, String bundleName, L
                                              List<ComponentSales> components) {
 
     public record ComponentSales(Long coffeeId, String coffeeName, Integer requiredQuantity,
-                                 boolean optional, Integer soldQuantity, BigDecimal revenue) {
+                                 boolean optional, String choiceGroup, Integer soldQuantity, BigDecimal revenue) {
     }
 }

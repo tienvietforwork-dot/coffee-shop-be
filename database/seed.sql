@@ -122,13 +122,8 @@ SELECT c.id, v.name, v.img, v.price, v.descr, v.status FROM (VALUES
  ('Cà phê đặc biệt', 'Cà phê dừa', 'https://images.unsplash.com/photo-1525803377221-4f6ccdaa5133?w=800&q=80', 52000, 'Cốt dừa đá xay và cà phê phin', 'SOLD_OUT')
 ) AS v(cat, name, img, price, descr, status) JOIN categories c ON c.name = v.cat;
 
--- Nguyên liệu: chỉ tên + đơn vị (không theo dõi tồn kho); định lượng nằm trong công thức
+-- Nguyên liệu: chỉ nguyên liệu thô (không bán thành phẩm như cốt cà phê, siro, kem muối); định lượng nằm trong công thức
 INSERT INTO materials (name, unit) VALUES
- ('Kem muối', 'ml'),
- ('Cốt cold brew', 'ml'),
- ('Nước đường', 'ml'),
- ('Cốt cà phê phin', 'ml'),
- ('Siro sả', 'ml'),
  ('Cà phê Robusta rang xay', 'g'),
  ('Hạt Arabica', 'g'),
  ('Sữa đặc', 'ml'),
@@ -162,15 +157,15 @@ SELECT c.id, v.bm, 1, v.t, v.d, TRUE FROM (VALUES
 
 INSERT INTO recipe_materials (recipe_id, material_id, quantity, note)
 SELECT r.id, m.id, v.q, v.note FROM (VALUES
- ('Bạc xỉu', 'Cốt cà phê phin', 25, NULL),
+ ('Bạc xỉu', 'Cà phê Robusta rang xay', 12.5, NULL),
  ('Bạc xỉu', 'Sữa đặc', 30, NULL),
  ('Bạc xỉu', 'Sữa tươi', 60, NULL),
  ('Bạc xỉu', 'Đá viên', 150, NULL),
- ('Cà phê sữa đá', 'Cốt cà phê phin', 50, NULL),
+ ('Cà phê sữa đá', 'Cà phê Robusta rang xay', 25, NULL),
  ('Cà phê sữa đá', 'Sữa đặc', 30, NULL),
  ('Cà phê sữa đá', 'Đá viên', 150, NULL),
- ('Cà phê đen đá', 'Cốt cà phê phin', 50, NULL),
- ('Cà phê đen đá', 'Nước đường', 15, NULL),
+ ('Cà phê đen đá', 'Cà phê Robusta rang xay', 25, NULL),
+ ('Cà phê đen đá', 'Đường', 10, NULL),
  ('Cà phê đen đá', 'Đá viên', 150, NULL),
  ('Latte', 'Hạt Arabica', 18, NULL),
  ('Latte', 'Sữa tươi', 180, NULL),
@@ -179,22 +174,25 @@ SELECT r.id, m.id, v.q, v.note FROM (VALUES
  ('Americano', 'Hạt Arabica', 18, NULL),
  ('Americano', 'Đá viên', 100, NULL),
  ('Espresso', 'Hạt Arabica', 18, NULL),
- ('Cold Brew cam sả', 'Cốt cold brew', 70, NULL),
- ('Cold Brew cam sả', 'Siro sả', 15, NULL),
+ ('Cold Brew cam sả', 'Hạt Arabica', 8.8, 'ủ lạnh 12–16 giờ'),
+ ('Cold Brew cam sả', 'Sả cây', 5, NULL),
+ ('Cold Brew cam sả', 'Đường', 10, NULL),
  ('Cold Brew cam sả', 'Cam vàng', 0.5, NULL),
  ('Cold Brew cam sả', 'Đá viên', 150, NULL),
- ('Cold Brew truyền thống', 'Cốt cold brew', 80, NULL),
+ ('Cold Brew truyền thống', 'Hạt Arabica', 10, 'ủ lạnh 12–16 giờ'),
  ('Cold Brew truyền thống', 'Đá viên', 150, NULL),
- ('Cà phê dừa', 'Cốt cà phê phin', 40, NULL),
+ ('Cà phê dừa', 'Cà phê Robusta rang xay', 20, NULL),
  ('Cà phê dừa', 'Cốt dừa', 60, NULL),
  ('Cà phê dừa', 'Sữa đặc', 20, NULL),
  ('Cà phê dừa', 'Đá viên', 200, NULL),
- ('Cà phê trứng', 'Cốt cà phê phin', 40, NULL),
+ ('Cà phê trứng', 'Cà phê Robusta rang xay', 20, NULL),
  ('Cà phê trứng', 'Trứng gà', 1, 'trứng tiệt trùng'),
  ('Cà phê trứng', 'Sữa đặc', 25, NULL),
- ('Cà phê muối', 'Cốt cà phê phin', 50, NULL),
+ ('Cà phê muối', 'Cà phê Robusta rang xay', 25, NULL),
  ('Cà phê muối', 'Sữa đặc', 20, NULL),
- ('Cà phê muối', 'Kem muối', 40, NULL),
+ ('Cà phê muối', 'Whipping cream', 25, 'đánh bông với sữa tươi + muối'),
+ ('Cà phê muối', 'Sữa tươi', 15, NULL),
+ ('Cà phê muối', 'Muối', 0.5, NULL),
  ('Cà phê muối', 'Đá viên', 120, NULL)
 ) AS v(coffee, material, q, note)
 JOIN coffees c ON c.name = v.coffee
@@ -246,10 +244,10 @@ SELECT r.id, v.n, v.s FROM (VALUES
 ) AS v(coffee, n, s)
 JOIN coffees c ON c.name = v.coffee JOIN recipes r ON r.coffee_id = c.id AND r.is_active;
 
-INSERT INTO dining_tables (table_no, qr_code, area, capacity) VALUES
- ('B01','tbl-b01-7f3k2m','Tầng trệt',2), ('B02','tbl-b02-9q4x1p','Tầng trệt',4),
- ('B03','tbl-b03-2h8n5r','Tầng trệt',4), ('B04','tbl-b04-6w1c7v','Sân vườn',6),
- ('B05','tbl-b05-3j9t4y','Sân vườn',4), ('B06','tbl-b06-8d2z6s','Lầu 1',2);
+INSERT INTO dining_tables (table_no, qr_code, floor, area, capacity) VALUES
+ ('B01','tbl-b01-7f3k2m','Tầng trệt','Trong nhà',2), ('B02','tbl-b02-9q4x1p','Tầng trệt','Trong nhà',4),
+ ('B03','tbl-b03-2h8n5r','Tầng trệt','Trong nhà',4), ('B04','tbl-b04-6w1c7v','Tầng trệt','Sân vườn',6),
+ ('B05','tbl-b05-3j9t4y','Tầng trệt','Sân vườn',4), ('B06','tbl-b06-8d2z6s','Lầu 1','Ban công',2);
 
 INSERT INTO promotions (name, description, apply_scope, discount_percent, min_order_amount, start_date, end_date, status) VALUES
  ('Giảm 10% đơn từ 150K', 'Áp dụng cho mọi đơn từ 150.000đ', 'ORDER', 10, 150000,
@@ -278,11 +276,11 @@ COMMIT;
 -- Giao hàng: chỉ trong Hà Nội, phí theo khu vực; ca làm việc mẫu
 INSERT INTO delivery_settings (id, shop_address, shop_lat, shop_lng, free_ship_threshold, min_order_amount) VALUES
  (1, '15 Tràng Tiền, Phường Hoàn Kiếm, Thành phố Hà Nội', 21.0245, 105.8553, 200000, 50000);
-UPDATE delivery_settings SET open_time = '06:00', close_time = '22:00', speed_kmh = 20 WHERE id = 1;
-INSERT INTO delivery_provinces (name, fee) VALUES ('Thành phố Hà Nội', 15000);
--- xã ngoại thành xa: phí cao hơn
-INSERT INTO delivery_wards (province_id, name, fee)
-SELECT p.id, v.n, v.fee FROM delivery_provinces p, (VALUES ('Xã Sóc Sơn', 40000), ('Xã Ba Vì', 45000)) AS v(n, fee);
+UPDATE delivery_settings SET open_time = '06:00', close_time = '22:00' WHERE id = 1;
+INSERT INTO delivery_provinces (name, fee, delivery_minutes) VALUES ('Thành phố Hà Nội', 15000, 30);
+-- xã ngoại thành xa: phí cao hơn, giao lâu hơn
+INSERT INTO delivery_wards (province_id, name, fee, delivery_minutes)
+SELECT p.id, v.n, v.fee, v.m FROM delivery_provinces p, (VALUES ('Xã Sóc Sơn', 40000, 60), ('Xã Ba Vì', 45000, 75)) AS v(n, fee, m);
 -- hóa đơn bán hàng (hộ kinh doanh), ký hiệu 2C{YY}MCH, địa chỉ = địa chỉ quán
 INSERT INTO invoice_settings (id, seller_name, seller_tax_code, series_suffix, lookup_url) VALUES
  (1, 'HỘ KINH DOANH COFFEEHOLIC', '0312345678', 'CH', 'https://www.meinvoice.vn/tra-cuu');
