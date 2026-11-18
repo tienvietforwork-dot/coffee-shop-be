@@ -8,6 +8,7 @@ import com.coffeeshop.stats.entity.Coffee;
 import com.coffeeshop.stats.entity.ProductBundle;
 import com.coffeeshop.stats.entity.ProductBundleItem;
 import com.coffeeshop.stats.entity.enums.CategoryProductType;
+import com.coffeeshop.stats.entity.enums.CoffeeStatus;
 import com.coffeeshop.stats.entity.enums.ProductBundleStatus;
 import com.coffeeshop.stats.entity.repository.CoffeeRepository;
 import com.coffeeshop.stats.repository.ProductBundleItemRepository;
@@ -413,21 +414,25 @@ public class ProductBundleService {
                 && item.getCoffee().getCategory().getProductType() == CategoryProductType.DRINK);
     }
 
-    private boolean isDrink(Coffee coffee) {
-        return coffee.getCategory() != null && coffee.getCategory().getProductType() == CategoryProductType.DRINK;
-    }
-
-    private boolean isSellable(Coffee coffee) {
-        return coffee.getStatus() == com.coffeeshop.stats.entity.enums.CoffeeStatus.AVAILABLE && !coffee.isAutoSoldOut();
-    }
-
     private boolean isSellableDrink(Coffee coffee) {
         return coffee != null
                 && coffee.getCategory() != null
                 && coffee.getCategory().getProductType() == CategoryProductType.DRINK
-                && coffee.getStatus() == com.coffeeshop.stats.entity.enums.CoffeeStatus.AVAILABLE
+                && coffee.getStatus() == CoffeeStatus.AVAILABLE
                 && !coffee.isAutoSoldOut()
                 && hasActiveRecipe(coffee.getId());
+    }
+
+    private boolean isSellable(Coffee coffee) {
+        return coffee != null
+                && coffee.getStatus() == CoffeeStatus.AVAILABLE
+                && !coffee.isAutoSoldOut();
+    }
+
+    private boolean isDrink(Coffee coffee) {
+        return coffee != null
+                && coffee.getCategory() != null
+                && coffee.getCategory().getProductType() == CategoryProductType.DRINK;
     }
 
     private boolean hasActiveRecipe(Long coffeeId) {
