@@ -54,6 +54,9 @@ public class Promotion extends BaseEntity {
     @Column(name = "end_date", nullable = false)
     private LocalDateTime endDate;
 
+//    @Column(name = "promotions_discount_percent_check")
+//    private String promotionDiscountPercent;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private PromotionStatus status;

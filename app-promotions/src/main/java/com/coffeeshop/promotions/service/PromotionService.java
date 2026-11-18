@@ -455,6 +455,19 @@ public class PromotionService {
 
     @Scheduled(cron = "0 0 * * * *")
     @Transactional
+    public void autoActivePromotion(){
+        LocalDateTime now = LocalDateTime.now();
+        List<Promotion> draftPromotions = promotionRepository.findByStatusIn(List.of(PromotionStatus.DRAFT));
+        for (Promotion promo : draftPromotions){
+            if (promo.getStatus() != null && now.isAfter(promo.getStartDate())){
+                promo.setStatus(PromotionStatus.ACTIVE);
+                promotionRepository.save(promo);
+            }
+        }
+    }
+
+    @Scheduled(cron = "0 0 * * * *")
+    @Transactional
     public void autoEndExpiredPromotions() {
         LocalDateTime now = LocalDateTime.now();
 
@@ -478,5 +491,6 @@ public class PromotionService {
             }
         }
     }
+
 
 }
