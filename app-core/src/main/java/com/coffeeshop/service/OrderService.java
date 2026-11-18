@@ -147,7 +147,7 @@ public class OrderService {
     }
 
     private static PriceQuoteResponse withDelivery(PriceQuoteResponse q, DeliveryFeeService.Rule rule) {
-        return rule == null ? q : q.withDelivery(rule.distanceKm(), rule.zone(), rule.note());
+        return rule == null ? q : q.withDelivery(rule.distanceKm(), rule.zone(), rule.note(), rule.deliveryMinutes());
     }
 
     // ---- creation --------------------------------------------------------
@@ -287,6 +287,7 @@ public class OrderService {
             Shipment shipment = shipmentRepository.save(Shipment.builder()
                     .order(order).address(address).shippingFee(quote.shippingFee())
                     .distanceKm(rule == null ? null : rule.distanceKm())
+                    .deliveryMinutes(rule == null ? null : rule.deliveryMinutes())
                     .zoneName(rule == null ? null : rule.label()).build());
             order.setShipment(shipment);
         }

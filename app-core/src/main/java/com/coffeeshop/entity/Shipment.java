@@ -46,6 +46,9 @@ public class Shipment extends BaseEntity {
     /** khu vực tính phí, vd "Phường Ba Đình, Thành phố Hà Nội" */
     @Column(name = "zone_name", length = 100)
     private String zoneName;
+    /** thời gian giao (phút) theo cấu hình khu vực lúc đặt đơn; null = đơn cũ / không xác định */
+    @Column(name = "delivery_minutes")
+    private Integer deliveryMinutes;
     /** nhân viên được phân công giao (null = chưa phân công) */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "shipper_id")

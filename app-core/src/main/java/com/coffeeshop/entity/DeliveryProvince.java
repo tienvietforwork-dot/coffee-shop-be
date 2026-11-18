@@ -27,6 +27,10 @@ public class DeliveryProvince {
     private String name;
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal fee;
+    /** thời gian giao mặc định (phút) tới mọi phường / xã trong tỉnh */
+    @Builder.Default
+    @Column(name = "delivery_minutes", nullable = false)
+    private Integer deliveryMinutes = 30;
     @Builder.Default
     @Column(nullable = false)
     private boolean active = true;
