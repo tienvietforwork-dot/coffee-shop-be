@@ -103,11 +103,11 @@ public class UpsellService {
     @Transactional
     public void registerVariant(VariantInput x) {
         if (x == null || x.baseCoffeeId() == null || x.variantCoffeeId() == null) {
-            throw bad("Cần chọn món gốc và món được đề xuất");
+            throw bad("Cần chọn sản phẩm khách đang xem và sản phẩm gợi ý");
         }
-        if (x.baseCoffeeId().equals(x.variantCoffeeId())) throw bad("Món được đề xuất phải khác món gốc");
+        if (x.baseCoffeeId().equals(x.variantCoffeeId())) throw bad("Sản phẩm gợi ý phải khác sản phẩm khách đang xem");
         if (!"PREMIUM_VERSION".equals(x.upgradeType())) {
-            throw bad("Loại đề xuất món không hợp lệ");
+            throw bad("Loại gợi ý sản phẩm không hợp lệ");
         }
         String experienceNote = x.experienceNote() == null ? "" : x.experienceNote().trim();
         if (experienceNote.length() > 500) {
@@ -116,20 +116,20 @@ public class UpsellService {
         Coffee base = coffee(x.baseCoffeeId());
         Coffee variant = coffee(x.variantCoffeeId());
         if (!isSellableDrink(base)) {
-            throw bad("Món gốc phải là cà phê/đồ uống đang bán và còn hàng");
+            throw bad("Sản phẩm khách đang xem phải là đồ uống đang bán và còn hàng");
         }
         if (!isSellableDrink(variant)) {
-            throw bad("Món được đề xuất phải là cà phê/đồ uống khác, đang bán và còn hàng");
+            throw bad("Sản phẩm gợi ý phải là đồ uống khác, đang bán và còn hàng");
         }
         if (variant.getStatus() != CoffeeStatus.AVAILABLE || variant.isAutoSoldOut()) {
-            throw bad("Món được đề xuất hiện chưa sẵn sàng để bán");
+            throw bad("Sản phẩm gợi ý hiện chưa sẵn sàng để bán");
         }
         Integer activeRecipeCount = jdbc.queryForObject("""
                 SELECT count(*) FROM public.recipes
                 WHERE coffee_id = ? AND is_active = true AND del_flag = false
                 """, Integer.class, variant.getId());
         if (activeRecipeCount == null || activeRecipeCount == 0) {
-            throw bad("Món được đề xuất phải có công thức đang áp dụng trong app-core");
+            throw bad("Sản phẩm gợi ý phải có công thức đang áp dụng");
         }
         jdbc.update("""
                 INSERT INTO public.upsell_variant_links
@@ -143,7 +143,7 @@ public class UpsellService {
     @Transactional
     public void deactivateVariant(long linkId) {
         int changed = jdbc.update("UPDATE public.upsell_variant_links SET enabled=false WHERE id=?", linkId);
-        if (changed == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy liên kết đề xuất món");
+        if (changed == 0) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy liên kết gợi ý sản phẩm");
     }
 
     public record RuleInput(
@@ -198,14 +198,14 @@ public class UpsellService {
                 || x.anchorCoffeeId() == null
                 || x.upgradeCoffeeId() == null) {
             throw bad(
-                    "Phải chọn món khách đang xem và món được đề xuất"
+                    "Phải chọn sản phẩm khách đang xem và sản phẩm gợi ý"
             );
         }
 
         if (x.anchorCoffeeId().equals(
                 x.upgradeCoffeeId())) {
             throw bad(
-                    "Món được đề xuất phải khác món khách đang xem"
+                    "Sản phẩm gợi ý phải khác sản phẩm khách đang xem"
             );
         }
 
@@ -230,7 +230,7 @@ public class UpsellService {
 
         if (!"PREMIUM_VERSION".equals(type)) {
             throw bad(
-                "Loại đề xuất món không hợp lệ"
+                "Loại gợi ý sản phẩm không hợp lệ"
             );
         }
 
@@ -240,19 +240,19 @@ public class UpsellService {
                 : rules.existsByAnchorCoffee_IdAndUpgradeCoffee_IdAndUpgradeTypeAndIdNot(
                         x.anchorCoffeeId(), x.upgradeCoffeeId(), type, r.getId());
         if (duplicatePair) {
-            throw bad("Cặp món này đã có quy tắc đề xuất. Hãy sửa quy tắc hiện có hoặc chọn món khác.");
+            throw bad("Cặp sản phẩm này đã có quy tắc gợi ý. Hãy sửa quy tắc hiện có hoặc chọn sản phẩm khác.");
         }
 
         Coffee anchor = coffee(x.anchorCoffeeId());
         Coffee upgrade = coffee(x.upgradeCoffeeId());
 
         if (!isVerifiedVariant(anchor.getId(), upgrade.getId(), type)) {
-            throw bad("Món gốc và món được đề xuất phải khác nhau, đang bán, còn hàng; món được đề xuất cần có công thức đang áp dụng.");
+            throw bad("Hai sản phẩm phải khác nhau và đang bán, còn hàng; sản phẩm gợi ý cần có công thức đang áp dụng.");
         }
 
         String name = x.name() == null
                 || x.name().isBlank()
-                ? "Đề xuất món - " + anchor.getName()
+                ? "Gợi ý sản phẩm - " + anchor.getName()
                 : x.name().trim();
 
         if (name.length() > 150) {
@@ -416,11 +416,11 @@ public class UpsellService {
         if ("ACTIVE".equals(status)) {
             if (rules.existsByAnchorCoffee_IdAndUpgradeCoffee_IdAndUpgradeTypeAndIdNot(
                     r.getAnchorCoffee().getId(), r.getUpgradeCoffee().getId(), r.getUpgradeType(), r.getId())) {
-                throw bad("Cặp món này đã có quy tắc đề xuất khác. Hãy xử lý quy tắc bị trùng trước khi kích hoạt.");
+                throw bad("Cặp sản phẩm này đã có quy tắc gợi ý khác. Hãy xử lý quy tắc bị trùng trước khi kích hoạt.");
             }
             if (!isVerifiedVariant(r.getAnchorCoffee().getId(),
                     r.getUpgradeCoffee().getId(), r.getUpgradeType())) {
-                throw bad("Hai món phải là đồ uống khác nhau, đang bán, có công thức và liên kết cùng gu đã xác nhận.");
+                throw bad("Hai sản phẩm phải là đồ uống khác nhau, đang bán; sản phẩm gợi ý cần có công thức và liên kết gợi ý được bật.");
             }
         }
 
@@ -447,7 +447,7 @@ public class UpsellService {
         rules.delete(r);
     }
 
-    // Đề xuất món phù hợp cho khách hàng
+    // Trả danh sách sản phẩm gợi ý cho khách hàng
     @Transactional(readOnly = true)
     public List<Map<String, Object>> suggest(long anchorId) {
 
@@ -538,7 +538,7 @@ public class UpsellService {
 
         if (!"ACTIVE".equals(r.getStatus()) ||
                 !isVerifiedVariant(r.getAnchorCoffee().getId(), r.getUpgradeCoffee().getId(), r.getUpgradeType())) {
-            throw bad("Đề xuất chưa hoạt động hoặc món không còn phù hợp");
+            throw bad("Gợi ý chưa hoạt động hoặc sản phẩm không còn khả dụng");
         }
 
         // 5. Chống ghi trùng bằng PostgreSQL
@@ -560,7 +560,7 @@ public class UpsellService {
         );
     }
 
-    // Thống kê hiệu quả đề xuất món
+    // Thống kê hiệu quả gợi ý sản phẩm
     @Transactional(readOnly = true)
     public Map<String, Object> analytics(long id) {
 
@@ -587,7 +587,7 @@ public class UpsellService {
                         : (double) accepted / views,
                 "purchasesTracked", false,
                 "note",
-                "ACCEPT chỉ là khách chọn món được đề xuất, "
+                "Lượt chọn chỉ ghi nhận khách chọn sản phẩm gợi ý, "
                         + "chưa xác nhận thanh toán thành công."
         );
     }
