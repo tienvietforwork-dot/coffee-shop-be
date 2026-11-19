@@ -17,7 +17,7 @@ public class MerchandisingAnalyticsService {
 
     private MapSqlParameterSource period(LocalDate from, LocalDate to) {
         if (from == null || to == null || from.isAfter(to) || from.isBefore(LocalDate.of(2000,1,1))
-                || to.isAfter(ShopTime.today().plusDays(1)) || from.plusYears(3).isBefore(to)) {
+                || to.isAfter(ShopTime.today()) || from.plusYears(3).isBefore(to)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Khoảng ngày không hợp lệ (tối đa 3 năm)");
         }
         return new MapSqlParameterSource().addValue("from", from.atStartOfDay())
@@ -31,8 +31,8 @@ public class MerchandisingAnalyticsService {
         // Sales are actual completed orders, not attributable to a placement impression.
         var products=query("""
             SELECT c.id AS coffee_id, c.name AS coffee_name,
-                   COALESCE(SUM(oi.quantity),0)::bigint AS units_sold,
-                   COALESCE(SUM(oi.line_total),0) AS line_revenue,
+                   COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity ELSE 0 END),0)::bigint AS units_sold,
+                   COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.line_total ELSE 0 END),0) AS line_revenue,
                    COUNT(DISTINCT o.id)::bigint AS completed_orders
             FROM coffees c
             LEFT JOIN order_items oi ON oi.coffee_id=c.id AND oi.del_flag=false
@@ -40,8 +40,7 @@ public class MerchandisingAnalyticsService {
                 AND o.del_flag=false AND o.ordered_at>=:from AND o.ordered_at<:to
             WHERE c.del_flag=false
             GROUP BY c.id,c.name ORDER BY units_sold DESC, c.id LIMIT 300
-            """.replace("SUM(oi.quantity)","SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity ELSE 0 END)")
-                .replace("SUM(oi.line_total)","SUM(CASE WHEN o.id IS NOT NULL THEN oi.line_total ELSE 0 END)"),p);
+            """,p);
         var bundles=query("""
             SELECT b.id AS bundle_id, b.name AS bundle_name,
                    COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN s.quantity ELSE 0 END),0)::bigint AS units_sold,
@@ -78,7 +77,7 @@ public class MerchandisingAnalyticsService {
             """,p);
         var orders=query("""
             SELECT COUNT(*)::bigint AS orders, COALESCE(SUM(total_amount),0) AS revenue,
-              COALESCE(AVG(total_amount),0) AS aov
+              COALESCE(ROUND(AVG(total_amount)),0) AS aov
             FROM orders WHERE status='COMPLETED' AND del_flag=false
               AND ordered_at>=:from AND ordered_at<:to
             """,p);

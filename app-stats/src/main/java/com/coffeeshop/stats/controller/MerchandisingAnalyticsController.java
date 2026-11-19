@@ -24,22 +24,30 @@ public class MerchandisingAnalyticsController {
         if (s.matches("^[=+@-].*")) s="'"+s;
         return "\""+s.replace("\"","\"\"")+"\"";
     }
+    private void appendCsvRow(StringBuilder csv, Object... values) {
+        for (int i=0;i<values.length;i++) {
+            if (i>0) csv.append(',');
+            csv.append(csv(values[i]));
+        }
+        csv.append("\r\n");
+    }
     @GetMapping(value="/export",produces="text/csv")
     public ResponseEntity<byte[]> export(@RequestParam LocalDate from,@RequestParam LocalDate to) {
         Map<String,Object> data=service.report(from,to);
-        StringBuilder csv=new StringBuilder("section,id,name,units_sold,revenue,impressions,clicks,accepts,add_to_cart\r\n");
+        StringBuilder csv=new StringBuilder("section,id,name,orders,completed_orders,units_sold,revenue,aov,impressions,clicks,accepts,add_to_cart\r\n");
+        @SuppressWarnings("unchecked") Map<String,Object> orders=(Map<String,Object>)data.get("orders");
+        appendCsvRow(csv,"orders","","Tổng quan",
+                orders.getOrDefault("orders",0),0,0,orders.getOrDefault("revenue",0),orders.getOrDefault("aov",0),0,0,0,0);
         for (String key:List.of("products","bundles","crossSell","upsell","recommendations")) {
             @SuppressWarnings("unchecked") List<Map<String,Object>> rows=(List<Map<String,Object>>)data.get(key);
             for (var row:rows) {
                 Object id=row.getOrDefault("coffee_id",row.getOrDefault("bundle_id",row.get("rule_id")));
                 Object name=row.getOrDefault("coffee_name",row.getOrDefault("bundle_name",row.get("rule_name")));
-                for(Object item:List.of(key,id==null?"":id,name==null?"":name,
-                        row.getOrDefault("units_sold",0),row.getOrDefault("line_revenue",row.getOrDefault("revenue",0)),
+                appendCsvRow(csv,key,id,name,
+                        row.getOrDefault("orders",0),row.getOrDefault("completed_orders",0),row.getOrDefault("units_sold",0),
+                        row.getOrDefault("line_revenue",row.getOrDefault("revenue",0)),row.getOrDefault("aov",0),
                         row.getOrDefault("impressions",0),row.getOrDefault("clicks",0),
-                        row.getOrDefault("accepts",0),row.getOrDefault("add_to_cart",0))) {
-                    csv.append(csv(item)).append(',');
-                }
-                csv.setLength(csv.length()-1);csv.append("\r\n");
+                        row.getOrDefault("accepts",0),row.getOrDefault("add_to_cart",0));
             }
         }
         byte[] bytes=("\uFEFF"+csv).getBytes(StandardCharsets.UTF_8);

@@ -26,7 +26,10 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.LocalDateTime;
 import com.coffeeshop.stats.util.ShopTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -60,11 +63,15 @@ public class ProductBundleService {
     @Transactional(readOnly = true)
     public List<ProductBundleResponse> findPublicBundles() {
         LocalDateTime now = ShopTime.now();
+        Set<String> seenConfigurations = new HashSet<>();
         return bundleRepository.findAllByOrderByStatusAscNameAsc().stream()
                 .filter(bundle -> bundle.isAvailableNow(now))
                 .filter(this::hasAtLeastTwoDifferentRequiredDrinks)
                 .filter(bundle -> bundle.getItems().stream().allMatch(item -> isSellableDrink(item.getCoffee())))
                 .filter(this::isPriceWithinStandaloneTotal)
+                // Keep one guest-facing entry for legacy duplicates, preferring the better price.
+                .sorted(Comparator.comparing(ProductBundle::getBundlePrice).thenComparing(ProductBundle::getId))
+                .filter(bundle -> seenConfigurations.add(configurationSignature(bundle)))
                 .map(bundle -> ProductBundleResponse.from(bundle, now)).toList();
     }
 
@@ -80,6 +87,7 @@ public class ProductBundleService {
         if (bundleRepository.existsByNameIgnoreCase(request.name().trim())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Combo đã tồn tại: " + request.name());
         }
+        validateUniqueConfiguration(request.items(), null);
 
         ProductBundle bundle = new ProductBundle();
         apply(bundle, request);
@@ -96,6 +104,7 @@ public class ProductBundleService {
         if (bundleRepository.existsByNameIgnoreCaseAndIdNot(request.name().trim(), id)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Combo đã tồn tại: " + request.name());
         }
+        validateUniqueConfiguration(request.items(), id);
 
         if (bundle.getStatus() == ProductBundleStatus.ACTIVE) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Tạm dừng combo trước khi sửa");
@@ -119,6 +128,11 @@ public class ProductBundleService {
         if (bundleItemRepository.existsByBundle_IdAndCoffee_Id(bundleId, request.coffeeId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sản phẩm đã có trong combo");
         }
+        List<String> candidateComponents = bundle.getItems().stream()
+                .map(item -> componentKey(item.getCoffee().getId(), item.getQuantity()))
+                .collect(Collectors.toCollection(ArrayList::new));
+        candidateComponents.add(componentKey(request.coffeeId(), request.quantity()));
+        validateUniqueConfiguration(bundleId, candidateComponents);
         bundle.getItems().add(toItem(bundle, request));
         return ProductBundleResponse.from(bundle, ShopTime.now());
     }
@@ -133,6 +147,12 @@ public class ProductBundleService {
         if (bundleItemRepository.existsByBundle_IdAndCoffee_IdAndIdNot(bundleId, request.coffeeId(), itemId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sản phẩm đã có trong combo");
         }
+        List<String> candidateComponents = bundle.getItems().stream()
+                .filter(existing -> !existing.getId().equals(itemId))
+                .map(existing -> componentKey(existing.getCoffee().getId(), existing.getQuantity()))
+                .collect(Collectors.toCollection(ArrayList::new));
+        candidateComponents.add(componentKey(request.coffeeId(), request.quantity()));
+        validateUniqueConfiguration(bundleId, candidateComponents);
         applyItem(item, request);
         return ProductBundleResponse.from(bundle, ShopTime.now());
     }
@@ -142,6 +162,11 @@ public class ProductBundleService {
         ProductBundle bundle = getBundle(bundleId);
         requireEditable(bundle);
         ProductBundleItem item = findItem(bundle, itemId);
+        List<String> candidateComponents = bundle.getItems().stream()
+                .filter(existing -> !existing.getId().equals(itemId))
+                .map(existing -> componentKey(existing.getCoffee().getId(), existing.getQuantity()))
+                .collect(Collectors.toCollection(ArrayList::new));
+        validateUniqueConfiguration(bundleId, candidateComponents);
         item.softDelete();
         bundle.getItems().remove(item);
         return ProductBundleResponse.from(bundle, ShopTime.now());
@@ -166,6 +191,8 @@ public class ProductBundleService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Tất cả món trong combo phải thuộc nhóm đồ uống, đang bán, còn hàng và có công thức");
         }
+        validateUniqueConfiguration(bundle.getId(), bundle.getItems().stream()
+                .map(item -> componentKey(item.getCoffee().getId(), item.getQuantity())).toList());
         validateMandatoryPrice(bundle);
         bundle.setStatus(ProductBundleStatus.ACTIVE);
         return ProductBundleResponse.from(bundle, ShopTime.now());
@@ -278,6 +305,46 @@ public class ProductBundleService {
                 && bundle.getBundlePrice().compareTo(standalonePrice(bundle)) <= 0;
     }
 
+    private void validateUniqueConfiguration(List<ProductBundleItemRequest> items, Long excludedBundleId) {
+        List<String> candidateComponents = items.stream()
+                .map(item -> componentKey(item.coffeeId(), item.quantity()))
+                .toList();
+        validateUniqueConfiguration(excludedBundleId, candidateComponents);
+    }
+
+    private void validateUniqueConfiguration(Long excludedBundleId, List<String> candidateComponents) {
+        String candidateSignature = signature(candidateComponents);
+        bundleRepository.findAllByOrderByStatusAscNameAsc().stream()
+                .filter(existing -> excludedBundleId == null || !existing.getId().equals(excludedBundleId))
+                .filter(existing -> candidateSignature.equals(configurationSignature(existing)))
+                .findFirst()
+                .ifPresent(existing -> {
+                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                            "Cấu hình món và số lượng này đã có trong combo \"" + existing.getName()
+                                    + "\". Hãy chọn thành phần khác hoặc sửa combo hiện có.");
+                });
+    }
+
+    private String configurationSignature(ProductBundle bundle) {
+        if (bundle.getItems().size() < MIN_BUNDLE_COMPONENTS
+                || bundle.getItems().size() > MAX_BUNDLE_COMPONENTS
+                || bundle.getItems().stream().anyMatch(item -> item.isOptional()
+                || blankToNull(item.getChoiceGroup()) != null)) {
+            return null;
+        }
+        return signature(bundle.getItems().stream()
+                .map(item -> componentKey(item.getCoffee().getId(), item.getQuantity()))
+                .toList());
+    }
+
+    private String componentKey(Long coffeeId, Integer quantity) {
+        return coffeeId + ":" + quantity;
+    }
+
+    private String signature(List<String> components) {
+        return components.stream().sorted().collect(Collectors.joining("|"));
+    }
+
     private void requireEditable(ProductBundle bundle) {
         if (bundle.getStatus() == ProductBundleStatus.ACTIVE) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Tạm dừng combo trước khi thay đổi món");
@@ -368,7 +435,8 @@ public class ProductBundleService {
         }
         if (Boolean.TRUE.equals(request.optional()) || blankToNull(request.choiceGroup()) != null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Combo chỉ gồm đúng 2 loại cà phê bắt buộc, không hỗ trợ món tùy chọn hoặc món thêm");
+                    "Combo chỉ gồm từ " + MIN_BUNDLE_COMPONENTS + " đến " + MAX_BUNDLE_COMPONENTS
+                            + " loại cà phê bắt buộc, không hỗ trợ món tùy chọn hoặc món thêm");
         }
         item.setCoffee(coffee);
         item.setQuantity(request.quantity());
