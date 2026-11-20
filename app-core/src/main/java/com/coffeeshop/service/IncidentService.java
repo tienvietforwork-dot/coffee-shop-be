@@ -102,7 +102,7 @@ public class IncidentService {
             if (left < count) {
                 throw new BadRequestException("Voucher \"" + voucher.getName() + "\" chỉ còn " + left + " lượt");
             }
-            Integer days = request.voucherValidDays() != null ? request.voucherValidDays() : voucher.getValidDays();
+            Integer days = voucher.getValidDays(); // hạn theo cài đặt loại voucher, tính từ lúc phát
             for (int i = 0; i < count; i++) {
                 vouchers.add(voucherDetailRepository.save(VoucherDetail.builder()
                         .voucher(voucher)
