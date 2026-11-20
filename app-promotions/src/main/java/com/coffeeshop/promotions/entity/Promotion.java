@@ -39,13 +39,13 @@ public class Promotion extends BaseEntity {
     private PromotionScope applyScope;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "discount_type", nullable = false)
+    @Column(name = "discount_type")
     private PromotionType discountType;
 
     @Column(name = "discount_percent", precision = 12, scale = 2)
     private BigDecimal discountPercent;
 
-    @Column(name = "min_order_amount", nullable = false, precision = 12, scale = 2)
+    @Column(name = "min_order_amount", precision = 12, scale = 2)
     private BigDecimal minOrderAmount;
 
     @Column(name = "start_date", nullable = false)

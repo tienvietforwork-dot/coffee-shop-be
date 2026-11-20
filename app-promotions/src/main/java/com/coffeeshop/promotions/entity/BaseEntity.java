@@ -24,10 +24,10 @@ public class BaseEntity {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createAt;
 
-    @Column(name = "updated_by", nullable = false, length = 50)
+    @Column(name = "updated_by", length = 50)
     private String updateBy;
 
-    @Column(name = "updated_at", nullable = false)
+    @Column(name = "updated_at")
     private LocalDateTime updateAt;
 
     @Column(name = "del_user", length = 50)
