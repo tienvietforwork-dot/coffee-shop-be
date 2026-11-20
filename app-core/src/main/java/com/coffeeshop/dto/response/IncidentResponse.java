@@ -15,7 +15,7 @@ public record IncidentResponse(Long id, Long orderId, String orderCode, String h
                                String resolution, IncidentStatus status, LocalDateTime reportedAt, String reportedBy,
                                LocalDateTime resolvedAt, List<VoucherBrief> vouchers) {
 
-    public record VoucherBrief(String code, BigDecimal discountValue, LocalDateTime expiresAt) {
+    public record VoucherBrief(String code, BigDecimal discountValue, com.coffeeshop.entity.enums.VoucherDiscountType discountType, LocalDateTime expiresAt) {
     }
 
     public static IncidentResponse from(Incident i, List<VoucherDetail> vouchers) {
@@ -23,7 +23,7 @@ public record IncidentResponse(Long id, Long orderId, String orderCode, String h
                 i.getHandledBy() == null ? null : i.getHandledBy().getFullName(),
                 i.getType(), i.getSeverity(), i.getReason(), i.getDescription(), i.getResolution(), i.getStatus(),
                 i.getReportedAt(), i.getCreatedBy(), i.getResolvedAt(),
-                vouchers.stream().map(v -> new VoucherBrief(v.getCode(), v.getVoucher().getDiscountValue(), v.getExpiresAt()))
+                vouchers.stream().map(v -> new VoucherBrief(v.getCode(), v.getVoucher().getDiscountValue(), v.getVoucher().getDiscountType(), v.getExpiresAt()))
                         .toList());
     }
 }

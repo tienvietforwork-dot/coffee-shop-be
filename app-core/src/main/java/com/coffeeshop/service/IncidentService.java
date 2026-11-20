@@ -57,7 +57,7 @@ public class IncidentService {
     public List<VoucherOptionResponse> voucherOptions() {
         LocalDateTime now = LocalDateTime.now();
         return voucherRepository.findByStatusAndDelFlagFalseOrderByNameAsc(VoucherTypeStatus.ACTIVE).stream()
-                .map(v -> new VoucherOptionResponse(v.getId(), v.getName(), v.getDiscountValue(), v.getMinOrderValue(),
+                .map(v -> new VoucherOptionResponse(v.getId(), v.getName(), v.getDiscountValue(), v.getDiscountType(), v.getMinOrderValue(),
                         v.slots(), v.getValidDays(), remaining(v, now)))
                 .toList();
     }

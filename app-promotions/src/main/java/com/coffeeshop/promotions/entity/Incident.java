@@ -23,6 +23,6 @@ public class Incident {
     private IncidentType type;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "severity", nullable = false)
+    @Column(name = "severity")
     private IndentSeverity severity;
 }

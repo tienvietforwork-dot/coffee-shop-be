@@ -18,7 +18,7 @@ public class VoucherDetailResponse {
     private String orderCode;
     private Long customerId;
     private String customerName;
-    private Long customerPhone;
+    private String customerPhone;
     private Long incidentId;
     private IncidentType incidentType;
     private IndentSeverity indentSeverity;

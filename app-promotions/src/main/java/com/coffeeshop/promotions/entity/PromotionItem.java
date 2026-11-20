@@ -36,7 +36,7 @@ public class PromotionItem extends BaseEntity {
     @Column(name = "sale_price", precision = 12, scale = 2)
     private BigDecimal salePrice;
 
-    @Column(name = "max_quantity", nullable = false)
+    @Column(name = "max_quantity")
     private Integer maxQuantity;
 
     @Column(name = "sold_quantity", nullable = false)

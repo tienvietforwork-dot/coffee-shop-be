@@ -32,8 +32,8 @@ public class VoucherDetail extends BaseEntity{
     @JoinColumn(name = "order_id", nullable = true)
     private Order order;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "customer_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id")
     private Customer customer;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
@@ -50,7 +50,7 @@ public class VoucherDetail extends BaseEntity{
     @Column(name = "issued_at", nullable = false)
     private LocalDateTime issuedAt;
 
-    @Column(name = "expires_at", nullable = false)
+    @Column(name = "expires_at")
     private LocalDateTime expiresAt;
 
     @PrePersist
