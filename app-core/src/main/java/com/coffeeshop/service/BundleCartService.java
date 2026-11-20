@@ -88,6 +88,15 @@ public class BundleCartService {
         resolve(bundleId,quantity,options);
         jdbc.update("INSERT INTO cart_bundle_lines(cart_id,bundle_id,quantity,optional_item_ids) VALUES(?,?,?,?)",cart.getId(),bundleId,quantity,encode(options==null?List.of():options));
     }
+    /** Changes how many of a combo line are in the cart; the combo is resolved again so sold-out parts are caught. */
+    @Transactional public void updateQuantity(Cart cart,long lineId,int quantity) {
+        if(quantity<1 || quantity>99) throw new BadRequestException("Số lượng combo phải từ 1 đến 99");
+        var line=jdbc.query("SELECT bundle_id,optional_item_ids FROM cart_bundle_lines WHERE id=? AND cart_id=?",
+                (rs,n)->new Object[]{rs.getLong(1),rs.getString(2)},lineId,cart.getId());
+        if(line.isEmpty()) throw new BadRequestException("Không tìm thấy combo trong giỏ");
+        resolve((Long)line.get(0)[0],quantity,decode((String)line.get(0)[1]));
+        jdbc.update("UPDATE cart_bundle_lines SET quantity=? WHERE id=? AND cart_id=?",quantity,lineId,cart.getId());
+    }
     @Transactional public void remove(Cart cart,long lineId) {
         if(jdbc.update("DELETE FROM cart_bundle_lines WHERE id=? AND cart_id=?",lineId,cart.getId())==0) throw new BadRequestException("Không tìm thấy combo trong giỏ");
     }

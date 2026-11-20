@@ -1,11 +1,13 @@
 package com.coffeeshop.entity;
 
+import com.coffeeshop.entity.enums.VoucherDiscountType;
 import com.coffeeshop.entity.enums.VoucherTypeStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLDelete;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 /**
  * Loại voucher: giá trị giảm, đơn tối thiểu và {@code quantity} = số lượt được dùng tối đa.
@@ -30,6 +32,10 @@ public class Voucher extends BaseEntity {
     private String name;
     @Column(name = "discount_value", nullable = false, precision = 12, scale = 2)
     private BigDecimal discountValue;
+    /** How discount_value is read; null on older rows = FIXED_AMOUNT. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "discount_type", length = 15)
+    private VoucherDiscountType discountType;
     /** Order subtotal needed to use the voucher. */
     @Builder.Default
     @Column(name = "min_order_value", nullable = false, precision = 12, scale = 2)
@@ -46,6 +52,19 @@ public class Voucher extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private VoucherTypeStatus status = VoucherTypeStatus.ACTIVE;
+
+    public boolean isPercentage() {
+        return discountType == VoucherDiscountType.PERCENTAGE;
+    }
+
+    /** What this voucher takes off {@code amount}: a percent of it (rounded to whole đồng) or a fixed sum, never more than the amount. */
+    public BigDecimal discountOn(BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0 || discountValue == null) return BigDecimal.ZERO;
+        BigDecimal off = isPercentage()
+                ? amount.multiply(discountValue).divide(BigDecimal.valueOf(100), 0, RoundingMode.HALF_UP)
+                : discountValue;
+        return off.min(amount);
+    }
 
     /** Số lượt tối đa của loại voucher: max_quantity, chưa có thì quantity. */
     public int slots() {

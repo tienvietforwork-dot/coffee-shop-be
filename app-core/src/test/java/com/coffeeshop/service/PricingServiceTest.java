@@ -94,6 +94,27 @@ class PricingServiceTest {
     }
 
     @Test
+    void percentageVoucherTakesAPercentOfWhatIsLeftAfterTheOrderPromotion() {
+        when(promotionRepository.findRunningOrderPromotions(any()))
+                .thenReturn(List.of(promotion(PromotionScope.ORDER, "10", "150000")));
+        Customer owner = Customer.builder().id(5L).phone("0912345678").build();
+        Voucher type = Voucher.builder().id(1L).name("Tri ân 19%").discountValue(new BigDecimal("19"))
+                .discountType(com.coffeeshop.entity.enums.VoucherDiscountType.PERCENTAGE)
+                .minOrderValue(new BigDecimal("100000")).quantity(10).build();
+        VoucherDetail voucher = VoucherDetail.builder().id(1L).voucher(type).code("PCT19").customer(owner)
+                .status(VoucherStatus.ISSUED).expiresAt(now.plusDays(1)).build();
+        when(voucherDetailRepository.findByCodeIgnoreCase("PCT19")).thenReturn(Optional.of(voucher));
+
+        var quote = pricingService.quote(List.of(new PricingService.InputLine(latte, 4, null)),
+                OrderType.TAKE_AWAY, "0912345678", "PCT19", now);
+
+        // 200.000 − 10% đợt giảm = 180.000; voucher 19% của 180.000 = 34.200 (không phải 19đ)
+        assertThat(quote.promotionDiscount()).isEqualByComparingTo("20000");
+        assertThat(quote.voucherDiscount()).isEqualByComparingTo("34200");
+        assertThat(quote.total()).isEqualByComparingTo("145800");
+    }
+
+    @Test
     void voucherOfAnotherCustomerIsRejected() {
         Customer owner = Customer.builder().id(5L).phone("0912345678").build();
         Voucher type = Voucher.builder().id(1L).name("Tri ân 50K").discountValue(new BigDecimal("50000")).quantity(10).build();
