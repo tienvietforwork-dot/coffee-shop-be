@@ -2,8 +2,7 @@ package com.coffeeshop.promotions.service;
 
 import com.coffeeshop.promotions.dto.request.VoucherDetailRequest;
 import com.coffeeshop.promotions.dto.request.VoucherRequest;
-import com.coffeeshop.promotions.dto.response.VoucherDetailResponse;
-import com.coffeeshop.promotions.dto.response.VoucherResponse;
+import com.coffeeshop.promotions.dto.response.*;
 import com.coffeeshop.promotions.entity.*;
 import com.coffeeshop.promotions.entity.enums.VoucherStatus;
 import com.coffeeshop.promotions.entity.enums.VoucherTypeStatus;
@@ -31,7 +30,10 @@ public class VoucherService {
     private final VoucherDetailRepository voucherDetailRepository;
     private final CustomerRepository customerRepository;
     private final IncidentRepository incidentRepository;
+    private final VoucherTemplateRepository voucherTemplateRepository;
     private final OrderRepository orderRepository;
+    private final CustomerGroupRepository customerGroupRepository;
+    private final CustomerGroupMemberRepository customerGroupMemberRepository;
 
     @Transactional(readOnly = true)
     public List<VoucherResponse> getAll(){
@@ -40,11 +42,30 @@ public class VoucherService {
                 .map(VoucherResponse::new).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    public List<CustomerResponse> getAllCustomers() {
+        return customerRepository.findAll().stream()
+                .map(CustomerResponse::new)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<CustomerGroupResponse> getAllCustomerGroups() {
+        return customerGroupRepository.findAll().stream()
+                .map(CustomerGroupResponse::new)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<CustomerGroupMemberResponse> getAllCustomerGroupMembers() {
+        return customerGroupMemberRepository.findAll().stream()
+                .map(CustomerGroupMemberResponse::new)
+                .toList();
+    }
+
+
     @Transactional
     public VoucherResponse create(VoucherRequest request){
-
-
-
         VoucherTypeStatus defaultStatus = request.getStatus() != null ? request.getStatus() : VoucherTypeStatus.DRAFT;
         Voucher voucher = Voucher.builder()
                 .name(request.getName())
@@ -235,34 +256,7 @@ public class VoucherService {
         Voucher savedVoucher = voucherRepository.save(voucher);
         return new VoucherResponse(savedVoucher);
     }
-//
-//    @Transactional
-//    public VoucherDetailResponse useVoucherInOrder(Long voucherDetailId, Long orderId) {
-//        VoucherDetail voucherDetail = voucherDetailRepository.findById(voucherDetailId)
-//                .orElseThrow(() -> new RuntimeException("Không tìm thấy mã voucher chi tiết!"));
-//
-//        Long currentCustomerId = getCurrentCustomerId();
-//        if (!voucherDetail.getCustomer().equals(currentCustomerId)) {
-//            throw new RuntimeException("Voucher này không thuộc sở hữu của bạn!");
-//        }
-//
-//        if (voucherDetail.getStatus() != VoucherStatus.ISSUED) {
-//            throw new RuntimeException("Voucher không khả dụng (Đã được sử dụng, thu hồi hoặc hết hạn)!");
-//        }
-//
-//        if (voucherDetail.getExpiresAt().isBefore(LocalDateTime.now())) {
-//            voucherDetail.setStatus(VoucherStatus.EXPIRED);
-//            voucherDetailRepository.save(voucherDetail);
-//            throw new RuntimeException("Voucher đã quá hạn sử dụng!");
-//        }
-//
-//        voucherDetail.setStatus(VoucherStatus.USED);
-//        voucherDetail.setOrder(orderId);
-//
-//        VoucherDetail updated = voucherDetailRepository.save(voucherDetail);
-//
-//        return new VoucherDetailResponse(updated);
-//    }
+
 
     @Transactional
     public void activeVoucher(Long id) {
@@ -276,16 +270,18 @@ public class VoucherService {
     }
 
     @Transactional
-    public void endVoucher(Long id){
+    public void endVoucher(Long id) {
         Voucher voucher = findVoucherById(id);
-        if (voucher.getStatus() != VoucherTypeStatus.ACTIVE){
-            throw new RuntimeException("Chỉ có thể kích hoạt khi voucher đang ở trạng thái ACTIVE");
+        if (voucher.getStatus() != VoucherTypeStatus.ACTIVE) {
+            throw new RuntimeException("Chỉ có thể kết thúc khi voucher đang ở trạng thái ACTIVE");
         }
 
         voucher.setStatus(VoucherTypeStatus.ENDED);
-        if (voucher.getVoucherDetails() != null ) {
-            for (VoucherDetail items: voucher.getVoucherDetails()){
-                items.setStatus(VoucherStatus.REVOKED);
+        if (voucher.getVoucherDetails() != null) {
+            for (VoucherDetail item : voucher.getVoucherDetails()) {
+                if (item != null && item.getStatus() == VoucherStatus.ISSUED) {
+                    item.setStatus(VoucherStatus.REVOKED);
+                }
             }
         }
         voucherRepository.save(voucher);

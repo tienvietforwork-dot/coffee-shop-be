@@ -2,17 +2,13 @@ package com.coffeeshop.promotions.service;
 
 import com.coffeeshop.promotions.dto.request.PromotionItemRequest;
 import com.coffeeshop.promotions.dto.request.PromotionRequest;
-import com.coffeeshop.promotions.dto.response.PromotionAnalyticsResponse;
-import com.coffeeshop.promotions.dto.response.PromotionResponse;
+import com.coffeeshop.promotions.dto.response.*;
 import com.coffeeshop.promotions.entity.*;
 import com.coffeeshop.promotions.entity.enums.PromotionScope;
 import com.coffeeshop.promotions.entity.enums.PromotionStatus;
 import com.coffeeshop.promotions.entity.enums.PromotionType;
 import com.coffeeshop.promotions.entity.enums.VoucherStatus;
-import com.coffeeshop.promotions.repository.CoffeeRepository;
-import com.coffeeshop.promotions.repository.OrderRepository;
-import com.coffeeshop.promotions.repository.PromotionRepository;
-import com.coffeeshop.promotions.repository.VoucherDetailRepository;
+import com.coffeeshop.promotions.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -21,8 +17,11 @@ import java.math.BigDecimal;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -34,16 +33,15 @@ public class PromotionService {
     private final OrderRepository orderRepository;
     private final VoucherDetailRepository voucherDetailRepository;
 
+
     @Transactional(readOnly = true)
     public List<PromotionResponse> findAll() {
         return promotionRepository.findAll().stream()
-                .sorted(
-                        Comparator.comparingInt((Promotion p) -> getStatusPriority(p.getStatus()))
-                                .thenComparing(Promotion::getStartDate, Comparator.nullsLast(Comparator.reverseOrder()))
-                )
+                .sorted(Comparator.comparingInt((Promotion p) -> getStatusPriority(p.getStatus())))
                 .map(PromotionResponse::new)
                 .collect(Collectors.toList());
     }
+
 
     private int getStatusPriority(PromotionStatus status) {
         if (status == null) return 5;
@@ -114,7 +112,6 @@ public class PromotionService {
         promotion.setMinOrderAmount(request.getMinOrderAmount());
         promotion.setStartDate(request.getStartDate());
         promotion.setEndDate(request.getEndDate());
-        promotion.setStatus(request.getStatus() != null ? request.getStatus() : PromotionStatus.DRAFT);
 
         if (request.getItems() != null) {
             List<Long> requestNoNull = request.getItems().stream()
@@ -166,72 +163,107 @@ public class PromotionService {
         return new PromotionResponse(updated);
     }
 
-
     @Transactional(readOnly = true)
     public PromotionAnalyticsResponse getAnalytics(String fromStr, String toStr) {
-        LocalDateTime fromDate = (fromStr != null && !fromStr.isEmpty())
-                ? LocalDate.parse(fromStr).atStartOfDay()
-                : LocalDateTime.now().minusDays(30);
-        LocalDateTime toDate = (toStr != null && !toStr.isEmpty())
-                ? LocalDate.parse(toStr).atTime(23, 59, 59)
-                : LocalDateTime.now();
+        LocalDateTime fromDate = parseFromDate(fromStr);
+        LocalDateTime toDate = parseToDate(toStr);
 
-        List<Promotion> promotions = promotionRepository.findAll();
-        List<PromotionStat> promotionStats = promotions.stream().map(promo -> {
-
-            Long orders = orderRepository.countOrdersByPromotion(promo.getId(), fromDate, toDate);
-            BigDecimal revenue = orderRepository.sumRevenueByPromotion(promo.getId(), fromDate, toDate);
-            BigDecimal discountTotal = orderRepository.sumDiscountByPromotion(promo.getId(), fromDate, toDate);
-
-            orders = (orders != null) ? orders : 0L;
-            revenue = (revenue != null) ? revenue : BigDecimal.ZERO;
-            discountTotal = (discountTotal != null) ? discountTotal : BigDecimal.ZERO;
-
-            BigDecimal avgOrderValue = orders > 0
-                    ? revenue.divide(BigDecimal.valueOf(orders), 2)
-                    : BigDecimal.ZERO;
-
-            BigDecimal roi = BigDecimal.ZERO;
-            if (discountTotal.compareTo(BigDecimal.ZERO) > 0) {
-                roi = revenue.subtract(discountTotal).divide(discountTotal, 2);
-            }
-
-            return PromotionStat.builder()
-                    .id(promo.getId())
-                    .name(promo.getName())
-                    .status(promo.getStatus())
-                    .orders(orders)
-                    .revenue(revenue)
-                    .discountTotal(discountTotal)
-                    .avgOrderValue(avgOrderValue)
-                    .roi(roi)
-                    .build();
-        }).collect(Collectors.toList());
-
-
-        long issued = voucherDetailRepository.countByStatus(VoucherStatus.ISSUED);
-        long used = voucherDetailRepository.countByStatus(VoucherStatus.USED);
-        long expired = voucherDetailRepository.countByStatus(VoucherStatus.EXPIRED);
-
-        double usageRate = issued > 0 ? ((double) used / issued) * 100.0 : 0.0;
-
-        VoucherStat voucherStat = VoucherStat.builder()
-                .issued(issued)
-                .used(used)
-                .expired(expired)
-                .usageRate(Math.round(usageRate * 10.0) / 10.0)
-                .discountTotal(BigDecimal.ZERO)
-                .build();
-
-        BaselineStat baselineStat = BaselineStat.builder()
-                .avgOrderValue(new BigDecimal("50000"))
-                .ordersPerDay(new BigDecimal("25"))
-                .build();
+        List<PromotionStat> promotionStats = buildPromotionStats(fromDate, toDate);
+        VoucherStat voucherStat = buildVoucherStat(fromDate, toDate);
+        BaselineStat baselineStat = buildBaselineStat(fromDate, toDate);
 
         return PromotionAnalyticsResponse.builder()
                 .promotions(promotionStats)
                 .vouchers(voucherStat)
                 .baseline(baselineStat)
+                .build();
+    }
+
+    private LocalDateTime parseFromDate(String fromStr) {
+        return (fromStr != null && !fromStr.isEmpty())
+                ? LocalDate.parse(fromStr).atStartOfDay()
+                : LocalDateTime.now().minusDays(30);
+    }
+
+    private LocalDateTime parseToDate(String toStr) {
+        return (toStr != null && !toStr.isEmpty())
+                ? LocalDate.parse(toStr).atTime(23, 59, 59)
+                : LocalDateTime.now();
+    }
+
+    private List<PromotionStat> buildPromotionStats(LocalDateTime fromDate, LocalDateTime toDate) {
+        Set<PromotionStatus> allowedStatuses = Set.of(
+                PromotionStatus.ACTIVE,
+                PromotionStatus.PAUSED,
+                PromotionStatus.ENDED
+        );
+
+        return promotionRepository.findAll().stream()
+                .filter(promo -> allowedStatuses.contains(promo.getStatus()))
+                .map(promo -> calculateSinglePromotionStat(promo, fromDate, toDate))
+                .collect(Collectors.toList());
+    }
+
+    private PromotionStat calculateSinglePromotionStat(
+            Promotion promo,
+            LocalDateTime fromDate,
+            LocalDateTime toDate
+    ) {
+        Long rawOrders = orderRepository.countOrdersByPromotion(promo.getId(), fromDate, toDate);
+        BigDecimal rawRevenue = orderRepository.sumRevenueByPromotion(promo.getId(), fromDate, toDate);
+        BigDecimal rawDiscount = orderRepository.sumDiscountAmountByPromotion(promo.getId(), fromDate, toDate);
+
+        long orders = (rawOrders != null) ? rawOrders : 0L;
+        BigDecimal revenue = (rawRevenue != null) ? rawRevenue : BigDecimal.ZERO;
+        BigDecimal discountTotal = (rawDiscount != null) ? rawDiscount : BigDecimal.ZERO;
+
+        BigDecimal avgOrderValue = orders > 0
+                ? revenue.divide(BigDecimal.valueOf(orders), 2)
+                : BigDecimal.ZERO;
+
+        BigDecimal roi = BigDecimal.ZERO;
+        if (discountTotal.compareTo(BigDecimal.ZERO) > 0) {
+            roi = revenue.subtract(discountTotal)
+                    .divide(discountTotal, 4)
+                    .multiply(BigDecimal.valueOf(100))
+                    .setScale(2);
+        }
+
+        return PromotionStat.builder()
+                .id(promo.getId())
+                .name(promo.getName())
+                .status(promo.getStatus())
+                .orders(orders)
+                .revenue(revenue)
+                .discountTotal(discountTotal)
+                .avgOrderValue(avgOrderValue)
+                .roi(roi)
+                .build();
+    }
+
+    private VoucherStat buildVoucherStat(LocalDateTime fromDate, LocalDateTime toDate) {
+        long issued = voucherDetailRepository.countByStatus(VoucherStatus.ISSUED);
+        long used = voucherDetailRepository.countByStatus(VoucherStatus.USED);
+        long expired = voucherDetailRepository.countByStatus(VoucherStatus.EXPIRED);
+
+        BigDecimal voucherDiscountTotal = orderRepository.sumVoucherDiscount(fromDate, toDate);
+        double usageRate = issued > 0 ? ((double) used / issued) * 100.0 : 0.0;
+
+        return VoucherStat.builder()
+                .issued(issued)
+                .used(used)
+                .expired(expired)
+                .usageRate(Math.round(usageRate * 10.0) / 10.0)
+                .discountTotal(voucherDiscountTotal != null ? voucherDiscountTotal : BigDecimal.ZERO)
+                .build();
+    }
+
+    private BaselineStat buildBaselineStat(LocalDateTime fromDate, LocalDateTime toDate) {
+        BigDecimal avgVoucher = orderRepository.avgOrderValueWithVoucher(fromDate, toDate);
+
+        return BaselineStat.builder()
+                .avgOrderValue(avgVoucher != null ? avgVoucher : BigDecimal.ZERO)
+                .ordersPerDay(new BigDecimal("25"))
                 .build();
     }
 
@@ -453,41 +485,49 @@ public class PromotionService {
         promotionRepository.delete(promotion);
     }
 
-    @Scheduled(cron = "0 0 * * * *")
+    @Scheduled(cron = "1 * * * * *", zone = "Asia/Ho_Chi_Minh")
     @Transactional
-    public void autoActivePromotion(){
-        LocalDateTime now = LocalDateTime.now();
+    public void autoActivePromotion() {
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh"));
         List<Promotion> draftPromotions = promotionRepository.findByStatusIn(List.of(PromotionStatus.DRAFT));
-        for (Promotion promo : draftPromotions){
-            if (promo.getStatus() != null && now.isAfter(promo.getStartDate())){
+
+        for (Promotion promo : draftPromotions) {
+            if (promo.getStartDate() != null && now.isAfter(promo.getStartDate())) {
                 promo.setStatus(PromotionStatus.ACTIVE);
                 promotionRepository.save(promo);
             }
         }
     }
 
-    @Scheduled(cron = "0 0 * * * *")
+    @Scheduled(cron = "1 * * * * *", zone = "Asia/Ho_Chi_Minh")
     @Transactional
     public void autoEndExpiredPromotions() {
-        LocalDateTime now = LocalDateTime.now();
-
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh"));
         List<Promotion> activeOrPausedPromotions = promotionRepository.findByStatusIn(
                 List.of(PromotionStatus.ACTIVE, PromotionStatus.PAUSED)
         );
 
+        List<Promotion> expiredPromotions = new ArrayList<>();
         for (Promotion promo : activeOrPausedPromotions) {
             if (promo.getEndDate() != null && now.isAfter(promo.getEndDate())) {
                 promo.setStatus(PromotionStatus.ENDED);
+                resetCoffeeSalePricesIfNeeded(promo);
+                expiredPromotions.add(promo);
+            }
+        }
 
-                if (promo.getApplyScope() == PromotionScope.COFFEE && promo.getPromotionItems() != null) {
-                    for (PromotionItem item : promo.getPromotionItems()) {
-                        Coffee coffee = item.getCoffee();
-                        if (coffee != null) {
-                            coffee.resetSalePrice();
-                        }
-                    }
+        if (!expiredPromotions.isEmpty()) {
+            promotionRepository.saveAll(expiredPromotions);
+        }
+    }
+
+    private void resetCoffeeSalePricesIfNeeded(Promotion promo) {
+        if (promo.getApplyScope() == PromotionScope.COFFEE && promo.getPromotionItems() != null) {
+            for (PromotionItem item : promo.getPromotionItems()) {
+                Coffee coffee = item.getCoffee();
+                if (coffee != null) {
+                    coffee.resetSalePrice();
                 }
-                promotionRepository.save(promo);
             }
         }
     }
