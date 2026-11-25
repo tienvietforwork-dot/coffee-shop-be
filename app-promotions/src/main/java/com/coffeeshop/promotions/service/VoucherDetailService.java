@@ -12,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -19,21 +21,25 @@ import java.util.List;
 public class VoucherDetailService {
 
     private final VoucherDetailRepository voucherDetailRepository;
-
-    @Scheduled(cron = "0 */5 * * * * ")
+    @Scheduled(cron = "1 * * * * *", zone = "Asia/Ho_Chi_Minh")
     @Transactional
     public void autoEndExpiredVoucher() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh"));
+        List<VoucherDetail> issuedVouchers = voucherDetailRepository.findByStatus(VoucherStatus.ISSUED);
 
-        List<VoucherDetail> issuedVoucher = voucherDetailRepository.findByStatus(VoucherStatus.ISSUED);
-
-        for (VoucherDetail detail : issuedVoucher) {
+        List<VoucherDetail> expiredVouchers = new ArrayList<>();
+        for (VoucherDetail detail : issuedVouchers) {
             if (detail.getExpiresAt() != null && now.isAfter(detail.getExpiresAt())) {
                 detail.setStatus(VoucherStatus.EXPIRED);
-                voucherDetailRepository.save(detail);
+                expiredVouchers.add(detail);
             }
         }
+
+        if (!expiredVouchers.isEmpty()) {
+            voucherDetailRepository.saveAll(expiredVouchers);
+        }
     }
+
 
     @Transactional
     public void revokeVoucher(Long id) {

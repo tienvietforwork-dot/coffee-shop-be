@@ -24,6 +24,8 @@ public class PromotionController {
         return ResponseEntity.ok(responses);
     }
 
+
+
     @GetMapping("/promotions/{id}")
     public ResponseEntity<PromotionResponse> getPromotionById(@PathVariable Long id) {
         PromotionResponse response = promotionService.findById(id);

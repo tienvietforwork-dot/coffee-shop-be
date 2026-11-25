@@ -13,4 +13,8 @@ public interface VoucherDetailRepository extends JpaRepository<VoucherDetail, Lo
     long countByStatus(VoucherStatus status);
 
     List<VoucherDetail> findByStatus(VoucherStatus status);
+
+
+
+    long countByCustomerIdAndVoucher_Id(Long customerId, Long voucherId);
 }
