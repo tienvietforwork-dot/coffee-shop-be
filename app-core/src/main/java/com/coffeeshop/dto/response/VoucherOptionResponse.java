@@ -3,6 +3,6 @@ package com.coffeeshop.dto.response;
 import java.math.BigDecimal;
 
 /** Loại voucher để chọn khi phát: {@code remaining} = quantity − (đang giữ chỗ + đã dùng). */
-public record VoucherOptionResponse(Long id, String name, BigDecimal discountValue, BigDecimal minOrderValue,
+public record VoucherOptionResponse(Long id, String name, BigDecimal discountValue, com.coffeeshop.entity.enums.VoucherDiscountType discountType, BigDecimal minOrderValue,
                                     int quantity, Integer validDays, long remaining) {
 }

@@ -44,7 +44,7 @@ public class Coffee extends BaseEntity{
     @Column(name = "sale", precision = 5, scale = 2)
     private BigDecimal sale = BigDecimal.ZERO;
 
-    @Column(name = "sale_price", nullable = false, precision = 12, scale = 2)
+    @Column(name = "sale_price", precision = 12, scale = 2)
     private BigDecimal salePrice;
 
     @Column(name = "description", columnDefinition = "TEXT")

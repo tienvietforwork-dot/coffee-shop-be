@@ -55,7 +55,7 @@ class IncidentServiceTest {
         when(voucherDetailRepository.countTakenSlots(eq(3L), any())).thenReturn(3L);
         when(voucherDetailRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        var response = incidentService.resolve(1L, new IncidentResolveRequest("Làm lại món", 3L, 2, null));
+        var response = incidentService.resolve(1L, new IncidentResolveRequest("Làm lại món", 3L, 2));
 
         assertThat(response.vouchers()).hasSize(2)
                 .allSatisfy(v -> assertThat(v.discountValue()).isEqualByComparingTo("20000"));
@@ -66,7 +66,7 @@ class IncidentServiceTest {
     void compensationIsRefusedWhenNotEnoughSlotsAreLeft() {
         when(voucherDetailRepository.countTakenSlots(eq(3L), any())).thenReturn(4L);
 
-        assertThatThrownBy(() -> incidentService.resolve(1L, new IncidentResolveRequest("Làm lại món", 3L, 2, null)))
+        assertThatThrownBy(() -> incidentService.resolve(1L, new IncidentResolveRequest("Làm lại món", 3L, 2)))
                 .isInstanceOf(BadRequestException.class).hasMessageContaining("chỉ còn 1 lượt");
         verify(voucherDetailRepository, never()).save(any());
     }

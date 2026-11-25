@@ -88,6 +88,13 @@ public class CartService {
     }
 
     @Transactional
+    public CartResponse updateBundle(String sessionCode, Long lineId, int quantity) {
+        Cart cart=getOpen(sessionCode);
+        bundleCartService.updateQuantity(cart,lineId,quantity);
+        return toResponse(cart);
+    }
+
+    @Transactional
     public CartResponse removeBundle(String sessionCode, Long lineId) {
         Cart cart=getOpen(sessionCode);
         bundleCartService.remove(cart,lineId);

@@ -36,7 +36,7 @@ public class Voucher extends BaseEntity{
     private String name;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "discount_type", nullable = false)
+    @Column(name = "discount_type")
     private VoucherType discountType;
 
     @Column(name = "discount_value", nullable = false, precision = 5, scale = 2)
@@ -46,14 +46,14 @@ public class Voucher extends BaseEntity{
     private BigDecimal minOrderValue;
 
     @Builder.Default
-    @Column(name = "quantity", nullable = false)
+    @Column(name = "quantity")
     private Integer quantity = 0;
 
-    @Column(name = "max_quantity", nullable = false)
+    @Column(name = "max_quantity")
     private Integer maxQuantity;
 
     @Builder.Default
-    @Column(name = "valid_days", nullable = false)
+    @Column(name = "valid_days")
     private Integer validDays = 30;
 
     @Builder.Default

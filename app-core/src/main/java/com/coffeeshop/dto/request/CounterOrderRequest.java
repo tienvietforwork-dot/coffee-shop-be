@@ -3,16 +3,16 @@ package com.coffeeshop.dto.request;
 import com.coffeeshop.entity.enums.OrderType;
 import com.coffeeshop.entity.enums.PaymentMethod;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.util.List;
 
-/** Order taken by staff at the counter. */
+/** Order taken by staff at the counter: single coffees ({@code items}) and / or combos ({@code bundles}). */
 public record CounterOrderRequest(
-        @NotEmpty @Valid List<CartItemRequest> items,
+        @Valid List<CartItemRequest> items,
+        @Valid List<BundleLineRequest> bundles,
         @NotNull OrderType orderType,
         Long tableId,
         @Size(max = 100) String customerName,
