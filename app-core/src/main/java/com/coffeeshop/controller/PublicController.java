@@ -97,6 +97,13 @@ public class PublicController {
         if(req.bundleId()==null || req.quantity()==null) throw new com.coffeeshop.exception.BadRequestException("Thiếu thông tin combo");
         return cartService.addBundle(sessionCode,req.bundleId(),req.quantity(),req.optionalItemIds());
     }
+    public record UpdateBundleRequest(Integer quantity) {}
+
+    @PutMapping("/carts/{sessionCode}/bundles/{lineId}")
+    public CartResponse updateBundle(@PathVariable String sessionCode, @PathVariable Long lineId, @RequestBody UpdateBundleRequest req) {
+        if(req.quantity()==null) throw new com.coffeeshop.exception.BadRequestException("Thiếu số lượng combo");
+        return cartService.updateBundle(sessionCode,lineId,req.quantity());
+    }
     @DeleteMapping("/carts/{sessionCode}/bundles/{lineId}")
     public CartResponse removeBundle(@PathVariable String sessionCode,@PathVariable Long lineId) {
         return cartService.removeBundle(sessionCode,lineId);

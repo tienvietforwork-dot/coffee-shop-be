@@ -25,8 +25,8 @@ import java.util.stream.Collectors;
  * Rules:
  *  - coffee promotion: the lowest promo price among running promotions that still have quota;
  *  - order promotion: the running ORDER promotion giving the biggest discount whose minimum is met;
- *  - voucher: discount_value once the subtotal reaches min_order_value, on top of the order promotion,
- *    capped at what is left to pay;
+ *  - voucher: once the subtotal reaches min_order_value, discount_value off what is left after the order promotion —
+ *    a percent of it when discount_type = PERCENTAGE, otherwise that many đồng — capped at what is left to pay;
  *  - delivery orders pay the phí ship of their distance tier (DeliveryFeeService).
  */
 @Service
@@ -161,7 +161,7 @@ public class PricingService {
             voucher = voucherDetailRepository.findByCodeIgnoreCase(voucherCode.trim()).orElse(null);
             voucherMessage = validateVoucher(voucher, customerPhone, subtotal, now);
             if (voucherMessage == null) {
-                voucherDiscount = voucher.getVoucher().getDiscountValue().min(afterPromotion);
+                voucherDiscount = voucher.getVoucher().discountOn(afterPromotion);
             } else {
                 voucher = null;
             }

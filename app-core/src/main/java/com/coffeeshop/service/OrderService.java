@@ -127,7 +127,8 @@ public class OrderService {
     @Transactional(readOnly = true)
     public PriceQuoteResponse preview(PricePreviewRequest request) {
         var rule = feeRule(request.orderType(), request.deliveryAddress(), request.customerPhone());
-        var lines = toLines(request.items());
+        var purchases = counterBundles(request.bundles());
+        var lines = withBundles(toLines(request.items()), purchases);
         return withDelivery(pricingService.quote(lines, request.orderType(), request.customerPhone(),
                 request.voucherCode(), LocalDateTime.now(), rule == null ? null : rule.fee()).toResponse(), rule).withPrepMinutes(prepMinutes(lines));
     }
@@ -168,7 +169,7 @@ public class OrderService {
         Draft draft = new Draft(lines, request.orderType(), cart.getTable() != null ? OrderChannel.QR : OrderChannel.ONLINE,
                 request.orderType() == OrderType.DINE_IN ? cart.getTable() : null, cart, request.customerPhone(),
                 request.customerName(), request.addressId(), request.delivery(), request.pickupTime(),
-                request.paymentMethod(), false, request.voucherCode(), request.note());
+                request.paymentMethod(), false, request.voucherCode(), request.note(), List.of());
         Order order = place(draft);
         cart.setStatus(CartStatus.ORDERED);
         return OrderResponse.from(order);
@@ -185,9 +186,12 @@ public class OrderService {
         if (table != null && table.getStatus() == TableStatus.INACTIVE) {
             throw new BadRequestException("Bàn " + table.getTableNo() + " đang ngưng phục vụ");
         }
-        Draft draft = new Draft(toLines(request.items()), request.orderType(), OrderChannel.COUNTER, table, null,
+        var purchases = counterBundles(request.bundles());
+        var lines = withBundles(toLines(request.items()), purchases);
+        Draft draft = new Draft(lines, request.orderType(), OrderChannel.COUNTER, table, null,
                 request.customerPhone(), request.customerName(), null, request.delivery(), null,
-                request.paymentMethod(), Boolean.TRUE.equals(request.paidNow()), request.voucherCode(), request.note());
+                request.paymentMethod(), Boolean.TRUE.equals(request.paidNow()), request.voucherCode(), request.note(),
+                purchases);
         Order order = place(draft);
         stockService.deduct(order);
         moveTo(order, OrderStatus.PREPARING, null);
@@ -207,7 +211,7 @@ public class OrderService {
                 .map(i -> new PricingService.InputLine(i.getCoffee(), i.getQuantity(), i.getNote())).toList();
         Draft draft = new Draft(lines, OrderType.DELIVERY, OrderChannel.ONLINE, null, null, sub.getCustomer().getPhone(),
                 sub.getCustomer().getFullName(), sub.getAddress().getId(), null, deliverAt, PaymentMethod.CASH, false, null,
-                "Gói định kỳ " + sub.getCode() + (sub.getNote() == null || sub.getNote().isBlank() ? "" : " · " + sub.getNote()));
+                "Gói định kỳ " + sub.getCode() + (sub.getNote() == null || sub.getNote().isBlank() ? "" : " · " + sub.getNote()), List.of());
         Order order = place(draft);
         order.setSubscriptionId(sub.getId());
         // khách đã đăng ký gói: không cần xác nhận lại, vào thẳng "Hẹn giao"
@@ -218,7 +222,9 @@ public class OrderService {
     private record Draft(List<PricingService.InputLine> lines, OrderType type, OrderChannel channel, DiningTable table,
                          Cart cart, String customerPhone, String customerName, Long addressId,
                          DeliveryAddressRequest delivery, LocalDateTime pickupTime,
-                         PaymentMethod paymentMethod, boolean paidNow, String voucherCode, String note) {
+                         PaymentMethod paymentMethod, boolean paidNow, String voucherCode, String note,
+                         /** combos of a counter order (a cart's combos are read from the cart) */
+                         List<BundleCartService.Purchase> purchases) {
     }
 
     private Order place(Draft d) {
@@ -271,6 +277,7 @@ public class OrderService {
         }
         order = orderRepository.save(order);
         if(d.cart()!=null) bundleCartService.saveSales(order.getId(),bundleCartService.purchases(d.cart()));
+        else if(!d.purchases().isEmpty()) bundleCartService.saveSales(order.getId(),d.purchases());
         record(order, null, order.getStatus(), null);
 
         if (quote.voucher() != null) {
@@ -608,7 +615,22 @@ public class OrderService {
         return id == null ? typed : customerService.byId(id).getPhone();
     }
 
+    /** Combos picked by staff, resolved like a cart's (sold-out / inactive combos are rejected). */
+    private List<BundleCartService.Purchase> counterBundles(List<BundleLineRequest> bundles) {
+        if (bundles == null) return List.of();
+        return bundles.stream().map(b -> bundleCartService.resolve(b.bundleId(), b.quantity(), List.of())).toList();
+    }
+
+    private List<PricingService.InputLine> withBundles(List<PricingService.InputLine> lines, List<BundleCartService.Purchase> purchases) {
+        if (purchases.isEmpty() && lines.isEmpty()) throw new BadRequestException("Chưa chọn món");
+        if (purchases.isEmpty()) return lines;
+        List<PricingService.InputLine> all = new java.util.ArrayList<>(lines);
+        purchases.forEach(p -> all.addAll(p.lines()));
+        return all;
+    }
+
     private List<PricingService.InputLine> toLines(List<CartItemRequest> items) {
+        if (items == null) return List.of();
         return items.stream().map(i -> new PricingService.InputLine(coffeeService.get(i.coffeeId()), i.quantity(),
                 i.note() == null || i.note().isBlank() ? null : i.note().trim())).toList();
     }

@@ -15,6 +15,7 @@ import com.coffeeshop.security.CurrentUser;
 import com.coffeeshop.security.Perm;
 import org.springframework.security.access.AccessDeniedException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +37,7 @@ public class CoffeeService {
     private final PricingService pricingService;
     private final ImageService imageService;
     private final RecipeRepository recipeRepository;
+    private final JdbcTemplate jdbc;
 
     @Transactional(readOnly = true)
     public List<CoffeeResponse> findAll() {
@@ -62,7 +64,11 @@ public class CoffeeService {
     @Transactional
     public CoffeeResponse update(Long id, CoffeeRequest request) {
         Coffee coffee = get(id);
+        var previousPrice = coffee.getPrice();
         apply(coffee, request);
+        if (previousPrice == null || previousPrice.compareTo(coffee.getPrice()) != 0) {
+            pauseActiveBundlesContainingCoffee(id);
+        }
         ensureCode(coffee);
         return toResponse(coffee);
     }
@@ -129,6 +135,23 @@ public class CoffeeService {
 
     private CoffeeResponse toResponse(Coffee coffee) {
         return CoffeeResponse.from(coffee, coffee.getId() != null && recipeRepository.existsByCoffeeIdAndActiveTrue(coffee.getId()));
+    }
+
+    /** Pause active bundles atomically when one of their component coffee prices changes. */
+    private void pauseActiveBundlesContainingCoffee(Long coffeeId) {
+        jdbc.update("""
+                UPDATE public.product_bundles AS bundle
+                SET status = 'PAUSED', updated_by = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE bundle.del_flag = false
+                  AND bundle.status = 'ACTIVE'
+                  AND EXISTS (
+                      SELECT 1
+                      FROM public.product_bundle_items AS item
+                      WHERE item.bundle_id = bundle.id
+                        AND item.coffee_id = ?
+                        AND item.del_flag = false
+                  )
+                """, CurrentUser.username(), coffeeId);
     }
 
     private void apply(Coffee coffee, CoffeeRequest request) {

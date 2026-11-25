@@ -57,7 +57,7 @@ public class IncidentService {
     public List<VoucherOptionResponse> voucherOptions() {
         LocalDateTime now = LocalDateTime.now();
         return voucherRepository.findByStatusAndDelFlagFalseOrderByNameAsc(VoucherTypeStatus.ACTIVE).stream()
-                .map(v -> new VoucherOptionResponse(v.getId(), v.getName(), v.getDiscountValue(), v.getMinOrderValue(),
+                .map(v -> new VoucherOptionResponse(v.getId(), v.getName(), v.getDiscountValue(), v.getDiscountType(), v.getMinOrderValue(),
                         v.slots(), v.getValidDays(), remaining(v, now)))
                 .toList();
     }
@@ -102,7 +102,7 @@ public class IncidentService {
             if (left < count) {
                 throw new BadRequestException("Voucher \"" + voucher.getName() + "\" chỉ còn " + left + " lượt");
             }
-            Integer days = request.voucherValidDays() != null ? request.voucherValidDays() : voucher.getValidDays();
+            Integer days = voucher.getValidDays(); // hạn theo cài đặt loại voucher, tính từ lúc phát
             for (int i = 0; i < count; i++) {
                 vouchers.add(voucherDetailRepository.save(VoucherDetail.builder()
                         .voucher(voucher)

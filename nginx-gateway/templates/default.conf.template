@@ -5,7 +5,7 @@
 # Routing rules:
 #   /api/crm/*         -> app-crm        (rewritten to /api/* for that app)
 #   /api/stats/*        -> app-stats      (rewritten to /api/* for that app)
-#   /api/promotions/*  -> app-promotions (rewritten to /api/* for that app)
+#   /api/promotions*   -> app-promotions (unchanged: it maps /api/promotions/...)
 #   /api/vouchers/*    -> app-promotions (unchanged)
 #   /ws                -> app-core        (WebSocket, unchanged)
 #   everything else    -> app-core        (its existing /api/auth, /api/products,
@@ -78,9 +78,13 @@ server {
         proxy_set_header Authorization $http_authorization;
     }
 
-    location /api/promotions/ {
+    # app-promotions maps its own controllers under /api/promotions/..., so the
+    # path goes through unchanged. Matching without a trailing slash also covers
+    # the bare /api/promotions (list / create): with "/api/promotions/" nginx
+    # answered it with a 301 to http://<host>:10000/..., which the browser
+    # cannot follow, so the admin page showed "Không kết nối được máy chủ".
+    location ^~ /api/promotions {
         set $upstream_host ${PROMOTIONS_UPSTREAM};
-        rewrite ^/api/promotions/(.*)$ /api/$1 break;
         proxy_pass https://$upstream_host;
         proxy_ssl_server_name on;
         proxy_ssl_name $upstream_host;
